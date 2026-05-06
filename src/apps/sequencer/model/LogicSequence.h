@@ -343,7 +343,7 @@ public:
 
         _scale.set(clamp(s, -1, Scale::Count - 1), routed);
 
-        auto &aScale = selectedScale(s);
+        auto &aScale = selectedScale(defaultScale);
 
         if (pScale == aScale) {
             return;
