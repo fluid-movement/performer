@@ -8,7 +8,7 @@
 
 extern "C" {
 
-void * __dso_handle;
+__attribute__((visibility("hidden"))) void * __dso_handle;
 
 void __cxa_pure_virtual() {
   while (1) {}

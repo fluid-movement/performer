@@ -126,7 +126,7 @@ if(${PLATFORM} STREQUAL "stm32")
     target_link_libraries(sequencer_shared core)
 
     add_executable(sequencer Sequencer.cpp)
-    target_link_libraries(sequencer sequencer_shared)
+    target_link_libraries(sequencer "-Wl,--whole-archive" sequencer_shared core "-Wl,--no-whole-archive" opencm3_stm32f4)
     platform_postprocess_executable(sequencer)
     # override linker script
     set_target_properties(sequencer PROPERTIES LINK_FLAGS "-T ${CMAKE_CURRENT_SOURCE_DIR}/sequencer.ld")
@@ -135,7 +135,7 @@ if(${PLATFORM} STREQUAL "stm32")
     add_custom_command(TARGET sequencer POST_BUILD COMMAND ${CMAKE_SOURCE_DIR}/scripts/makeupdate sequencer.bin ${update_file})
 
     add_executable(sequencer_standalone Sequencer.cpp)
-    target_link_libraries(sequencer_standalone sequencer_shared)
+    target_link_libraries(sequencer_standalone "-Wl,--whole-archive" sequencer_shared core "-Wl,--no-whole-archive" opencm3_stm32f4)
     platform_postprocess_executable(sequencer_standalone)
     # override linker script
     set_target_properties(sequencer_standalone PROPERTIES LINK_FLAGS "-T ${CMAKE_CURRENT_SOURCE_DIR}/sequencer_standalone.ld")

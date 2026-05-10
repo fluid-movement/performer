@@ -290,11 +290,18 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
                 canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
                 break;
             } 
-            scale.noteName(str, step.note(), rootNote, Scale::Short1);
-            
+            if (scale.isChromatic() && scale.notesPerOctave() < 12) {
+                int note = step.note();
+                int npo = scale.notesPerOctave();
+                int octave = note / npo - (note % npo != 0 && note < 0 ? 1 : 0);
+                int degree = note - octave * npo + 1;
+                str("%d", degree);
+            } else {
+                scale.noteName(str, step.note(), rootNote, Scale::Short1);
+            }
             canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
             str.reset();
-            
+
             canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
             break;
         }
