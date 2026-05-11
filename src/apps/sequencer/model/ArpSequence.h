@@ -302,8 +302,28 @@ public:
     // scale
 
     int scale() const { return _scale.get(isRouted(Routing::Target::Scale)); }
-    void setScale(int scale, bool routed = false) {
-        _scale.set(clamp(scale, -1, Scale::Count - 1), routed);
+    void setScale(int s, bool routed = false, int defaultScale = 0) {
+        int curScaleIdx = _scale.get(isRouted(Routing::Target::Scale));
+        bool curValid = (curScaleIdx >= -1 && curScaleIdx < Scale::Count);
+        const Scale *oldScalePtr = curValid ? &selectedScale(defaultScale) : nullptr;
+
+        _scale.set(clamp(s, -1, Scale::Count - 1), routed);
+
+        if (!oldScalePtr || routed) {
+            return;
+        }
+
+        const Scale &oldScale = *oldScalePtr;
+        const Scale &newScale = selectedScale(defaultScale);
+
+        if (&oldScale == &newScale) {
+            return;
+        }
+
+        for (auto &step : _steps) {
+            float volts = oldScale.noteToVolts(step.note());
+            step.setNote(newScale.noteFromVolts(volts));
+        }
     }
 
     int indexedScale() const { return scale() + 1; }

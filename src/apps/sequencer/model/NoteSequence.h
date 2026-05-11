@@ -295,38 +295,26 @@ public:
     int scale() const { return _scale.get(isRouted(Routing::Target::Scale)); }
     void setScale(int s, bool routed = false, int defaultScale = 0) {
 
-        auto &pScale = selectedScale(defaultScale);
+        int curScaleIdx = _scale.get(isRouted(Routing::Target::Scale));
+        bool curValid = (curScaleIdx >= -1 && curScaleIdx < Scale::Count);
+        const Scale *oldScalePtr = curValid ? &selectedScale(defaultScale) : nullptr;
 
         _scale.set(clamp(s, -1, Scale::Count - 1), routed);
 
-        auto &aScale = selectedScale(defaultScale);
-
-        if (pScale == aScale) {
+        if (!oldScalePtr || routed) {
             return;
         }
 
-        if (s != -1 && aScale.isChromatic() && pScale.isChromatic() > 0) {
-            for (int i = 0; i < 64; ++i) {
+        const Scale &oldScale = *oldScalePtr;
+        const Scale &newScale = selectedScale(defaultScale);
 
-                auto pStep = _steps[i];
+        if (&oldScale == &newScale) {
+            return;
+        }
 
-                int rN = pScale.noteIndex(pStep.note(), selectedRootNote(0));
-                if (rN > 0) {
-                    if (aScale.isNotePresent(rN)) {
-                        int pNoteIndex = aScale.getNoteIndex(rN);
-                        step(i).setNote(pNoteIndex);
-                    } else {
-                        // search nearest note
-                        while (!aScale.isNotePresent(rN)) {
-                            rN--;
-                        }
-                        int pNoteIndex = aScale.getNoteIndex(rN);
-                        step(i).setNote(pNoteIndex);
-                    }
-                }
-
-
-            }
+        for (auto &step : _steps) {
+            float volts = oldScale.noteToVolts(step.note());
+            step.setNote(newScale.noteFromVolts(volts));
         }
 
     }
