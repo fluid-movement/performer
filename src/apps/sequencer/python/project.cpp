@@ -1,5 +1,6 @@
 #include "model/Project.h"
 #include "model/ProjectVersion.h"
+#include "model/ArpSequence.h"
 
 #include <pybind11/pybind11.h>
 
@@ -545,18 +546,60 @@ void register_project(py::module &m) {
     ;
 
     // ------------------------------------------------------------------------
+    // ArpSequence
+    // ------------------------------------------------------------------------
+
+    py::class_<ArpSequence> arpSequence(m, "ArpSequence");
+    arpSequence
+        .def_property("scale", &ArpSequence::scale, [](ArpSequence &s, int v){ s.setScale(v); })
+        .def_property("rootNote", &ArpSequence::rootNote, [](ArpSequence &s, int v){ s.setRootNote(v); })
+        .def_property("divisor", &ArpSequence::divisor, [](ArpSequence &s, int v){ s.setDivisor(v); })
+        .def_property("resetMeasure", &ArpSequence::resetMeasure, &ArpSequence::setResetMeasure)
+        .def_property("firstStep", &ArpSequence::firstStep, [](ArpSequence &s, int v){ s.setFirstStep(v); })
+        .def_property("lastStep", &ArpSequence::lastStep, [](ArpSequence &s, int v){ s.setLastStep(v); })
+        .def_property_readonly("steps", [] (ArpSequence &seq) {
+            py::list result;
+            for (int i = 0; i < CONFIG_STEP_COUNT; ++i) {
+                result.append(&seq.step(i));
+            }
+            return result;
+        })
+        .def("clear", &ArpSequence::clear)
+        .def("clearSteps", &ArpSequence::clearSteps)
+        .def("duplicateSteps", &ArpSequence::duplicateSteps)
+    ;
+
+    py::class_<ArpSequence::Step> arpSequenceStep(arpSequence, "Step");
+    arpSequenceStep
+        .def_property("gate", &ArpSequence::Step::gate, &ArpSequence::Step::setGate)
+        .def_property("gateProbability", &ArpSequence::Step::gateProbability, &ArpSequence::Step::setGateProbability)
+        .def_property("gateOffset", &ArpSequence::Step::gateOffset, &ArpSequence::Step::setGateOffset)
+        .def_property("slide", &ArpSequence::Step::slide, &ArpSequence::Step::setSlide)
+        .def_property("retrigger", &ArpSequence::Step::retrigger, &ArpSequence::Step::setRetrigger)
+        .def_property("retriggerProbability", &ArpSequence::Step::retriggerProbability, &ArpSequence::Step::setRetriggerProbability)
+        .def_property("length", &ArpSequence::Step::length, &ArpSequence::Step::setLength)
+        .def_property("note", &ArpSequence::Step::note, &ArpSequence::Step::setNote)
+        .def_property("noteVariationRange", &ArpSequence::Step::noteVariationRange, &ArpSequence::Step::setNoteVariationRange)
+        .def_property("noteVariationProbability", &ArpSequence::Step::noteVariationProbability, &ArpSequence::Step::setNoteVariationProbability)
+        .def_property("noteOctave", (int (ArpSequence::Step::*)() const)&ArpSequence::Step::noteOctave, &ArpSequence::Step::setNoteOctave)
+        .def_property("noteOctaveProbability", &ArpSequence::Step::noteOctaveProbability, &ArpSequence::Step::setNoteOctaveProbability)
+        .def_property("condition", &ArpSequence::Step::condition, &ArpSequence::Step::setCondition)
+        .def("clear", &ArpSequence::Step::clear)
+    ;
+
+    // ------------------------------------------------------------------------
     // NoteSequence
     // ------------------------------------------------------------------------
 
     py::class_<NoteSequence> noteSequence(m, "NoteSequence");
     noteSequence
-        .def_property("scale", &NoteSequence::scale, &NoteSequence::setScale)
-        .def_property("rootNote", &NoteSequence::rootNote, &NoteSequence::setRootNote)
-        .def_property("divisor", &NoteSequence::divisor, &NoteSequence::setDivisor)
+        .def_property("scale", &NoteSequence::scale, [](NoteSequence &s, int v){ s.setScale(v); })
+        .def_property("rootNote", &NoteSequence::rootNote, [](NoteSequence &s, int v){ s.setRootNote(v); })
+        .def_property("divisor", &NoteSequence::divisor, [](NoteSequence &s, int v){ s.setDivisor(v); })
         .def_property("resetMeasure", &NoteSequence::resetMeasure, &NoteSequence::setResetMeasure)
         .def_property("runMode", &NoteSequence::runMode, &NoteSequence::setRunMode)
-        .def_property("firstStep", &NoteSequence::firstStep, &NoteSequence::setFirstStep)
-        .def_property("lastStep", &NoteSequence::lastStep, &NoteSequence::setLastStep)
+        .def_property("firstStep", &NoteSequence::firstStep, [](NoteSequence &s, int v){ s.setFirstStep(v); })
+        .def_property("lastStep", &NoteSequence::lastStep, [](NoteSequence &s, int v){ s.setLastStep(v); })
         .def_property_readonly("steps", [] (NoteSequence &noteSequence) {
             py::list result;
             for (int i = 0; i < CONFIG_STEP_COUNT; ++i) {
