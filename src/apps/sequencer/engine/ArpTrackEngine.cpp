@@ -355,8 +355,8 @@ void ArpTrackEngine::update(float dt) {
     bool running = _engine.state().running();
 
     const auto &sequence = *_sequence;
-    const auto &scale = sequence.selectedScale(_model.project().scale());
-    int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+    const auto &scale = _model.project().selectedScale();
+    int rootNote = _model.project().rootNote();
     int octave = _arpTrack.octave();
     int transpose = _arpTrack.transpose();
 
@@ -430,7 +430,7 @@ void ArpTrackEngine::monitorMidi(uint32_t tick, const MidiMessage &message) {
     _recordHistory.write(tick, message);
 
     auto &sequence = *_sequence;
-    const auto &scale = sequence.selectedScale(_model.project().scale());
+    const auto &scale = _model.project().selectedScale();
     int octave = _arpTrack.octave();
     int transpose = _arpTrack.transpose();
     
@@ -598,8 +598,8 @@ void ArpTrackEngine::triggerStep(uint32_t tick, uint32_t divisor, bool forNextSt
     }
 
     if (stepGate || _arpTrack.cvUpdateMode() == ArpTrack::CvUpdateMode::Always) {
-        const auto &scale = evalSequence.selectedScale(_model.project().scale());
-        int rootNote = evalSequence.selectedRootNote(_model.project().rootNote());
+        const auto &scale = _model.project().selectedScale();
+        int rootNote = _model.project().rootNote();
         _cvQueue.push({ Groove::applySwing(stepTick, swing()), evalStepNote(step, _arpTrack.noteProbabilityBias(), scale, rootNote, _octave+octave+_notes.at(_noteIndex).octave, transpose, sequence), step.slide() });
     }
 }
@@ -667,8 +667,8 @@ void ArpTrackEngine::recordStep(uint32_t tick, uint32_t divisor) {
 }
 
 int ArpTrackEngine::noteFromMidiNote(uint8_t midiNote) const {
-    const auto &scale = _sequence->selectedScale(_model.project().scale());
-    int rootNote = _sequence->selectedRootNote(_model.project().rootNote());
+    const auto &scale = _model.project().selectedScale();
+    int rootNote = _model.project().rootNote();
 
     if (scale.isChromatic()) {
         return scale.noteFromVolts((midiNote - 60 - rootNote) * (1.f / 12.f));

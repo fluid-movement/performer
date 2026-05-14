@@ -40,8 +40,6 @@ public:
 
     virtual Routing::Target routingTarget(int row) const override {
         switch (Item(row)) {
-        case Tempo:
-            return Routing::Target::Tempo;
         case Swing:
             return Routing::Target::Swing;
         default:
@@ -67,7 +65,6 @@ public:
 private:
     enum Item {
         Name,
-        Tempo,
         Swing,
         TimeSignature,
         SyncMeasure,
@@ -90,7 +87,6 @@ private:
     static const char *itemName(Item item) {
         switch (item) {
         case Name:              return "Name";
-        case Tempo:             return "Tempo";
         case Swing:             return "Swing";
         case TimeSignature:     return "Time Signature";
         case SyncMeasure:       return "Sync Measure";
@@ -120,9 +116,6 @@ private:
         switch (item) {
         case Name:
             str(_project.name());
-            break;
-        case Tempo:
-            _project.printTempo(str);
             break;
         case Swing:
             _project.printSwing(str);
@@ -182,9 +175,6 @@ private:
     void editValue(Item item, int value, bool shift) {
         switch (item) {
         case Name:
-            break;
-        case Tempo:
-            _project.editTempo(value, shift);
             break;
         case Swing:
             _project.editSwing(value, shift);

@@ -10,6 +10,22 @@ For a full map of all pages, button combos, and held-button overlays, see [`agen
 
 ---
 
+## 2026-05-14 — UI simplification: remove redundant configuration (phase 1)
+
+First pass of a broader UI redesign. Removed configuration rows that already have a dedicated hardware affordance, and eliminated per-sequence scale/root-note entirely.
+
+**ProjectPage** — removed the `Tempo` row. Tempo is edited by holding the hardware Tempo button; the page row was redundant.
+
+**Per-sequence scale and root-note** — removed from the data model (`NoteSequence`, `ArpSequence`, `LogicSequence`, `StochasticSequence`). The project-level scale/root is now the single source of truth for all sequences. All engines, edit pages, OverviewPage, and LaunchpadController updated to read `_project.selectedScale()` / `_project.rootNote()` directly. Serialization version bumped to **Version41**; old project files skip the dropped bytes on load.
+
+**Sequence config pages** — removed rows that are duplicated by the Page+Step8–12 quick-edit overlay on each track's Edit page. After this change, `NoteSequencePage`, `CurveSequencePage`, `LogicSequencePage`, and `QuantizerSequencePage` show only `Name`. `StochasticSequencePage` and `ArpSequencePage` keep their unique rows (RestProb 2/4/8, Oct Range, Length Mod, and for Arp also Divisor/ResetMeasure).
+
+Quick-edit overlays (Step13/14, previously Scale/RootNote) now show no-op `—` for all sequence types.
+
+**Key files changed:** `ProjectListModel.h`, `{Note,Arp,Logic,Stochastic}Sequence.{h,cpp}`, `{Note,Arp,Logic,Stochastic,Curve}SequenceListModel.h`, `{Note,Arp,Logic,Stochastic,Quantizer,Curve}SequenceEditPage.cpp`, `OverviewPage.cpp`, `LaunchpadController.cpp`, `ProjectVersion.h`, Python bindings `project.cpp`.
+
+---
+
 ## 2026-05-13 — Quantizer track mode
 
 New `Quantizer` track type. Samples an input CV (from one of 4 hardware CV inputs or another track's CV output), quantizes to the project's global scale, and holds the value until re-triggered. Three trigger modes: **Free** (fires whenever the quantized degree changes), **Internal** (own gate sequencer lane, reuses NoteSequence), **External** (rising edge of another track's gate). Track-level octave and transpose applied after quantize. Outputs quantized CV on the track's CV jack; ~5ms pulse on the gate jack on each note change. The gate lane is a full NoteSequence, giving access to all existing menus (first/last step, run mode, divisor, scale via shift shortcuts). Especially useful with a Curve track as input for generative pitch sequences.

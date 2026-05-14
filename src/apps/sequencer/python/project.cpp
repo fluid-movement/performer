@@ -597,8 +597,6 @@ void register_project(py::module &m) {
 
     py::class_<ArpSequence> arpSequence(m, "ArpSequence");
     arpSequence
-        .def_property("scale", &ArpSequence::scale, [](ArpSequence &s, int v){ s.setScale(v); })
-        .def_property("rootNote", &ArpSequence::rootNote, [](ArpSequence &s, int v){ s.setRootNote(v); })
         .def_property("divisor", &ArpSequence::divisor, [](ArpSequence &s, int v){ s.setDivisor(v); })
         .def_property("resetMeasure", &ArpSequence::resetMeasure, &ArpSequence::setResetMeasure)
         .def_property("firstStep", &ArpSequence::firstStep, [](ArpSequence &s, int v){ s.setFirstStep(v); })
@@ -639,8 +637,6 @@ void register_project(py::module &m) {
 
     py::class_<NoteSequence> noteSequence(m, "NoteSequence");
     noteSequence
-        .def_property("scale", &NoteSequence::scale, [](NoteSequence &s, int v){ s.setScale(v); })
-        .def_property("rootNote", &NoteSequence::rootNote, [](NoteSequence &s, int v){ s.setRootNote(v); })
         .def_property("divisor", &NoteSequence::divisor, [](NoteSequence &s, int v){ s.setDivisor(v); })
         .def_property("resetMeasure", &NoteSequence::resetMeasure, &NoteSequence::setResetMeasure)
         .def_property("runMode", &NoteSequence::runMode, &NoteSequence::setRunMode)

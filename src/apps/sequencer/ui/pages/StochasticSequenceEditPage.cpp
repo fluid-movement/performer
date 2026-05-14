@@ -48,8 +48,8 @@ static const StochasticSequenceListModel::Item quickEditItems[8] = {
     StochasticSequenceListModel::Item::RunMode,
     StochasticSequenceListModel::Item::Divisor,
     StochasticSequenceListModel::Item::ResetMeasure,
-    StochasticSequenceListModel::Item::Scale,
-    StochasticSequenceListModel::Item::RootNote,
+    StochasticSequenceListModel::Item::Last,
+    StochasticSequenceListModel::Item::Last,
     StochasticSequenceListModel::Item::Last
 };
 
@@ -96,7 +96,7 @@ void StochasticSequenceEditPage::draw(Canvas &canvas) {
     WindowPainter::drawFooter(canvas, functionNames, pageKeyState(), activeFunctionKey());
 
     const auto &trackEngine = _engine.selectedTrackEngine().as<StochasticEngine>();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
     int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
     int currentRecordStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentRecordStep() : -1;
 
@@ -150,7 +150,7 @@ void StochasticSequenceEditPage::draw(Canvas &canvas) {
 
         switch (layer()) {
         case Layer::Gate: {
-                int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+                int rootNote = _project.rootNote();
                 FixedStringBuilder<8> str;
                 if (step.bypassScale()) {
                     const Scale &bypassScale = std::ref(Scale::get(0));
@@ -225,7 +225,7 @@ void StochasticSequenceEditPage::draw(Canvas &canvas) {
             }
             FixedStringBuilder<8> str;
 
-            int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+            int rootNote = _project.rootNote();
             if (scale.isNotePresent(step.note())) {
                 canvas.setColor(Color::Bright);
             } else {
@@ -251,7 +251,7 @@ void StochasticSequenceEditPage::draw(Canvas &canvas) {
                 x + 2, y + 18, stepWidth - 4, 2,
                 step.noteOctaveProbability() + 1, StochasticSequence::NoteOctaveProbability::Range
             );
-            int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+            int rootNote = _project.rootNote();
             if (scale.isNotePresent(step.note())) {
                 canvas.setColor(Color::Bright);
             } else {
@@ -274,7 +274,7 @@ void StochasticSequenceEditPage::draw(Canvas &canvas) {
                 x + 2, y + 18, stepWidth - 4, 2,
                 step.noteVariationProbability() + 1, StochasticSequence::NoteVariationProbability::Range
             );
-            int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+            int rootNote = _project.rootNote();
 
             if (scale.isNotePresent(step.note())) {
                 canvas.setColor(Color::Bright);
@@ -609,7 +609,7 @@ void StochasticSequenceEditPage::midi(MidiEvent &event) {
     if (!_engine.recording() && layer() == Layer::NoteVariationProbability && _stepSelection.any()) {
         auto &trackEngine = _engine.selectedTrackEngine().as<StochasticEngine>();
         auto &sequence = _project.selectedStochasticSequence();
-        const auto &scale = sequence.selectedScale(_project.scale());
+        const auto &scale = _project.selectedScale();
         const auto &message = event.message();
 
         if (message.isNoteOn()) {
@@ -1002,7 +1002,7 @@ void StochasticSequenceEditPage::copySequence() {
     if (_project.selectedStochasticSequence().useLoop()) {
         auto lockedSteps = _engine.selectedTrackEngine().as<StochasticEngine>().lockedSteps();
 
-        const auto &scale = _project.selectedStochasticSequence().selectedScale(_model.project().scale());
+        const auto &scale = _project.selectedScale();
 
         auto sequence = NoteSequence();
         for (int i=0; i<int(lockedSteps.size()); ++i) {

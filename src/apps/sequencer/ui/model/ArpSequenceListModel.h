@@ -5,48 +5,34 @@
 #include "RoutableListModel.h"
 
 #include "model/ArpSequence.h"
-#include "model/Scale.h"
-#include <iostream>
 
 class ArpSequenceListModel : public RoutableListModel {
 public:
+    // Config-page-visible items come first (rows() returns ConfigPageRows).
+    // Items after ConfigPageRows are quick-edit only.
     enum Item {
-        Name,
-        Divisor,
-        ResetMeasure,
-        Scale,
-        RootNote,
-        RestProbability2,
-        RestProbability4,
-        RestProbability8,
-        LowOctaveRange,
-        HighOctaveRange,
-        LengthModifier,
-        Last
+        Name            = 0,
+        RestProbability2 = 1,
+        RestProbability4 = 2,
+        RestProbability8 = 3,
+        LowOctaveRange  = 4,
+        HighOctaveRange = 5,
+        LengthModifier  = 6,
+        ConfigPageRows  = 7,  // config page shows rows 0-6
+        // quick-edit only:
+        Divisor         = 7,
+        ResetMeasure    = 8,
+        Last            = 9,
     };
 
-    ArpSequenceListModel()
-    {
-        _scales[0] = -1;
-        for (int i = 1; i < int(_scales.size()); ++i) {
-            _scales[i] = i - 1;
-        }
-
-        for (int i = 0; i < 8; ++i) {
-            _selectedScale[i] = 0;
-        }
-    }
+    ArpSequenceListModel() {}
 
     void setSequence(ArpSequence *sequence) {
         _sequence = sequence;
-        if (sequence != nullptr) {
-            int trackIndex = _sequence->trackIndex();
-            _selectedScale[trackIndex] = sequence->scale()+1;
-        }
     }
 
     virtual int rows() const override {
-        return _sequence ? Last : 0;
+        return _sequence ? ConfigPageRows : 0;
     }
 
     virtual int columns() const override {
@@ -68,27 +54,41 @@ public:
     }
 
     virtual int indexedCount(int row) const override {
-        return indexedCountValue(Item(row));
+        switch (Item(row)) {
+        case Divisor:
+        case ResetMeasure:
+            return 16;
+        default:
+            break;
+        }
+        return -1;
     }
 
     virtual int indexed(int row) const override {
-        return indexedValue(Item(row));
+        switch (Item(row)) {
+        case Divisor:
+            return _sequence->indexedDivisor();
+        case ResetMeasure:
+            return _sequence->resetMeasure();
+        default:
+            break;
+        }
+        return -1;
     }
 
     virtual void setIndexed(int row, int index) override {
-        if (index >= 0 && index < indexedCount(row)) {
-            setIndexedValue(Item(row), index);
+        switch (Item(row)) {
+        case Divisor:
+            return _sequence->setIndexedDivisor(index);
+        case ResetMeasure:
+            return _sequence->setResetMeasure(index);
+        default:
+            break;
         }
     }
 
     virtual Routing::Target routingTarget(int row) const override {
         switch (Item(row)) {
-        case Divisor:
-            return Routing::Target::Divisor;
-        case Scale:
-            return Routing::Target::Scale;
-        case RootNote:
-            return Routing::Target::RootNote;
         case RestProbability2:
             return Routing::Target::RestProbability2;
         case RestProbability4:
@@ -101,29 +101,27 @@ public:
             return Routing::Target::HighOctaveRange;
         case LengthModifier:
             return Routing::Target::LengthModifier;
+        case Divisor:
+            return Routing::Target::Divisor;
         default:
             return Routing::Target::None;
         }
     }
 
-    void setSelectedScale(int defaultScale, bool force = false) override {
-        _editScale = !_editScale;
-    }
+    void setSelectedScale(int defaultScale, bool force = false) override {}
 
 private:
     static const char *itemName(Item item) {
         switch (item) {
         case Name:              return "Name";
-        case Divisor:           return "Divisor";
-        case ResetMeasure:      return "Reset Measure";
-        case Scale:             return "Scale";
-        case RootNote:          return "Root Note";
         case RestProbability2:  return "Rest Prob. 2";
         case RestProbability4:  return "Rest Prob. 4";
         case RestProbability8:  return "Rest Prob. 8";
         case LowOctaveRange:    return "L Oct Range";
         case HighOctaveRange:   return "H Oct Range";
         case LengthModifier:    return "Length Mod";
+        case Divisor:           return "Divisor";
+        case ResetMeasure:      return "Reset Measure";
         case Last:              break;
         }
         return nullptr;
@@ -136,27 +134,7 @@ private:
     void formatValue(Item item, StringBuilder &str) const {
         switch (item) {
         case Name:
-             str(_sequence->name());
-             break;
-        case Divisor:
-            _sequence->printDivisor(str);
-            break;
-        case ResetMeasure:
-            _sequence->printResetMeasure(str);
-            break;
-        case Scale: {
-                int trackIndex = _sequence->trackIndex();
-                bool isRouted = Routing::isRouted(Routing::Target::Scale, trackIndex);
-                if (isRouted) {
-                    _sequence->printScale(str);
-                } else {
-                    auto name = _scales[_selectedScale[trackIndex]] < 0 ? "Default" : Scale::name(_scales[_selectedScale[trackIndex]]);
-                    str(name);
-                }
-            }
-            break;
-        case RootNote:
-            _sequence->printRootNote(str);
+            str(_sequence->name());
             break;
         case RestProbability2:
             _sequence->printRestProbability2(str);
@@ -164,7 +142,7 @@ private:
         case RestProbability4:
             _sequence->printRestProbability4(str);
             break;
-         case RestProbability8:
+        case RestProbability8:
             _sequence->printRestProbability8(str);
             break;
         case LowOctaveRange:
@@ -176,6 +154,12 @@ private:
         case LengthModifier:
             _sequence->printLengthModifier(str);
             break;
+        case Divisor:
+            _sequence->printDivisor(str);
+            break;
+        case ResetMeasure:
+            _sequence->printResetMeasure(str);
+            break;
         case Last:
             break;
         }
@@ -184,24 +168,6 @@ private:
     void editValue(Item item, int value, bool shift) {
         switch (item) {
         case Name:
-            break;
-        case Divisor:
-            _sequence->editDivisor(value, shift);
-            break;
-        case ResetMeasure:
-            _sequence->editResetMeasure(value, shift);
-            break;
-        case Scale: {
-                int trackIndex = _sequence->trackIndex();
-                bool isRouted = Routing::isRouted(Routing::Target::Scale, trackIndex);
-                if (!isRouted) {
-                    _selectedScale[trackIndex] = clamp(_selectedScale[trackIndex] + value, 0, Scale::Count);
-                    _sequence->editScale(_scales[_selectedScale[trackIndex]], false, 0);
-                }
-            }
-            break;
-        case RootNote:
-            _sequence->editRootNote(value, shift);
             break;
         case RestProbability2:
             _sequence->editRestProbability2(value, shift);
@@ -221,97 +187,16 @@ private:
         case LengthModifier:
             _sequence->editLengthModifier(value, shift);
             break;
-        case Last:
-            break;
-        }
-    }
-
-    int indexedCountValue(Item item) const {
-        switch (item) {
-        case Name:
-            break;
         case Divisor:
+            _sequence->editDivisor(value, shift);
+            break;
         case ResetMeasure:
-            return 16;
-        case Scale:
-            return Scale::Count + 1;
-        case RootNote:
-            return 12 + 1;
-        case RestProbability2:
-        case RestProbability4:
-        case RestProbability8:
-        case LowOctaveRange:
-        case HighOctaveRange:
-        case LengthModifier:
-            return 0;
-        case Last:
+            _sequence->editResetMeasure(value, shift);
             break;
-        }
-        return -1;
-    }
-
-    int indexedValue(Item item) const {
-        switch (item) {
-        case Name:
-            break;
-        case Divisor:
-            return _sequence->indexedDivisor();
-        case ResetMeasure:
-            return _sequence->resetMeasure();
-        case Scale:
-            return _sequence->indexedScale();
-        case RootNote:
-            return _sequence->indexedRootNote();
-        case RestProbability2:
-            return _sequence->restProbability2();
-        case RestProbability4:
-            return _sequence->restProbability4();
-        case RestProbability8:
-            return _sequence->restProbability8();
-        case LowOctaveRange:
-            return _sequence->lowOctaveRange();
-        case HighOctaveRange:
-            return _sequence->highOctaveRange();
-        case LengthModifier:
-            return _sequence->lengthModifier();
-        case Last:
-            break;
-        }
-        return -1;
-    }
-
-    void setIndexedValue(Item item, int index) {
-        switch (item) {
-        case Name:
-            break;
-        case Divisor:
-            return _sequence->setIndexedDivisor(index);
-        case ResetMeasure:
-            return _sequence->setResetMeasure(index);
-        case Scale:
-            return _sequence->setIndexedScale(index);
-        case RootNote:
-            return _sequence->setIndexedRootNote(index);
-        case RestProbability2:
-            return _sequence->setRestProbability2(index);
-        case RestProbability4:
-            return _sequence->setRestProbability4(index);
-        case RestProbability8:
-            return _sequence->setRestProbability8(index);
-        case LowOctaveRange:
-            return _sequence->setLowOctaveRange(index);
-        case HighOctaveRange:
-            return _sequence->setHighOctaveRange(index);
-        case LengthModifier:
-            return _sequence->setLengthModifier(index);
         case Last:
             break;
         }
     }
 
-    ArpSequence *_sequence;
-    private:
-        std::array<int, 32> _scales;
-        std::array<int, 8> _selectedScale;
-        bool _editScale = false;
+    ArpSequence *_sequence = nullptr;
 };

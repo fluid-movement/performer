@@ -5,49 +5,36 @@
 #include "RoutableListModel.h"
 
 #include "model/StochasticSequence.h"
-#include "model/Scale.h"
 
 class StochasticSequenceListModel : public RoutableListModel {
 public:
+    // Config-page-visible items come first (rows() returns ConfigPageRows).
+    // Items after ConfigPageRows are quick-edit only.
     enum Item {
-        RunMode,
-        Divisor,
-        ResetMeasure,
-        Scale,
-        RootNote,
-        RestProbability2,
-        RestProbability4,
-        RestProbability8,
-        SequenceFirstStep,
-        SequenceLastStep,
-        LowOctaveRange,
-        HighOctaveRange,
-        LengthModifier,
-        Last
+        RestProbability2  = 0,
+        RestProbability4  = 1,
+        RestProbability8  = 2,
+        LowOctaveRange    = 3,
+        HighOctaveRange   = 4,
+        LengthModifier    = 5,
+        ConfigPageRows    = 6,  // config page shows rows 0-5
+        // quick-edit only:
+        RunMode           = 6,
+        Divisor           = 7,
+        ResetMeasure      = 8,
+        SequenceFirstStep = 9,
+        SequenceLastStep  = 10,
+        Last              = 11,
     };
 
-    StochasticSequenceListModel()
-    {
-        _scales[0] = -1;
-        for (int i = 1; i < int(_scales.size()); ++i) {
-            _scales[i] = i - 1;
-        }
-
-        for (int i = 0; i < 8; ++i) {
-            _selectedScale[i] = 0;
-        }
-    }
+    StochasticSequenceListModel() {}
 
     void setSequence(StochasticSequence *sequence) {
         _sequence = sequence;
-        if (sequence != nullptr) {
-            int trackIndex = _sequence->trackIndex();
-            _selectedScale[trackIndex] = sequence->scale()+1;
-        }
     }
 
     virtual int rows() const override {
-        return _sequence ? Last : 0;
+        return _sequence ? ConfigPageRows : 0;
     }
 
     virtual int columns() const override {
@@ -69,70 +56,95 @@ public:
     }
 
     virtual int indexedCount(int row) const override {
-        return indexedCountValue(Item(row));
+        switch (Item(row)) {
+        case SequenceFirstStep:
+        case SequenceLastStep:
+            return 16;
+        case RunMode:
+            return int(Types::RunMode::Last);
+        case Divisor:
+        case ResetMeasure:
+            return 16;
+        default:
+            break;
+        }
+        return -1;
     }
 
     virtual int indexed(int row) const override {
-        return indexedValue(Item(row));
+        switch (Item(row)) {
+        case SequenceFirstStep:
+            return _sequence->firstStep();
+        case SequenceLastStep:
+            return _sequence->lastStep();
+        case RunMode:
+            return int(_sequence->runMode());
+        case Divisor:
+            return _sequence->indexedDivisor();
+        case ResetMeasure:
+            return _sequence->resetMeasure();
+        default:
+            break;
+        }
+        return -1;
     }
 
     virtual void setIndexed(int row, int index) override {
-        if (index >= 0 && index < indexedCount(row)) {
-            setIndexedValue(Item(row), index);
+        switch (Item(row)) {
+        case SequenceFirstStep:
+            return _sequence->setFirstStep(index);
+        case SequenceLastStep:
+            return _sequence->setLastStep(index);
+        case RunMode:
+            return _sequence->setRunMode(Types::RunMode(index));
+        case Divisor:
+            return _sequence->setIndexedDivisor(index);
+        case ResetMeasure:
+            return _sequence->setResetMeasure(index);
+        default:
+            break;
         }
     }
 
     virtual Routing::Target routingTarget(int row) const override {
         switch (Item(row)) {
-        case Divisor:
-            return Routing::Target::Divisor;
-        case RunMode:
-            return Routing::Target::RunMode;
-        case Scale:
-            return Routing::Target::Scale;
-        case RootNote:
-            return Routing::Target::RootNote;
         case RestProbability2:
             return Routing::Target::RestProbability2;
         case RestProbability4:
             return Routing::Target::RestProbability4;
         case RestProbability8:
             return Routing::Target::RestProbability8;
-        case SequenceFirstStep:
-            return Routing::Target::SequenceFirstStep;
-        case SequenceLastStep:
-            return Routing::Target::SequenceLastStep;
         case LowOctaveRange:
             return Routing::Target::LowOctaveRange;
         case HighOctaveRange:
             return Routing::Target::HighOctaveRange;
         case LengthModifier:
             return Routing::Target::LengthModifier;
+        case RunMode:
+            return Routing::Target::RunMode;
+        case Divisor:
+            return Routing::Target::Divisor;
         default:
             return Routing::Target::None;
         }
     }
 
-    void setSelectedScale(int defaultScale, bool force = false) override {
-        _editScale = !_editScale;
-    }
+    void setSelectedScale(int defaultScale, bool force = false) override {}
 
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case RunMode:           return "Run Mode";
-        case Divisor:           return "Divisor";
-        case ResetMeasure:      return "Reset Measure";
-        case Scale:             return "Scale";
-        case RootNote:          return "Root Note";
         case RestProbability2:  return "Rest Prob. 2";
         case RestProbability4:  return "Rest Prob. 4";
         case RestProbability8:  return "Rest Prob. 8";
-        case SequenceFirstStep: return "Seq First Step";
-        case SequenceLastStep:  return "Seq Last Step";
         case LowOctaveRange:    return "L Oct Range";
         case HighOctaveRange:   return "H Oct Range";
         case LengthModifier:    return "Length Mod";
+        case RunMode:           return "Run Mode";
+        case Divisor:           return "Divisor";
+        case ResetMeasure:      return "Reset Measure";
+        case SequenceFirstStep: return "First Step";
+        case SequenceLastStep:  return "Last Step";
         case Last:              break;
         }
         return nullptr;
@@ -144,43 +156,14 @@ private:
 
     void formatValue(Item item, StringBuilder &str) const {
         switch (item) {
-        case RunMode:
-            _sequence->printRunMode(str);
-            break;
-        case Divisor:
-            _sequence->printDivisor(str);
-            break;
-        case ResetMeasure:
-            _sequence->printResetMeasure(str);
-            break;
-        case Scale:{
-                int trackIndex = _sequence->trackIndex();
-                bool isRouted = Routing::isRouted(Routing::Target::Scale, trackIndex);
-                if (isRouted) {
-                    _sequence->printScale(str);
-                } else {
-                    auto name = _scales[_selectedScale[trackIndex]] < 0 ? "Default" : Scale::name(_scales[_selectedScale[trackIndex]]);
-                    str(name);
-                }
-            }
-            break;
-        case RootNote:
-            _sequence->printRootNote(str);
-            break;
         case RestProbability2:
             _sequence->printRestProbability2(str);
             break;
         case RestProbability4:
             _sequence->printRestProbability4(str);
             break;
-         case RestProbability8:
+        case RestProbability8:
             _sequence->printRestProbability8(str);
-            break;
-        case SequenceFirstStep:
-            _sequence->printSequenceFirstStep(str);
-            break;
-        case SequenceLastStep:
-            _sequence->printSequenceLastStep(str);
             break;
         case LowOctaveRange:
             _sequence->printLowOctaveRange(str);
@@ -191,6 +174,21 @@ private:
         case LengthModifier:
             _sequence->printLengthModifier(str);
             break;
+        case RunMode:
+            _sequence->printRunMode(str);
+            break;
+        case Divisor:
+            _sequence->printDivisor(str);
+            break;
+        case ResetMeasure:
+            _sequence->printResetMeasure(str);
+            break;
+        case SequenceFirstStep:
+            _sequence->printFirstStep(str);
+            break;
+        case SequenceLastStep:
+            _sequence->printLastStep(str);
+            break;
         case Last:
             break;
         }
@@ -198,27 +196,6 @@ private:
 
     void editValue(Item item, int value, bool shift) {
         switch (item) {
-        case RunMode:
-            _sequence->editRunMode(value, shift);
-            break;
-        case Divisor:
-            _sequence->editDivisor(value, shift);
-            break;
-        case ResetMeasure:
-            _sequence->editResetMeasure(value, shift);
-            break;
-        case Scale: {
-                int trackIndex = _sequence->trackIndex();
-                bool isRouted = Routing::isRouted(Routing::Target::Scale, trackIndex);
-                if (!isRouted) {
-                    _selectedScale[trackIndex] = clamp(_selectedScale[trackIndex] + value, 0, Scale::Count);
-                    _sequence->editScale(_scales[_selectedScale[trackIndex]], false, 0);
-                }
-            }
-            break;
-        case RootNote:
-            _sequence->editRootNote(value, shift);
-            break;
         case RestProbability2:
             _sequence->editRestProbability2(value, shift);
             break;
@@ -227,12 +204,6 @@ private:
             break;
         case RestProbability8:
             _sequence->editRestProbability8(value, shift);
-            break;
-        case SequenceFirstStep:
-            _sequence->editSequenceFirstStep(value, shift);
-            break;
-        case SequenceLastStep:
-            _sequence->editSequenceLastStep(value, shift);
             break;
         case LowOctaveRange:
             _sequence->editLowOctaveRange(value, shift);
@@ -243,108 +214,25 @@ private:
         case LengthModifier:
             _sequence->editLengthModifier(value, shift);
             break;
-        case Last:
-            break;
-        }
-    }
-
-    int indexedCountValue(Item item) const {
-        switch (item) {
-        case SequenceFirstStep:
-        case SequenceLastStep:
-            return 16;
         case RunMode:
-            return int(Types::RunMode::Last);
-        case Divisor:
-        case ResetMeasure:
-            return 16;
-        case Scale:
-            return Scale::Count + 1;
-        case RootNote:
-            return 12 + 1;
-        case RestProbability2:
-        case RestProbability4:
-        case RestProbability8:
-        case LowOctaveRange:
-        case HighOctaveRange:
-        case LengthModifier:
-            return 0;
-        case Last:
+            _sequence->editRunMode(value, shift);
             break;
-        }
-        return -1;
-    }
-
-    int indexedValue(Item item) const {
-        switch (item) {
-        case RunMode:
-            return int(_sequence->runMode());
         case Divisor:
-            return _sequence->indexedDivisor();
+            _sequence->editDivisor(value, shift);
+            break;
         case ResetMeasure:
-            return _sequence->resetMeasure();
-        case Scale:
-            return _sequence->indexedScale();
-        case RootNote:
-            return _sequence->indexedRootNote();
-        case RestProbability2:
-            return _sequence->restProbability2();
-        case RestProbability4:
-            return _sequence->restProbability4();
-        case RestProbability8:
-            return _sequence->restProbability8();
+            _sequence->editResetMeasure(value, shift);
+            break;
         case SequenceFirstStep:
-            return _sequence->sequenceFirstStep();
-        case SequenceLastStep:
-            return _sequence->sequenceLastStep();
-        case LowOctaveRange:
-            return _sequence->lowOctaveRange();
-        case HighOctaveRange:
-            return _sequence->highOctaveRange();
-        case LengthModifier:
-            return _sequence->lengthModifier();
-        case Last:
+            _sequence->editFirstStep(value, shift);
             break;
-        }
-        return -1;
-    }
-
-    void setIndexedValue(Item item, int index) {
-        switch (item) {
-        case RunMode:
-            return _sequence->setRunMode(Types::RunMode(index));
-        case Divisor:
-            return _sequence->setIndexedDivisor(index);
-        case ResetMeasure:
-            return _sequence->setResetMeasure(index);
-        case Scale:
-            return _sequence->setIndexedScale(index);
-        case RootNote:
-            return _sequence->setIndexedRootNote(index);
-        case RestProbability2:
-            return _sequence->setRestProbability2(index);
-        case RestProbability4:
-            return _sequence->setRestProbability4(index);
-        case RestProbability8:
-            return _sequence->setRestProbability8(index);
-        case SequenceFirstStep:
-            return _sequence->setSequenceFirstStep(index);
         case SequenceLastStep:
-            return _sequence->setSequenceLastStep(index);
-        case LowOctaveRange:
-            return _sequence->setLowOctaveRange(index);
-        case HighOctaveRange:
-            return _sequence->setHighOctaveRange(index);
-        case LengthModifier:
-            return _sequence->setLengthModifier(index);
+            _sequence->editLastStep(value, shift);
+            break;
         case Last:
             break;
         }
     }
 
-    StochasticSequence *_sequence;
-    private:
-        std::array<int, 32> _scales;
-        std::array<int, 8> _selectedScale;
-        bool _editScale = false;
+    StochasticSequence *_sequence = nullptr;
 };

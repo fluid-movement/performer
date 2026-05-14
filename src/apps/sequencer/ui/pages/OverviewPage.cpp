@@ -15,8 +15,8 @@ static const NoteSequenceListModel::Item noteQuickEditItems[8] = {
     NoteSequenceListModel::Item::RunMode,
     NoteSequenceListModel::Item::Divisor,
     NoteSequenceListModel::Item::ResetMeasure,
-    NoteSequenceListModel::Item::Scale,
-    NoteSequenceListModel::Item::RootNote,
+    NoteSequenceListModel::Item::Last,
+    NoteSequenceListModel::Item::Last,
     NoteSequenceListModel::Item::Last
 };
 
@@ -37,8 +37,8 @@ static const LogicSequenceListModel::Item logicQuickEditItems[8] = {
     LogicSequenceListModel::Item::RunMode,
     LogicSequenceListModel::Item::Divisor,
     LogicSequenceListModel::Item::ResetMeasure,
-    LogicSequenceListModel::Item::Scale,
-    LogicSequenceListModel::Item::RootNote,
+    LogicSequenceListModel::Item::Last,
+    LogicSequenceListModel::Item::Last,
     LogicSequenceListModel::Item::Last
 };
 
@@ -48,8 +48,8 @@ static const StochasticSequenceListModel::Item stochasticQuickEditItems[8] = {
     StochasticSequenceListModel::Item::RunMode,
     StochasticSequenceListModel::Item::Divisor,
     StochasticSequenceListModel::Item::ResetMeasure,
-    StochasticSequenceListModel::Item::Scale,
-    StochasticSequenceListModel::Item::RootNote,
+    StochasticSequenceListModel::Item::Last,
+    StochasticSequenceListModel::Item::Last,
     StochasticSequenceListModel::Item::Last
 };
 
@@ -59,8 +59,8 @@ static const ArpSequenceListModel::Item arpQuickEditItems[8] = {
     ArpSequenceListModel::Item::Last,
     ArpSequenceListModel::Item::Divisor,
     ArpSequenceListModel::Item::ResetMeasure,
-    ArpSequenceListModel::Item::Scale,
-    ArpSequenceListModel::Item::RootNote,
+    ArpSequenceListModel::Item::Last,
+    ArpSequenceListModel::Item::Last,
     ArpSequenceListModel::Item::Last
 };
 
@@ -389,7 +389,7 @@ void OverviewPage::draw(Canvas &canvas) {
             break;
         case Track::TrackMode::Stochastic: {
                 const auto &sequence = track.stochasticTrack().sequence(trackState.pattern());
-                const auto &scale = sequence.selectedScale(_project.scale());
+                const auto &scale = _project.selectedScale();
 
                 if (sequence.useLoop()) {
                     canvas.drawText(256 - 46, y, FixedStringBuilder<8>("L"));
@@ -408,7 +408,7 @@ void OverviewPage::draw(Canvas &canvas) {
             break;
         case Track::TrackMode::Arp: {
                 const auto &sequence = track.arpTrack().sequence(trackState.pattern());
-                const auto &scale = sequence.selectedScale(_project.scale());
+                const auto &scale = _project.selectedScale();
 
                 if (track.arpTrack().midiKeyboard()) {
                     canvas.drawText(256 - 46, y, FixedStringBuilder<8>("K"));
@@ -935,7 +935,7 @@ void OverviewPage::encoder(EncoderEvent &event) {
 
         case Track::TrackMode::Note: {
                 auto &sequence = _project.selectedNoteSequence();
-                const auto &scale = sequence.selectedScale(_project.scale());
+                const auto &scale = _project.selectedScale();
                 for (size_t stepIndex = 0; stepIndex < sequence.steps().size(); ++stepIndex) {
                     if (_stepSelection[stepIndex]) {
                         auto &step = sequence.step(stepIndex);
@@ -1011,7 +1011,7 @@ void OverviewPage::encoder(EncoderEvent &event) {
 
 void OverviewPage::drawDetail(Canvas &canvas, const NoteSequence::Step &step) {
     const auto &sequence = _project.selectedNoteSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
 
     FixedStringBuilder<16> str;
 
@@ -1031,7 +1031,7 @@ void OverviewPage::drawDetail(Canvas &canvas, const NoteSequence::Step &step) {
     canvas.setFont(Font::Tiny);
 
     str.reset();
-    scale.noteName(str, step.note(), sequence.selectedRootNote(_model.project().rootNote()), Scale::Long);
+    scale.noteName(str, step.note(), _project.rootNote(), Scale::Long);
     canvas.setFont(Font::Small);
     canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
     canvas.setFont(Font::Tiny);

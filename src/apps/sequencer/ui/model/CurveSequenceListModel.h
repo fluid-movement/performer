@@ -8,26 +8,29 @@
 
 class CurveSequenceListModel : public RoutableListModel {
 public:
+    // ConfigPageRows controls how many rows the config page shows (Name only).
+    // Items from ConfigPageRows onward are quick-edit only.
     enum Item {
-        Name,
-        FirstStep,
-        LastStep,
-        RunMode,
-        Divisor,
-        ResetMeasure,
-        Range,
-        Last
+        Name        = 0,
+        ConfigPageRows = 1,  // only Name on config page
+        // quick-edit only:
+        FirstStep   = 1,
+        LastStep    = 2,
+        RunMode     = 3,
+        Divisor     = 4,
+        ResetMeasure = 5,
+        Range       = 6,
+        Last        = 7,
     };
 
-    CurveSequenceListModel()
-    {}
+    CurveSequenceListModel() {}
 
     void setSequence(CurveSequence *sequence) {
         _sequence = sequence;
     }
 
     virtual int rows() const override {
-        return _sequence ? Last : 0;
+        return _sequence ? ConfigPageRows : 0;
     }
 
     virtual int columns() const override {
@@ -49,45 +52,90 @@ public:
     }
 
     virtual int indexedCount(int row) const override {
-        return indexedCountValue(Item(row));
+        switch (Item(row)) {
+        case FirstStep:
+        case LastStep:
+            return 16;
+        case RunMode:
+            return int(Types::RunMode::Last);
+        case Divisor:
+        case ResetMeasure:
+            return 16;
+        case Range:
+            return int(Types::VoltageRange::Last);
+        default:
+            break;
+        }
+        return -1;
     }
 
     virtual int indexed(int row) const override {
-        return indexedValue(Item(row));
+        switch (Item(row)) {
+        case FirstStep:
+            return _sequence->firstStep();
+        case LastStep:
+            return _sequence->lastStep();
+        case RunMode:
+            return int(_sequence->runMode());
+        case Divisor:
+            return _sequence->indexedDivisor();
+        case ResetMeasure:
+            return _sequence->resetMeasure();
+        case Range:
+            return int(_sequence->range());
+        default:
+            break;
+        }
+        return -1;
     }
 
     virtual void setIndexed(int row, int index) override {
-        if (index >= 0 && index < indexedCount(row)) {
-            setIndexedValue(Item(row), index);
+        switch (Item(row)) {
+        case FirstStep:
+            return _sequence->setFirstStep(index);
+        case LastStep:
+            return _sequence->setLastStep(index);
+        case RunMode:
+            return _sequence->setRunMode(Types::RunMode(index));
+        case Divisor:
+            return _sequence->setIndexedDivisor(index);
+        case ResetMeasure:
+            return _sequence->setResetMeasure(index);
+        case Range:
+            return _sequence->setRange(Types::VoltageRange(index));
+        default:
+            break;
         }
     }
 
     virtual Routing::Target routingTarget(int row) const override {
         switch (Item(row)) {
-        case Divisor:
-            return Routing::Target::Divisor;
         case FirstStep:
             return Routing::Target::FirstStep;
         case LastStep:
             return Routing::Target::LastStep;
         case RunMode:
             return Routing::Target::RunMode;
+        case Divisor:
+            return Routing::Target::Divisor;
         default:
             return Routing::Target::None;
         }
     }
 
+    virtual void setSelectedScale(int defaultScale, bool force = false) override {}
+
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case Name:              return "Name";
-        case FirstStep:         return "First Step";
-        case LastStep:          return "Last Step";
-        case RunMode:           return "Run Mode";
-        case Divisor:           return "Divisor";
-        case ResetMeasure:      return "Reset Measure";
-        case Range:             return "Range";
-        case Last:              break;
+        case Name:          return "Name";
+        case FirstStep:     return "First Step";
+        case LastStep:      return "Last Step";
+        case RunMode:       return "Run Mode";
+        case Divisor:       return "Divisor";
+        case ResetMeasure:  return "Reset Measure";
+        case Range:         return "Range";
+        case Last:          break;
         }
         return nullptr;
     }
@@ -100,7 +148,7 @@ private:
         switch (item) {
         case Name:
             str(_sequence->name());
-            break;          
+            break;
         case FirstStep:
             _sequence->printFirstStep(str);
             break;
@@ -150,71 +198,6 @@ private:
             break;
         }
     }
-
-    int indexedCountValue(Item item) const {
-        switch (item) {
-        case Name:
-            break;
-        case FirstStep:
-        case LastStep:
-            return 16;
-        case RunMode:
-            return int(Types::RunMode::Last);
-        case Divisor:
-        case ResetMeasure:
-            return 16;
-        case Range:
-            return int(Types::VoltageRange::Last);
-        case Last:
-            break;
-        }
-        return -1;
-    }
-
-    int indexedValue(Item item) const {
-        switch (item) {
-        case Name:
-            break;
-        case FirstStep:
-            return _sequence->firstStep();
-        case LastStep:
-            return _sequence->lastStep();
-        case RunMode:
-            return int(_sequence->runMode());
-        case Divisor:
-            return _sequence->indexedDivisor();
-        case ResetMeasure:
-            return _sequence->resetMeasure();
-        case Range:
-            return int(_sequence->range());
-        case Last:
-            break;
-        }
-        return -1;
-    }
-
-    void setIndexedValue(Item item, int index) {
-        switch (item) {
-        case Name:
-            break;
-        case FirstStep:
-            return _sequence->setFirstStep(index);
-        case LastStep:
-            return _sequence->setLastStep(index);
-        case RunMode:
-            return _sequence->setRunMode(Types::RunMode(index));
-        case Divisor:
-            return _sequence->setIndexedDivisor(index);
-        case ResetMeasure:
-            return _sequence->setResetMeasure(index);
-        case Range:
-            return _sequence->setRange(Types::VoltageRange(index));
-        case Last:
-            break;
-        }
-    }
-
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
 
     CurveSequence *_sequence = nullptr;
 };

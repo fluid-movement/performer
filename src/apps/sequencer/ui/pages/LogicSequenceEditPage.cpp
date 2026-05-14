@@ -53,8 +53,8 @@ static const LogicSequenceListModel::Item quickEditItems[8] = {
     LogicSequenceListModel::Item::RunMode,
     LogicSequenceListModel::Item::Divisor,
     LogicSequenceListModel::Item::ResetMeasure,
-    LogicSequenceListModel::Item::Scale,
-    LogicSequenceListModel::Item::RootNote,
+    LogicSequenceListModel::Item::Last,
+    LogicSequenceListModel::Item::Last,
     LogicSequenceListModel::Item::Last
 };
 
@@ -462,7 +462,7 @@ void LogicSequenceEditPage::keyPress(KeyPressEvent &event) {
         }
         for (int i=0; i<16; ++i) {
            if (key.state(i)) {
-                const auto &scale = sequence.selectedScale(_project.scale());
+                const auto &scale = _project.selectedScale();
                 int stepIndex = 0;
                 if (i>=8) {
                     stepIndex = i -8;
@@ -553,7 +553,7 @@ void LogicSequenceEditPage::keyPress(KeyPressEvent &event) {
 
 void LogicSequenceEditPage::encoder(EncoderEvent &event) {
     auto &sequence = _project.selectedLogicSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
 
     if (!_stepSelection.any())
     {
@@ -686,7 +686,7 @@ void LogicSequenceEditPage::midi(MidiEvent &event) {
     if (!_engine.recording() && layer() == Layer::NoteLogic && _stepSelection.any()) {
         auto &trackEngine = _engine.selectedTrackEngine().as<LogicTrackEngine>();
         auto &sequence = _project.selectedLogicSequence();
-        const auto &scale = sequence.selectedScale(_project.scale());
+        const auto &scale = _project.selectedScale();
         const auto &message = event.message();
 
         if (message.isNoteOn()) {

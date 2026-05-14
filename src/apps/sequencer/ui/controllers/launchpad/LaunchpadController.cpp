@@ -536,7 +536,7 @@ void LaunchpadController::sequenceButton(const Button &button, ButtonAction acti
                                 auto &arpTrack = _project.selectedTrack().arpTrack();
                                 if (arpTrack.midiKeyboard()) {
                                     const auto &sequence = _project.selectedArpSequence();
-                                    const auto &scale = sequence.selectedScale(_project.scale());
+                                    const auto &scale = _project.selectedScale();
                                     const Scale &bypasssScale = Scale::get(0);
 
                                     int ft = -1;
@@ -633,7 +633,7 @@ void LaunchpadController::sequenceButton(const Button &button, ButtonAction acti
 
 void LaunchpadController::manageCircuitKeyboard(const Button &button) {
     auto &sequence = _project.selectedNoteSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
     const Scale &bypasssScale = Scale::get(0);
     switch ( _project.selectedNoteSequenceLayer()) {
         case NoteSequence::Layer::Note:
@@ -667,7 +667,7 @@ void LaunchpadController::manageCircuitKeyboard(const Button &button) {
                 break;
             } else if (button.row >= 0 && button.row <= 2) {
                 auto &sequence = _project.selectedNoteSequence();
-                const auto &scale = sequence.selectedScale(_project.scale());
+                const auto &scale = _project.selectedScale();
                 auto layer = _project.selectedNoteSequenceLayer();
                 int ofs = _sequence.navigation.col * 16;
                 int linearIndex = button.col + ofs + (button.row*8);
@@ -732,7 +732,7 @@ void LaunchpadController::manageCircuitKeyboard(const Button &button) {
 
 void LaunchpadController::manageStochasticCircuitKeyboard(const Button &button) {
     auto &sequence = _project.selectedStochasticSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
         const Scale &bypasssScale = Scale::get(0);
 
     switch ( _project.selectedStochasticSequenceLayer()) {
@@ -2411,7 +2411,7 @@ void LaunchpadController::drawStochasticSequenceDots(const StochasticSequence &s
 void LaunchpadController::drawNoteSequenceNotes(const NoteSequence &sequence, NoteSequence::Layer layer, int currentStep) {
     int ofs = _sequence.navigation.col * 16;
 
-    auto &scale = sequence.selectedScale(_project.scale());
+    auto &scale = _project.selectedScale();
     const Scale &bypassScale = Scale::get(0);
 
     if (_noteStyle == 1) {
@@ -2437,7 +2437,7 @@ void LaunchpadController::drawNoteSequenceNotes(const NoteSequence &sequence, No
             }
         }       
 
-        int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+        int rootNote = _project.rootNote();
 
         // draw keyboard
         for (int row = 3; row<=4; ++row) {
@@ -2510,7 +2510,7 @@ void LaunchpadController::drawNoteSequenceNotes(const NoteSequence &sequence, No
 
     } else {
         // draw octave lines
-        int octave = sequence.selectedScale(_project.scale()).notesPerOctave();
+        int octave = _project.selectedScale().notesPerOctave();
         for (int row = 0; row < 8; ++row) {
             if (modulo(row + ofs, octave) == 0) {
                 for (int col = 0; col < 2; ++col) {
@@ -2663,7 +2663,7 @@ void LaunchpadController::drawStochasticSequenceBars(const StochasticSequence &s
 
 void LaunchpadController::drawStochasticSequenceNotes(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep) {
 
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
       const Scale &bypassScale = Scale::get(0);
         int stepIndex = selectedNote;
         const auto &step = sequence.step(stepIndex);  
@@ -2697,7 +2697,7 @@ void LaunchpadController::drawStochasticSequenceNotes(const StochasticSequence &
             }
         }
 
-        int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+        int rootNote = _project.rootNote();
 
         // draw keyboard
         for (int row = 3; row<=4; ++row) {
@@ -2898,7 +2898,7 @@ void LaunchpadController::drawArpSequenceBars(const ArpSequence &sequence, ArpSe
 }
 
 void LaunchpadController::drawArpSequenceNotes(const ArpSequence &sequence, ArpSequence::Layer layer, int currentStep) {
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
     const auto &track = _project.selectedTrack().arpTrack();
     const Scale &bypassScale = Scale::get(0);
     int stepIndex = selectedNote;
@@ -2933,7 +2933,7 @@ void LaunchpadController::drawArpSequenceNotes(const ArpSequence &sequence, ArpS
         }
     }
 
-    int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+    int rootNote = _project.rootNote();
 
     // draw keyboard
     for (int row = 3; row<=4; ++row) {

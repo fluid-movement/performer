@@ -117,6 +117,9 @@ enum ProjectVersion {
     // add quantizer track
     Version40 = 40,
 
+    // remove per-sequence scale and rootNote (project scale is now authoritative)
+    Version41 = 41,
+
     // automatically derive latest version
     Last,
     Latest = Last - 1,

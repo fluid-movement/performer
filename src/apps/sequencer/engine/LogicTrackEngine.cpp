@@ -338,8 +338,8 @@ void LogicTrackEngine::update(float dt) {
     bool running = _engine.state().running();
 
     const auto &sequence = *_sequence;
-    const auto &scale = sequence.selectedScale(_model.project().scale());
-    int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+    const auto &scale = _model.project().selectedScale();
+    int rootNote = _model.project().rootNote();
     int octave = _logicTrack.octave();
     int transpose = _logicTrack.transpose();
 
@@ -628,8 +628,8 @@ void LogicTrackEngine::triggerStep(uint32_t tick, uint32_t divisor, bool forNext
     }
 
     if (stepGate || _logicTrack.cvUpdateMode() == LogicTrack::CvUpdateMode::Always) {
-        const auto &scale = evalSequence.selectedScale(_model.project().scale());
-        int rootNote = evalSequence.selectedRootNote(_model.project().rootNote());
+        const auto &scale = _model.project().selectedScale();
+        int rootNote = _model.project().rootNote();
 
         if (_logicTrack.inputTrack1() == -1 || _logicTrack.inputTrack2() == -1) {
             return;

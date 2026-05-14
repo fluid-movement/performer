@@ -281,8 +281,8 @@ TrackEngine::TickResult StochasticEngine::tick(uint32_t tick) {
 void StochasticEngine::update(float dt) {
     bool running = _engine.state().running();
     const auto &sequence = *_sequence;
-    const auto &scale = sequence.selectedScale(_model.project().scale());
-    int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+    const auto &scale = _model.project().selectedScale();
+    int rootNote = _model.project().rootNote();
     int octave = _stochasticTrack.octave();
     int transpose = _stochasticTrack.transpose();
 
@@ -459,8 +459,8 @@ void StochasticEngine::triggerStep(uint32_t tick, uint32_t divisor, bool forNext
         if (stepGate) {
             stepGate = evalStepCondition(step, _sequenceState.iteration(), useFillCondition, _prevCondition);
         }
-        const auto &scale = sequence.selectedScale(_model.project().scale());
-        int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+        const auto &scale = _model.project().selectedScale();
+        int rootNote = _model.project().rootNote();
         noteValue = evalStepNote(step, _stochasticTrack.noteProbabilityBias(), scale, rootNote, octave, transpose, sequence);
         stepLength = (divisor * evalStepLength(step, _stochasticTrack.lengthBias())) / StochasticSequence::Length::Range;
 
@@ -656,8 +656,8 @@ void StochasticEngine::recordStep(uint32_t tick, uint32_t divisor) {
 }
 
 int StochasticEngine::noteFromMidiNote(uint8_t midiNote) const {
-    const auto &scale = _sequence->selectedScale(_model.project().scale());
-    int rootNote = _sequence->selectedRootNote(_model.project().rootNote());
+    const auto &scale = _model.project().selectedScale();
+    int rootNote = _model.project().rootNote();
 
     if (scale.isChromatic()) {
         return scale.noteFromVolts((midiNote - 60 - rootNote) * (1.f / 12.f));

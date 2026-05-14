@@ -218,12 +218,6 @@ void ArpSequence::Step::read(VersionedSerializedReader &reader) {
 
 void ArpSequence::writeRouted(Routing::Target target, int intValue, float floatValue) {
     switch (target) {
-    case Routing::Target::Scale:
-        setScale(intValue, true);
-        break;
-    case Routing::Target::RootNote:
-        setRootNote(intValue, true);
-        break;
     case Routing::Target::Divisor:
         setDivisor(intValue, true);
         break;
@@ -258,8 +252,6 @@ void ArpSequence::writeRouted(Routing::Target target, int intValue, float floatV
 
 void ArpSequence::clear() {
     setName("INIT");
-    setScale(-1);
-    setRootNote(-1);
     setDivisor(12);
     setResetMeasure(0);
     setFirstStep(0);
@@ -330,8 +322,6 @@ void ArpSequence::duplicateSteps() {
 }
 
 void ArpSequence::write(VersionedSerializedWriter &writer) const {
-    writer.write(_scale.base);
-    writer.write(_rootNote.base);
     writer.write(_divisor.base);
     writer.write(_resetMeasure);
     writer.write(_firstStep);
@@ -350,8 +340,11 @@ void ArpSequence::write(VersionedSerializedWriter &writer) const {
 }
 
 bool ArpSequence::read(VersionedSerializedReader &reader) {
-    reader.read(_scale.base);
-    reader.read(_rootNote.base);
+    if (reader.dataVersion() < ProjectVersion::Version41) {
+        int8_t discardScale, discardRootNote;
+        reader.read(discardScale);
+        reader.read(discardRootNote);
+    }
     if (reader.dataVersion() < ProjectVersion::Version10) {
         reader.readAs<uint8_t>(_divisor.base);
     } else {

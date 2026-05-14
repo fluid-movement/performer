@@ -48,8 +48,8 @@ static const ArpSequenceListModel::Item quickEditItems[8] = {
     ArpSequenceListModel::Item::Last,
     ArpSequenceListModel::Item::Divisor,
     ArpSequenceListModel::Item::ResetMeasure,
-    ArpSequenceListModel::Item::Scale,
-    ArpSequenceListModel::Item::RootNote,
+    ArpSequenceListModel::Item::Last,
+    ArpSequenceListModel::Item::Last,
     ArpSequenceListModel::Item::Last
 };
 
@@ -99,7 +99,7 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
     WindowPainter::drawFooter(canvas, functionNames, pageKeyState(), activeFunctionKey());
 
     const auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
     int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
     int currentRecordStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentRecordStep() : -1;
 
@@ -153,7 +153,7 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
 
         switch (layer()) {
         case Layer::Gate: {
-                int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+                int rootNote = _project.rootNote();
 
                 if (scale.isNotePresent(step.note())) {
                     canvas.setColor(Color::Bright);
@@ -227,7 +227,7 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
             }
             FixedStringBuilder<8> str;
 
-            int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+            int rootNote = _project.rootNote();
             if (scale.isNotePresent(step.note())) {
                 canvas.setColor(Color::Bright);
             } else {
@@ -253,7 +253,7 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
                 x + 2, y + 18, stepWidth - 4, 2,
                 step.noteOctaveProbability() + 1, ArpSequence::NoteOctaveProbability::Range
             );
-            int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+            int rootNote = _project.rootNote();
             if (scale.isNotePresent(step.note())) {
                 canvas.setColor(Color::Bright);
             } else {
@@ -271,7 +271,7 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
             break;
         }
         case Layer::Note: {
-            int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+            int rootNote = _project.rootNote();
             canvas.setColor(Color::Bright);
             FixedStringBuilder<8> str;
 
@@ -320,7 +320,7 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
                 x + 2, y + 18, stepWidth - 4, 2,
                 step.noteVariationProbability() + 1, ArpSequence::NoteVariationProbability::Range
             );
-            int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+            int rootNote = _project.rootNote();
 
             if (scale.isNotePresent(step.note())) {
                 canvas.setColor(Color::Bright);
@@ -376,14 +376,10 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
     track.arpeggiator().printOctavesAbbr(str);
     canvas.drawText(x + 2,  y -2 + 16, str);
     str.reset();
-    sequence.printScaleAbbr(str);
+    str(Scale::name(_project.scale()));
     canvas.drawText(x + 2,  y -2 + 24, str);
     str.reset();
-    if (sequence.rootNote()==-1) {
-        str("DFLT");
-    } else {
-        sequence.printRootNote(str);
-    }
+    _project.printRootNote(str);
     canvas.drawText(x + 2,  y -2 + 32, str);
 
 
@@ -580,7 +576,7 @@ void ArpSequenceEditPage::keyPress(KeyPressEvent &event) {
 
 void ArpSequenceEditPage::encoder(EncoderEvent &event) {
     auto &sequence = _project.selectedArpSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
 
     if (!_stepSelection.any())
     {
@@ -706,7 +702,7 @@ void ArpSequenceEditPage::midi(MidiEvent &event) {
     if (!_engine.recording() && layer() == Layer::NoteVariationProbability && _stepSelection.any()) {
         auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
         auto &sequence = _project.selectedArpSequence();
-        const auto &scale = sequence.selectedScale(_project.scale());
+        const auto &scale = _project.selectedScale();
         const auto &message = event.message();
 
         if (message.isNoteOn()) {
@@ -858,7 +854,7 @@ void ArpSequenceEditPage::updateMonitorStep() {
 void ArpSequenceEditPage::drawDetail(Canvas &canvas, const ArpSequence::Step &step) {
 
     const auto &sequence = _project.selectedArpSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
 
     FixedStringBuilder<16> str;
 
@@ -960,7 +956,7 @@ void ArpSequenceEditPage::drawDetail(Canvas &canvas, const ArpSequence::Step &st
         break;
     case Layer::Note:
         str.reset();
-        scale.noteName(str, step.note(), sequence.selectedRootNote(_model.project().rootNote()), Scale::Long);
+        scale.noteName(str, step.note(), _project.rootNote(), Scale::Long);
         canvas.setFont(Font::Small);
         canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
         break;

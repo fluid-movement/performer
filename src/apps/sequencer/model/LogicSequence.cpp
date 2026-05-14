@@ -209,13 +209,6 @@ void LogicSequence::Step::read(VersionedSerializedReader &reader) {
 
 void LogicSequence::writeRouted(Routing::Target target, int intValue, float floatValue) {
     switch (target) {
-    case Routing::Target::Scale:
-        //_model._selectedScale[0] = intValue;
-        setScale(intValue, true);
-        break;
-    case Routing::Target::RootNote:
-        setRootNote(intValue, true);
-        break;
     case Routing::Target::Divisor:
         setDivisor(intValue, true);
         break;
@@ -235,8 +228,6 @@ void LogicSequence::writeRouted(Routing::Target target, int intValue, float floa
 
 void LogicSequence::clear() {
     setName("INIT");
-    setScale(-1);
-    setRootNote(-1);
     setDivisor(12);
     setResetMeasure(0);
     setRunMode(Types::RunMode::Forward);
@@ -306,8 +297,6 @@ void LogicSequence::duplicateSteps() {
 }
 
 void LogicSequence::write(VersionedSerializedWriter &writer) const {
-    writer.write(_scale.base);
-    writer.write(_rootNote.base);
     writer.write(_divisor.base);
     writer.write(_resetMeasure);
     writer.write(_runMode.base);
@@ -321,8 +310,11 @@ void LogicSequence::write(VersionedSerializedWriter &writer) const {
 }
 
 bool LogicSequence::read(VersionedSerializedReader &reader) {
-    reader.read(_scale.base);
-    reader.read(_rootNote.base);
+    if (reader.dataVersion() < ProjectVersion::Version41) {
+        int8_t discardScale, discardRootNote;
+        reader.read(discardScale);
+        reader.read(discardRootNote);
+    }
     if (reader.dataVersion() < ProjectVersion::Version10) {
         reader.readAs<uint8_t>(_divisor.base);
     } else {

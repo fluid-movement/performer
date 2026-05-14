@@ -49,8 +49,8 @@ static const NoteSequenceListModel::Item quickEditItems[8] = {
     NoteSequenceListModel::Item::RunMode,
     NoteSequenceListModel::Item::Divisor,
     NoteSequenceListModel::Item::ResetMeasure,
-    NoteSequenceListModel::Item::Scale,
-    NoteSequenceListModel::Item::RootNote,
+    NoteSequenceListModel::Item::Last,
+    NoteSequenceListModel::Item::Last,
     NoteSequenceListModel::Item::Last
 };
 
@@ -103,7 +103,7 @@ void NoteSequenceEditPage::draw(Canvas &canvas) {
     auto &trackEngine = _engine.selectedTrackEngine().as<NoteTrackEngine>();
 
     auto &sequence = _project.selectedNoteSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
     int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
     if (trackEngine.currentRecordStep()!=-1) {
         trackEngine.setCurrentRecordStep(sequence.currentRecordStep());
@@ -223,7 +223,7 @@ void NoteSequenceEditPage::draw(Canvas &canvas) {
             );
             break;
         case Layer::Note: {
-            int rootNote = sequence.selectedRootNote(_model.project().rootNote());
+            int rootNote = _project.rootNote();
             canvas.setColor(Color::Bright);
             FixedStringBuilder<8> str;
 
@@ -434,7 +434,7 @@ void NoteSequenceEditPage::keyPress(KeyPressEvent &event) {
         }
         for (int i=0; i<16; ++i) {
            if (key.state(i)) {
-                const auto &scale = sequence.selectedScale(_project.scale());
+                const auto &scale = _project.selectedScale();
                 int stepIndex = 0;
                 if (i>=8) {
                     stepIndex = i -8;
@@ -542,7 +542,7 @@ void NoteSequenceEditPage::keyPress(KeyPressEvent &event) {
 
 void NoteSequenceEditPage::encoder(EncoderEvent &event) {
     auto &sequence = _project.selectedNoteSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
 
     if (!_stepSelection.any())
     {
@@ -678,7 +678,7 @@ void NoteSequenceEditPage::midi(MidiEvent &event) {
         }
         auto &trackEngine = _engine.selectedTrackEngine().as<NoteTrackEngine>();
         auto &sequence = _project.selectedNoteSequence();
-        const auto &scale = sequence.selectedScale(_project.scale());
+        const auto &scale = _project.selectedScale();
         const auto &message = event.message();
 
         if (message.isNoteOn()) {
@@ -852,7 +852,7 @@ void NoteSequenceEditPage::updateMonitorStep() {
 void NoteSequenceEditPage::drawDetail(Canvas &canvas, const NoteSequence::Step &step) {
 
     const auto &sequence = _project.selectedNoteSequence();
-    const auto &scale = sequence.selectedScale(_project.scale());
+    const auto &scale = _project.selectedScale();
 
     FixedStringBuilder<16> str;
 
@@ -955,7 +955,7 @@ void NoteSequenceEditPage::drawDetail(Canvas &canvas, const NoteSequence::Step &
         break;
     case Layer::Note:
         str.reset();
-        scale.noteName(str, step.note(), sequence.selectedRootNote(_model.project().rootNote()), Scale::Long);
+        scale.noteName(str, step.note(), _project.rootNote(), Scale::Long);
         canvas.setFont(Font::Small);
         canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
         break;
