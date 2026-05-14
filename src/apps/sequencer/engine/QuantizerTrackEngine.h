@@ -34,7 +34,9 @@ public:
     virtual bool gateOutput(int index) const override { return _gateOutput; }
     virtual float cvOutput(int index) const override { return _cvOutput; }
     virtual float sequenceProgress() const override {
-        return _currentStep < 0 ? 0.f : float(_currentStep - _sequence->firstStep()) / (_sequence->lastStep() - _sequence->firstStep());
+        if (_currentStep < 0) return 0.f;
+        int range = _sequence->lastStep() - _sequence->firstStep();
+        return range <= 0 ? 0.f : float(_currentStep - _sequence->firstStep()) / range;
     }
 
     const NoteSequence &sequence() const { return *_sequence; }
@@ -51,14 +53,14 @@ private:
 
     NoteSequence *_sequence = nullptr;
 
-    uint32_t _freeRelativeTick = 0;
     SequenceState _sequenceState;
     int _currentStep = -1;
-    bool _prevCondition = false;
 
     int _lastQNote = INT32_MIN;
     float _lastQVolts = 0.f;
+    int _lastTransposition = INT32_MIN;
     bool _lastSourceGate = false;
+    int _lastTriggerTrack = -1;
 
     // IIR low-pass on raw ADC input
     mutable float _filteredInput = 0.f;
@@ -73,7 +75,10 @@ private:
     uint32_t _pulseTick = 0;
 
     static constexpr uint32_t PulseLengthTicks = CONFIG_PPQN / 24;
-    static constexpr float InputFilterAlpha = 0.25f;   // ~8ms TC at 120BPM
+    // α=0.1 → ~26ms TC. All note-boundary crossings (≥83mV) trigger the snap path, so
+    // reducing α has zero effect on pitch-change latency while improving suppression of
+    // systematic mid-frequency noise (stable up to ±41mV at 33Hz vs ±17mV at α=0.25).
+    static constexpr float InputFilterAlpha = 0.10f;   // ~26ms TC at 120BPM
     static constexpr float FilterSnapVolts  = 0.05f;   // jumps >50mV bypass IIR and snap instantly
     static constexpr float HysteresisVolts  = 0.012f;  // ~14% of semitone
     static constexpr uint32_t SampleDelayTicks = 4;    // ~10ms at 120BPM

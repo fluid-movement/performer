@@ -36,13 +36,13 @@ float QuantizerTrackEngine::readInput() const {
 }
 
 void QuantizerTrackEngine::reset() {
-    _freeRelativeTick = 0;
     _sequenceState.reset();
     _currentStep = -1;
-    _prevCondition = false;
     _lastQNote = INT32_MIN;
     _lastQVolts = 0.f;
+    _lastTransposition = INT32_MIN;
     _lastSourceGate = false;
+    _lastTriggerTrack = -1;
     _filterInit = false;
     _filteredInput = 0.f;
     _samplePending = false;
@@ -57,7 +57,6 @@ void QuantizerTrackEngine::reset() {
 }
 
 void QuantizerTrackEngine::restart() {
-    _freeRelativeTick = 0;
     _sequenceState.reset();
     _currentStep = -1;
     _samplePending = false;
@@ -72,16 +71,26 @@ TrackEngine::TickResult QuantizerTrackEngine::tick(uint32_t tick) {
 
     TickResult result = TickResult::NoUpdate;
 
+    int transposition = evalTransposition(scale, _quantizerTrack.octave(), _quantizerTrack.transpose());
+
     // Helper: commit a quantized note to CV/gate output
     auto commit = [&](int qNote) {
-        int transposition = evalTransposition(scale, _quantizerTrack.octave(), _quantizerTrack.transpose());
         _lastQNote = qNote;
         _lastQVolts = scale.noteToVolts(qNote);  // un-transposed, used for hysteresis
+        _lastTransposition = transposition;
         _cvOutput = scale.noteToVolts(qNote + transposition);
         _gateOutput = true;
         _pulseTick = tick + PulseLengthTicks;
         result |= TickResult::GateUpdate | TickResult::CvUpdate;
     };
+
+    // Commit delayed sample before processing new triggers — prevents perpetual
+    // deferral when divisor <= SampleDelayTicks (new trigger would overwrite sampleTick
+    // before the commit check ran).
+    if (_samplePending && tick >= _sampleTick) {
+        commit(scale.noteFromVolts(inputVolts));
+        _samplePending = false;
+    }
 
     switch (_quantizerTrack.triggerMode()) {
     case QuantizerTrack::TriggerMode::Free: {
@@ -92,6 +101,11 @@ TrackEngine::TickResult QuantizerTrackEngine::tick(uint32_t tick) {
             changed = true;
         } else if (candidate != _lastQNote) {
             changed = std::abs(inputVolts - _lastQVolts) >= HysteresisVolts;
+        } else if (transposition != _lastTransposition) {
+            changed = true;
+        } else if (std::abs(scale.noteToVolts(_lastQNote) - _lastQVolts) > 0.001f) {
+            // Scale changed under the current note — re-commit at new scale's pitch
+            changed = true;
         }
         if (changed) {
             commit(candidate);
@@ -131,6 +145,12 @@ TrackEngine::TickResult QuantizerTrackEngine::tick(uint32_t tick) {
         int triggerTrack = _quantizerTrack.triggerTrack();
         if (triggerTrack >= 0 && triggerTrack < CONFIG_TRACK_COUNT) {
             bool curGate = _engine.trackEngine(triggerTrack).gateOutput(0);
+            if (triggerTrack != _lastTriggerTrack) {
+                // Trigger source changed — absorb current gate level to prevent
+                // spurious rising-edge on the first tick after the switch
+                _lastSourceGate = curGate;
+                _lastTriggerTrack = triggerTrack;
+            }
             if (curGate && !_lastSourceGate) {
                 _samplePending = true;
                 _sampleTick = tick + SampleDelayTicks;
@@ -142,12 +162,6 @@ TrackEngine::TickResult QuantizerTrackEngine::tick(uint32_t tick) {
 
     case QuantizerTrack::TriggerMode::Last:
         break;
-    }
-
-    // Commit delayed sample once input has had time to settle
-    if (_samplePending && tick >= _sampleTick) {
-        commit(scale.noteFromVolts(inputVolts));
-        _samplePending = false;
     }
 
     if (_gateOutput && tick >= _pulseTick) {
