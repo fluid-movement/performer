@@ -5,7 +5,6 @@
 #include "RoutableListModel.h"
 
 #include "model/ArpTrack.h"
-#include <vector>
 
 class ArpTrackListModel : public RoutableListModel {
 public:
@@ -39,10 +38,6 @@ public:
 
     void setTrack(ArpTrack &track) {
         _track = &track;
-    }
-
-    void setAvailableLogicTracks(std::vector<int> availableLogicTracks) {
-        _availableLogicTracks = availableLogicTracks;
     }
 
     virtual int rows() const override {
@@ -245,6 +240,5 @@ private:
 
     ArpTrack *_track;
 
-    std::vector<int> _availableLogicTracks;
     int _selectedTrack[8];
 };

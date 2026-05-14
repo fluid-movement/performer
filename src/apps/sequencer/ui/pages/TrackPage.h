@@ -6,7 +6,6 @@
 #include "ui/model/CurveTrackListModel.h"
 #include "ui/model/MidiCvTrackListModel.h"
 #include "ui/model/StochasticTrackListModel.h"
-#include "ui/model/LogicTrackListModel.h"
 #include "ui/model/ArpTrackListModel.h"
 #include "ui/model/QuantizerTrackListModel.h"
 
@@ -40,7 +39,6 @@ private:
     CurveTrackListModel _curveTrackListModel;
     MidiCvTrackListModel _midiCvTrackListModel;
     StochasticTrackListModel _stochasticTrackListModel;
-    LogicTrackListModel _logicTrackListModel;
     ArpTrackListModel _arpTrackListModel;
     QuantizerTrackListModel _quantizerTrackListModel;
 
@@ -50,7 +48,6 @@ private:
     CurveTrack *_curveTrack;
     MidiCvTrack *_midiCvTrack;
     StochasticTrack *_stochasticTrack;
-    LogicTrack *_logicTrack;
     ArpTrack *_arpTrack;
     QuantizerTrack *_quantizerTrack;
 };

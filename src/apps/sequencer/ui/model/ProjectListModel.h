@@ -62,7 +62,6 @@ public:
         _selectedScale = _project.scale();
     }
 
-private:
     enum Item {
         Name,
         Swing,

@@ -10,6 +10,28 @@ For a full map of all pages, button combos, and held-button overlays, see [`agen
 
 ---
 
+## 2026-05-14 — Fix: scale selection stuck on Ionian after Tempo row removal
+
+`ProjectPage.cpp` had a hardcoded `row == 5` to detect encoder-press on the Scale row and commit the scale preview to the project. Removing the `Tempo` row in phase 1 shifted Scale from row 5 to row 4, so the commit never fired and the scale was permanently stuck on Ionian (index 0).
+
+Fix: made `ProjectListModel::Item` enum public and changed the check to `row == ProjectListModel::Scale` so it tracks the enum value rather than a magic number.
+
+---
+
+## 2026-05-14 — UI simplification: remove Logic track type (phase 2)
+
+Removed the Logic track type entirely. Logic was a gate-masking sequencer that combined two Note track gate streams via AND/OR/XOR/NAND/XOR/RandomInput boolean logic — musically niche and the least-used track type.
+
+**Deleted:** `LogicTrack.h/.cpp`, `LogicSequence.h/.cpp`, `LogicTrackEngine.h/.cpp`, `LogicSequenceEditPage.h/.cpp`, `LogicSequencePage.h/.cpp`, `LogicSequenceListModel.h`, `LogicTrackListModel.h`.
+
+**Removed** all Logic cases from: `Track.h`, `Engine.h/.cpp`, `Project.h`, `NoteTrack.h/.cpp` (logicTrack/logicTrackInput fields), `TrackPage`, `TopPage`, `OverviewPage`, `Pages.h`, `LaunchpadController`, `SequencePainter`, `ClipBoard`, `FileManager`, `Routing`, Python bindings, CMakeLists.
+
+**Serialization:** Old projects with `TrackMode::Logic` (serialized as `4`) remap to Note on load.
+
+**TrackModeListModel:** Removed the `row < 2` guard that blocked Logic from tracks 0–1. All remaining track types (including Quantizer) are now selectable on every track.
+
+---
+
 ## 2026-05-14 — UI simplification: remove redundant configuration (phase 1)
 
 First pass of a broader UI redesign. Removed configuration rows that already have a dedicated hardware affordance, and eliminated per-sequence scale/root-note entirely.

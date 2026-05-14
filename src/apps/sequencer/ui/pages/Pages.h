@@ -26,8 +26,6 @@
 #include "StartupPage.h"
 #include "StochasticSequenceEditPage.h"
 #include "StochasticSequencePage.h"
-#include "LogicSequenceEditPage.h"
-#include "LogicSequencePage.h"
 #include "ArpSequenceEditPage.h"
 #include "ArpSequencePage.h"
 #include "QuantizerSequenceEditPage.h"
@@ -58,8 +56,6 @@ struct Pages {
     NoteSequenceEditPage noteSequenceEdit;
     CurveSequenceEditPage curveSequenceEdit;
     StochasticSequenceEditPage stochasticSequenceEdit;
-    LogicSequencePage logicSequence;
-    LogicSequenceEditPage logicSequenceEdit;
     ArpSequencePage arpSequence;
     ArpSequenceEditPage arpSequenceEdit;
     QuantizerSequencePage quantizerSequence;
@@ -107,8 +103,6 @@ struct Pages {
         noteSequenceEdit(manager, context),
         curveSequenceEdit(manager, context),
         stochasticSequenceEdit(manager, context),
-        logicSequence(manager, context),
-        logicSequenceEdit(manager, context),
         arpSequence(manager, context),
         arpSequenceEdit(manager, context),
         quantizerSequence(manager, context),

@@ -1,7 +1,6 @@
 #include "Engine.h"
 
 #include "Config.h"
-#include "LogicTrackEngine.h"
 #include "QuantizerTrackEngine.h"
 #include "MidiUtils.h"
 
@@ -472,9 +471,6 @@ void Engine::updateTrackSetups() {
                 break;
             case Track::TrackMode::Stochastic:
                 trackEngine = trackContainer.create<StochasticEngine>(*this, _model, track, linkedTrackEngine);
-                break;
-            case Track::TrackMode::Logic:
-                trackEngine = trackContainer.create<LogicTrackEngine>(*this, _model, track, linkedTrackEngine);
                 break;
             case Track::TrackMode::Arp:
                 trackEngine = trackContainer.create<ArpTrackEngine>(*this, _model, track, linkedTrackEngine);

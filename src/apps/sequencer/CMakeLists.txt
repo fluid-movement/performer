@@ -15,7 +15,6 @@ set(sources
     engine/MidiOutputEngine.cpp
     engine/NoteTrackEngine.cpp
     engine/StochasticEngine.cpp
-    engine/LogicTrackEngine.cpp
     engine/ArpTrackEngine.cpp
     engine/QuantizerTrackEngine.cpp
     engine/RoutingEngine.cpp
@@ -44,8 +43,6 @@ set(sources
     model/NoteTrack.cpp
     model/StochasticSequence.cpp
     model/StochasticTrack.cpp
-    model/LogicSequence.cpp
-    model/LogicTrack.cpp
     model/ArpSequence.cpp
     model/ArpTrack.cpp
     model/QuantizerTrack.cpp
@@ -97,8 +94,6 @@ set(sources
     ui/pages/NoteSequencePage.cpp
     ui/pages/StochasticSequencePage.cpp
     ui/pages/StochasticSequenceEditPage.cpp
-    ui/pages/LogicSequenceEditPage.cpp
-    ui/pages/LogicSequencePage.cpp
     ui/pages/ArpSequenceEditPage.cpp
     ui/pages/ArpSequencePage.cpp
     ui/pages/QuantizerSequenceEditPage.cpp

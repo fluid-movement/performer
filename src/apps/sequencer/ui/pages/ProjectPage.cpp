@@ -85,7 +85,7 @@ void ProjectPage::keyPress(KeyPressEvent &event) {
 
     if (key.isEncoder()) {
         auto row = ListPage::selectedRow();
-        if (row == 5) {
+        if (row == ProjectListModel::Scale) {
             _listModel.setSelectedScale();
         }
     }

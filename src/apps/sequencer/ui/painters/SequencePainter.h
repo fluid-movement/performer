@@ -3,7 +3,6 @@
 #include "core/gfx/Canvas.h"
 #include "model/NoteSequence.h"
 #include "model/StochasticSequence.h"
-#include "model/LogicSequence.h"
 #include "model/ArpSequence.h"
 
 
@@ -22,10 +21,6 @@ public:
     static void drawBypassScale(Canvas &canvas, int x, int y, int w, int h, bool active);
 
     static void drawStageRepeatMode(Canvas &canvas, int x, int y, int w, int h, Types::StageRepeatMode mode);
-
-    static void drawGateLogicMode(Canvas &canvas, int x, int y, int w, int h, LogicSequence::GateLogicMode mode);
-    static void drawNoteLogicMode(Canvas &canvas, int x, int y, int w, int h, LogicSequence::NoteLogicMode mode);
-
 
     static void drawSequenceProgress(Canvas &canvas, int x, int y, int w, int h, float progress);
 };

@@ -4,8 +4,6 @@
 #include "Config.h"
 
 #include "CurveTrack.h"
-#include "LogicSequence.h"
-#include "LogicTrack.h"
 #include "MidiCvTrack.h"
 #include "StochasticSequence.h"
 #include "StochasticTrack.h"
@@ -36,8 +34,6 @@ public:
     void copyCurveSequenceSteps(const CurveSequence &curveSequence, const SelectedSteps &selectedSteps);
     void copyStochasticSequence(const StochasticSequence &noteSequence);
     void copyStochasticSequenceSteps(const StochasticSequence &noteSequence, const SelectedSteps &selectedSteps);
-    void copyLogicSequence(const LogicSequence &noteSequence);
-    void copyLogicSequenceSteps(const LogicSequence &noteSequence, const SelectedSteps &selectedSteps);
     void copyArpSequence(const ArpSequence &noteSequence);
     void copyArpSequenceSteps(const ArpSequence &noteSequence, const SelectedSteps &selectedSteps);
     void copyPattern(int patternIndex);
@@ -50,8 +46,6 @@ public:
     void pasteCurveSequenceSteps(CurveSequence &curveSequence, const SelectedSteps &selectedSteps) const;
     void pasteStochasticSequence(StochasticSequence &noteSequence) const;
     void pasteStochasticSequenceSteps(StochasticSequence &noteSequence, const SelectedSteps &selectedSteps) const;
-    void pasteLogicSequence(LogicSequence &noteSequence) const;
-    void pasteLogicSequenceSteps(LogicSequence &noteSequence, const SelectedSteps &selectedSteps) const;
     void pasteArpSequence(ArpSequence &noteSequence) const;
     void pasteArpSequenceSteps(ArpSequence &noteSequence, const SelectedSteps &selectedSteps) const;    
     void pastePattern(int patternIndex) const;
@@ -64,8 +58,6 @@ public:
     bool canPasteCurveSequenceSteps() const;
     bool canPasteStochasticSequence() const;
     bool canPasteStochasticSequenceSteps() const;
-    bool canPasteLogicSequence() const;
-    bool canPasteLogicSequenceSteps() const;
     bool canPasteArpSequence() const;
     bool canPasteArpSequenceSteps() const;    
     bool canPastePattern() const;
@@ -81,8 +73,6 @@ private:
         CurveSequenceSteps,
         StochasticSequence,
         StochasticSequenceSteps,
-        LogicSequence,
-        LogicSequenceSteps,
         ArpSequence,
         ArpSequenceSteps,        
         Pattern,
@@ -104,11 +94,6 @@ private:
         SelectedSteps selected;
     };
 
-    struct LogicSequenceSteps {
-        LogicSequence sequence;
-        SelectedSteps selected;
-    };
-
     struct ArpSequenceSteps {
         ArpSequence sequence;
         SelectedSteps selected;
@@ -121,7 +106,6 @@ private:
                 NoteSequence note;
                 CurveSequence curve;
                 StochasticSequence stochastic;
-                LogicSequence logic;
                 ArpSequence arp;
             } data;
         } sequences[CONFIG_TRACK_COUNT];
@@ -129,5 +113,5 @@ private:
 
     Project &_project;
     Type _type = Type::None;
-    Container<Track, NoteTrack, CurveTrack, MidiCvTrack, StochasticTrack, LogicTrack, ArpTrack, NoteSequence, NoteSequenceSteps, CurveSequence, CurveSequenceSteps, StochasticSequence, StochasticSequenceSteps, LogicSequence, LogicSequenceSteps, ArpSequence, ArpSequenceSteps, Pattern, UserScale> _container;
+    Container<Track, NoteTrack, CurveTrack, MidiCvTrack, StochasticTrack, ArpTrack, NoteSequence, NoteSequenceSteps, CurveSequence, CurveSequenceSteps, StochasticSequence, StochasticSequenceSteps, ArpSequence, ArpSequenceSteps, Pattern, UserScale> _container;
 };

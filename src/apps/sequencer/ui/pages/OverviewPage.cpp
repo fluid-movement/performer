@@ -31,17 +31,6 @@ static const CurveSequenceListModel::Item curveQuickEditItems[8] = {
     CurveSequenceListModel::Item::Last
 };
 
-static const LogicSequenceListModel::Item logicQuickEditItems[8] = {
-    LogicSequenceListModel::Item::FirstStep,
-    LogicSequenceListModel::Item::LastStep,
-    LogicSequenceListModel::Item::RunMode,
-    LogicSequenceListModel::Item::Divisor,
-    LogicSequenceListModel::Item::ResetMeasure,
-    LogicSequenceListModel::Item::Last,
-    LogicSequenceListModel::Item::Last,
-    LogicSequenceListModel::Item::Last
-};
-
 static const StochasticSequenceListModel::Item stochasticQuickEditItems[8] = {
     StochasticSequenceListModel::Item::SequenceFirstStep,
     StochasticSequenceListModel::Item::SequenceLastStep,
@@ -83,38 +72,6 @@ static void drawNoteTrack(Canvas &canvas, int trackIndex, const NoteTrackEngine 
         if (trackEngine.currentStep() == stepIndex) {
             canvas.setColor(step.gate() ? Color::Bright : Color::MediumBright);
             canvas.fillRect(x + 1, y + 1, 6, 6);
-        } else {
-            canvas.setColor(step.gate() ? Color::Medium : Color::Low);
-            canvas.fillRect(x + 1, y + 1, 6, 6);
-        }
-    }
-}
-
-static void drawLogicTrack(Canvas &canvas, int trackIndex, const LogicTrackEngine &trackEngine, LogicSequence &sequence, bool running, bool patternFollow) {
-    canvas.setBlendMode(BlendMode::Set);
-
-    int stepOffset = 16*sequence.section();
-    if (patternFollow) {
-        int section_no = int((trackEngine.currentStep()) / 16);
-        sequence.setSecion(section_no);
-    }
-    int y = trackIndex * 8;
-
-    for (int i = 0; i < 16; ++i) {
-        int stepIndex = stepOffset + i;
-        const auto &step = sequence.step(stepIndex);
-
-        int x = 76 + i * 8;
-
-        if (trackEngine.currentStep() == stepIndex) {
-            canvas.setColor(step.gate() ? Color::Bright : Color::MediumBright);
-
-            if (trackEngine.gateOutput(stepIndex)) {
-                canvas.fillRect(x + 3, y + 3, 3, 3);
-                canvas.setColor(Color::Medium);
-            } else {
-                canvas.fillRect(x + 1, y + 1, 6, 6);
-            }
         } else {
             canvas.setColor(step.gate() ? Color::Medium : Color::Low);
             canvas.fillRect(x + 1, y + 1, 6, 6);
@@ -276,8 +233,6 @@ void OverviewPage::exit() {
         _engine.selectedTrackEngine().as<NoteTrackEngine>().setMonitorStep(-1);
     } else if (_project.selectedTrack().trackMode()==Track::TrackMode::Stochastic) {
         _engine.selectedTrackEngine().as<NoteTrackEngine>().setMonitorStep(-1);
-    } else if (_project.selectedTrack().trackMode()==Track::TrackMode::Logic) {
-        _engine.selectedTrackEngine().as<LogicTrackEngine>().setMonitorStep(-1);
     } else if (_project.selectedTrack().trackMode()==Track::TrackMode::Arp) {
         _engine.selectedTrackEngine().as<ArpTrackEngine>().setMonitorStep(-1);
     }
@@ -328,11 +283,6 @@ void OverviewPage::draw(Canvas &canvas) {
                 break;
             case Track::TrackMode::Stochastic: {
                     FixedStringBuilder<16> str("%s%s", _project.selectedTrackIndex() == trackIndex ? "+" : "", track.stochasticTrack().name());
-                    canvas.drawText(2, y, str);
-                }
-                break;
-            case Track::TrackMode::Logic: {
-                    FixedStringBuilder<16> str("%s%s", _project.selectedTrackIndex() == trackIndex ? "+" : "", track.logicTrack().name());
                     canvas.drawText(2, y, str);
                 }
                 break;
@@ -397,15 +347,6 @@ void OverviewPage::draw(Canvas &canvas) {
                 drawStochasticTrack(canvas, trackIndex, trackEngine.as<StochasticEngine>(), sequence, scale);
             }
             break;
-        case Track::TrackMode::Logic: {
-                bool patterFolow = false;
-                if (track.logicTrack().patternFollow()==Types::PatternFollow::Display || track.logicTrack().patternFollow()==Types::PatternFollow::DispAndLP) {
-                    patterFolow = true;
-                    canvas.drawText(256 - 46, y, FixedStringBuilder<8>("F"));
-                }
-                drawLogicTrack(canvas, trackIndex, trackEngine.as<LogicTrackEngine>(), track.logicTrack().sequence(trackState.pattern()), _engine.state().running(), patterFolow);  
-            }
-            break;
         case Track::TrackMode::Arp: {
                 const auto &sequence = track.arpTrack().sequence(trackState.pattern());
                 const auto &scale = _project.selectedScale();
@@ -449,11 +390,6 @@ void OverviewPage::draw(Canvas &canvas) {
             case Track::TrackMode::Curve: {
                     auto &sequence = _project.selectedCurveSequence();
                     drawCurveDetail(canvas, sequence.step(_stepSelection.first()));
-                }
-                break;
-            case Track::TrackMode::Logic: {
-                    auto &sequence = _project.selectedLogicSequence();
-                    drawLogicDetail(canvas, sequence.step(_stepSelection.first()));
                 }
                 break;
             case Track::TrackMode::Arp: {
@@ -525,22 +461,6 @@ void OverviewPage::updateLeds(Leds &leds) {
             LedPainter::drawSelectedSequenceSection(leds, sequence.section());
             }
             break;
-        case Track::TrackMode::Logic: {
-            const auto &trackEngine = _engine.selectedTrackEngine().as<LogicTrackEngine>();
-            auto &sequence = _project.selectedLogicSequence();
-            int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
-
-            for (int i = 0; i < 16; ++i) {
-                int stepIndex = stepOffset() + i;
-                bool red = (stepIndex == currentStep) || _stepSelection[stepIndex];
-                bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection[stepIndex]);
-                leds.set(MatrixMap::fromStep(i), red, green);
-            }
-
-            LedPainter::drawSelectedSequenceSection(leds, sequence.section());
-            
-            }
-            break;
         case Track::TrackMode::Arp: {
             const auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
             auto &sequence = _project.selectedArpSequence();
@@ -588,9 +508,6 @@ void OverviewPage::updateLeds(Leds &leds) {
                     break;
                 case Track::TrackMode::Stochastic:
                     leds.set(index, false, stochasticQuickEditItems[i] != StochasticSequenceListModel::Item::Last);
-                    break;
-                case Track::TrackMode::Logic:
-                    leds.set(index, false, logicQuickEditItems[i] != LogicSequenceListModel::Item::Last);
                     break;
                 case Track::TrackMode::Arp:
                     leds.set(index, false, arpQuickEditItems[i] != ArpSequenceListModel::Item::Last);
@@ -648,15 +565,6 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                     }
                 }
                 break;
-            case Track::TrackMode::Logic: {
-                    auto &track = _project.selectedTrack().logicTrack();
-                    if (key.is(Key::Step15)) {
-                        bool lpConnected = _engine.isLaunchpadConnected();
-                        track.togglePatternFollowDisplay(lpConnected);
-                    }  else {
-                        quickEdit(key.quickEdit());
-                    }
-                }
             case Track::TrackMode::Stochastic: {
                 quickEdit(key.quickEdit());
                     
@@ -714,21 +622,6 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
         return;
      }
 
-    if (key.isEncoder() && _project.selectedTrack().trackMode() == Track::TrackMode::Logic) {
-        switch (_project.selectedLogicSequenceLayer()) {
-            case LogicSequence::Layer::NoteLogic:
-                showMessage("GATE LOGIC");
-                _project.setSelectedLogicSequenceLayer(LogicSequence::Layer::GateLogic);
-                break;
-
-            default:
-                 showMessage("NOTE LOGIC");
-                _project.setSelectedLogicSequenceLayer(LogicSequence::Layer::NoteLogic);
-        }
-        event.consume();
-        return;
-    }
-
     if (key.isEncoder() && _project.selectedTrack().trackMode() == Track::TrackMode::Stochastic) {
         auto loop = _project.selectedStochasticSequence().useLoop();
         _project.selectedStochasticSequence().setUseLoop(!loop);
@@ -756,13 +649,6 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
             case Track::TrackMode::Stochastic: {
                     int stepIndex = stepOffset() + key.step();
                     auto &sequence = _project.selectedStochasticSequence();
-                    sequence.step(stepIndex).toggleGate();
-                    event.consume();
-                }
-                break;
-            case Track::TrackMode::Logic: {
-                    auto &sequence = _project.selectedLogicSequence();
-                    int stepIndex = stepOffset() + key.step();
                     sequence.step(stepIndex).toggleGate();
                     event.consume();
                 }
@@ -860,12 +746,6 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                  track.curveTrack().setPatternFollowDisplay(false);
                 break;
             }
-            case Track::TrackMode::Logic: {
-                auto &sequence = _project.selectedLogicSequence();
-                sequence.setSecion(std::max(0, sequence.section() - 1));
-                track.logicTrack().setPatternFollowDisplay(false);
-                break;
-            }
             case Track::TrackMode::Quantizer: {
                 auto &sequence = _project.selectedQuantizerSequence();
                 sequence.setSecion(std::max(0, sequence.section() - 1));
@@ -889,12 +769,6 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                 auto &sequence = _project.selectedCurveSequence();
                 sequence.setSecion(std::min(3, sequence.section() + 1));
                 track.curveTrack().setPatternFollowDisplay(false);
-                break;
-            }
-            case Track::TrackMode::Logic: {
-                auto &sequence = _project.selectedLogicSequence();
-                sequence.setSecion(std::max(0, sequence.section() + 1));
-                track.logicTrack().setPatternFollowDisplay(false);
                 break;
             }
             case Track::TrackMode::Quantizer: {
@@ -974,26 +848,6 @@ void OverviewPage::encoder(EncoderEvent &event) {
                                 break;
                             case CurveSequence::Layer::Gate:
                                 step.setGate(step.gate()+ event.value());
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                }
-            }
-            break;
-        case Track::TrackMode::Logic: {
-            auto &sequence = _project.selectedLogicSequence();
-                for (size_t stepIndex = 0; stepIndex < sequence.steps().size(); ++stepIndex) {
-                    if (_stepSelection[stepIndex]) {
-                        auto &step = sequence.step(stepIndex);
-                        
-                        switch (_project.selectedLogicSequenceLayer()) {
-                            case LogicSequence::Layer::GateLogic:
-                                step.setGateLogic(static_cast<LogicSequence::GateLogicMode>(step.gateLogic() + event.value()));
-                                break;
-                            case LogicSequence::Layer::NoteLogic:
-                                step.setNoteLogic(static_cast<LogicSequence::NoteLogicMode>(step.noteLogic() + event.value()));
                                 break;
                             default:
                                 break;
@@ -1180,100 +1034,6 @@ void OverviewPage::drawStochasticDetail(Canvas &canvas, const StochasticSequence
     canvas.setFont(Font::Tiny);
 }
 
-void OverviewPage::drawLogicDetail(Canvas &canvas, const LogicSequence::Step &step) {
-    FixedStringBuilder<16> str;
-
-    WindowPainter::drawFrame(canvas, 64, 16, 128, 32);
-
-    canvas.setBlendMode(BlendMode::Set);
-    canvas.setColor(Color::Bright);
-    canvas.vline(64 + 32, 16, 32);
-
-    canvas.setFont(Font::Small);
-    str("%d", _stepSelection.first() + 1);
-    if (_stepSelection.count() > 1) {
-        str("*");
-    }
-    canvas.drawTextCentered(64, 16, 32, 32, str);
-
-    canvas.setFont(Font::Tiny);
-
-    str.reset();
-    switch (_project.selectedLogicSequenceLayer()) {
-        case LogicSequence::Layer::GateLogic: {
-            switch (step.gateLogic()) {
-                case LogicSequence::GateLogicMode::One:
-                    str("INPUT 1");
-                    break;
-                case LogicSequence::GateLogicMode::Two:
-                    str("INPUT 2");
-                    break;
-                case LogicSequence::GateLogicMode::And:
-                    str("AND");
-                    break;
-                case LogicSequence::GateLogicMode::Or:
-                    str("OR");
-                    break;
-                case LogicSequence::GateLogicMode::Xor:
-                    str("XOR");
-                    break;
-                case LogicSequence::GateLogicMode::Nand:
-                    str("NAND");
-                    break;
-                case LogicSequence::GateLogicMode::RandomInput:
-                    str("RND INPUT");
-                    break;
-                case LogicSequence::GateLogicMode::RandomLogic:
-                    str("RND LOGIC");
-                    break;
-                default:
-                    break;
-            }
-            canvas.setFont(Font::Small);
-            canvas.drawTextCentered(64 + 64, 32 - 4, 32, 8, str);
-        }
-            break;
-        case LogicSequence::Layer::NoteLogic: {
-                switch (step.noteLogic()) {
-                    case LogicSequence::NoteLogicMode::NOne:
-                        str("INPUT 1");
-                        break;
-                    case LogicSequence::NoteLogicMode::NTwo:
-                        str("INPUT 2");
-                        break;
-                    case LogicSequence::NoteLogicMode::Min:
-                        str("MIN");
-                        break;
-                    case LogicSequence::NoteLogicMode::Max:
-                        str("MAX");
-                        break;
-                    case LogicSequence::NoteLogicMode::Sum:
-                        str("SUM");
-                        break;
-                    case LogicSequence::NoteLogicMode::Avg:
-                        str("AVG");
-                        break;
-                    case LogicSequence::NoteLogicMode::NRandomInput:
-                        str("RND INPUT");
-                        break;
-                    case LogicSequence::NoteLogicMode::NRandomLogic:
-                        str("RND LOGIC");
-                        break;
-                    default:
-                        break;
-                }
-                canvas.setFont(Font::Small);
-                canvas.drawTextCentered(64 + 64, 32 - 4, 32, 8, str);
-            }
-            break;
-        default:
-            break;
-    }
-
-    canvas.setFont(Font::Tiny);
-
-}
-
 void OverviewPage::drawArpDetail(Canvas &canvas, const ArpSequence::Step &step) {
 
 }
@@ -1299,14 +1059,6 @@ void OverviewPage::updateMonitorStep() {
             break;
         case Track::TrackMode::Stochastic: {
                 auto &trackEngine = _engine.selectedTrackEngine().as<StochasticEngine>();
-                // TODO should we monitor an all layers not just note?
-                if (_stepSelection.any()) {
-                    trackEngine.setMonitorStep(_stepSelection.first());
-                }   
-            }
-            break;
-        case Track::TrackMode::Logic: {
-                auto &trackEngine = _engine.selectedTrackEngine().as<LogicTrackEngine>();
                 // TODO should we monitor an all layers not just note?
                 if (_stepSelection.any()) {
                     trackEngine.setMonitorStep(_stepSelection.first());
@@ -1353,15 +1105,6 @@ void OverviewPage::quickEdit(int index) {
                 _stochasticListModel.setSequence(&_project.selectedStochasticSequence());
                 if (stochasticQuickEditItems[index] != StochasticSequenceListModel::Item::Last) {
                     _manager.pages().quickEdit.show(_stochasticListModel, int(stochasticQuickEditItems[index]));
-                }
-            }
-            break;
-        case Track::TrackMode::Logic: {
-                LogicSequenceListModel _listModel;
-
-                _logicListModel.setSequence(&_project.selectedLogicSequence());
-                if (logicQuickEditItems[index] != LogicSequenceListModel::Item::Last) {
-                    _manager.pages().quickEdit.show(_logicListModel, int(logicQuickEditItems[index]));
                 }
             }
             break;

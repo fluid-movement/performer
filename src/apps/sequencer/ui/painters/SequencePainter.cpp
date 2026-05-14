@@ -2,7 +2,6 @@
 #include "core/gfx/Canvas.h"
 #include "model/NoteSequence.h"
 #include "model/StochasticSequence.h"
-#include "model/LogicSequence.h"
 #include "model/ArpSequence.h"
 #include <bitset>
 
@@ -158,74 +157,6 @@ void SequencePainter::drawStageRepeatMode(Canvas &canvas, int x, int y, int w, i
                 canvas.hline(x + 2 * i, bottom, 1);
             }
         }
-    }
-}
-
-void SequencePainter::drawGateLogicMode(Canvas &canvas, int x, int y, int w, int h, LogicSequence::GateLogicMode mode) {
-    canvas.setBlendMode(BlendMode::Set);
-    canvas.setColor(Bright);
-    std::bitset<4> enabled;
-    x += (w - 8) / 2;
-
-    switch (mode) {
-        case LogicSequence::GateLogicMode::One:
-            canvas.drawTextCentered(x, y+4, 8, -8, "1");
-            break;
-        case LogicSequence::GateLogicMode::Two:
-            canvas.drawTextCentered(x, y+4, 8, -8, "2");
-            break;
-        case LogicSequence::GateLogicMode::And:
-            canvas.drawTextCentered(x, y+4, 8, -8, "&");
-            break;
-        case LogicSequence::GateLogicMode::Or:
-            canvas.drawTextCentered(x, y+4, 8, -8, "|");
-            break;
-        case LogicSequence::GateLogicMode::Xor:
-            canvas.drawTextCentered(x, y+4, 8, -8, "x|");
-            break;
-        case LogicSequence::GateLogicMode::Nand:
-            canvas.drawTextCentered(x, y+4, 8, -8, "!&");
-            break;
-        case LogicSequence::GateLogicMode::RandomInput:
-            canvas.drawTextCentered(x, y+4, 8, -8, "1?2");
-            break;
-        case LogicSequence::GateLogicMode::RandomLogic:
-            canvas.drawTextCentered(x, y+4, 8, -8, "????");
-            break;
-    }
-}
-
-void SequencePainter::drawNoteLogicMode(Canvas &canvas, int x, int y, int w, int h, LogicSequence::NoteLogicMode mode) {
-    canvas.setBlendMode(BlendMode::Set);
-    canvas.setColor(Bright);
-    std::bitset<4> enabled;
-    x += (w - 8) / 2;
-
-    switch (mode) {
-        case LogicSequence::NoteLogicMode::NOne:
-            canvas.drawTextCentered(x, y+4, 8, -8, "1");
-            break;
-        case LogicSequence::NoteLogicMode::NTwo:
-            canvas.drawTextCentered(x, y+4, 8, -8, "2");
-            break;
-        case LogicSequence::NoteLogicMode::Min:
-            canvas.drawTextCentered(x, y+4, 8, -8, "<");
-            break;
-        case LogicSequence::NoteLogicMode::Max:
-            canvas.drawTextCentered(x, y+4, 8, -8, ">");
-            break;
-        case LogicSequence::NoteLogicMode::Sum:
-            canvas.drawTextCentered(x, y+4, 8, -8, "+");
-            break;
-        case LogicSequence::NoteLogicMode::Avg:
-            canvas.drawTextCentered(x, y+4, 8, -8, "~");
-            break;
-        case LogicSequence::NoteLogicMode::NRandomInput:
-            canvas.drawTextCentered(x, y+4, 8, -8, "1?2");
-            break;
-        case LogicSequence::NoteLogicMode::NRandomLogic:
-            canvas.drawTextCentered(x, y+4, 8, -8, "????");
-            break;
     }
 }
 

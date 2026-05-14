@@ -108,7 +108,7 @@ These share a common **ListPage** interaction model: Left/Right edit the focused
 **Path:** `src/apps/sequencer/ui/pages/TrackPage.cpp`  
 **Reach:** Page + Step2
 
-**On screen:** Track type selector (Note/Curve/Stochastic/Logic/Arp/Quantizer/MidiCv), track name, link target, fill mode, play mode, slide time, and track-type-specific settings.
+**On screen:** Track type selector (Note/Curve/Stochastic/Arp/Quantizer/MidiCv), track name, link target, fill mode, play mode, slide time, and track-type-specific settings.
 
 **Key interactions:** Standard ListPage. Changing track type rebuilds the settings list.
 
@@ -251,15 +251,15 @@ These share a common **ListPage** interaction model: Left/Right edit the focused
 
 **Quick-edit item table (by track type):**
 
-| Slot | Note/Logic/Stochastic | Curve | Arp |
+| Slot | Note/Stochastic | Curve | Arp |
 |---|---|---|---|
 | Step8 | FirstStep | FirstStep | — |
 | Step9 | LastStep | LastStep | — |
 | Step10 | RunMode | RunMode | — |
 | Step11 | Divisor | Divisor | Divisor |
 | Step12 | ResetMeasure | ResetMeasure | ResetMeasure |
-| Step13 | Scale | Range | Scale |
-| Step14 | RootNote | — | RootNote |
+| Step13 | — | Range | — |
+| Step14 | — | — | — |
 
 ---
 
@@ -426,14 +426,6 @@ Similar to NoteSequenceEditPage with different layers: Shape, Min, Max, Gate, Co
 **Reach:** Page + Step1/Step0 (Stochastic track)
 
 Step grid with probability weights. F0–F4 = Gate/Length/Note/Probability/Condition. Same step-selection and quick-edit mechanics as NoteSequenceEditPage.
-
----
-
-#### LogicSequencePage / LogicSequenceEditPage
-**Path:** `src/apps/sequencer/ui/pages/LogicSequence*.cpp`  
-**Reach:** Page + Step1/Step0 (Logic track)
-
-Boolean logic track: input sources A/B, operator (AND/OR/XOR/…), gate output. ListPage-style sequence params. Edit page shows gate steps.
 
 ---
 

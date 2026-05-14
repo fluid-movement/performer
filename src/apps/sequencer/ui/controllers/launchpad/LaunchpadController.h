@@ -106,12 +106,10 @@ private:
     void sequenceSetFollowMode(int col);
     void sequenceToggleStep(int row, int col);
     void sequenceToggleNoteStep(int row, int col);
-    void sequenceToggleLogicStep(int row, int col);
     void sequenceEditStep(int row, int col);
     void sequenceEditNoteStep(int row, int col);
     void sequenceEditCurveStep(int row, int col);
     void sequenceEditStochasticStep(int row, int col);
-    void sequenceEditLogicStep(int row, int col);
     void sequenceEditArpStep(int row, int col);
 
 
@@ -125,7 +123,6 @@ private:
     void sequenceDrawNoteSequence();
     void sequenceDrawCurveSequence();
     void sequenceDrawStochasticSequence();
-    void sequenceDrawLogicSequence();
     void sequenceDrawArpSequence();
     void sequenceDrawQuantizerSequence();
 
@@ -178,11 +175,6 @@ private:
     void drawStochasticSequenceBars(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep);
     void drawStochasticSequenceNotes(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep);
     void drawStochasticSequenceDots(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep);
-
-    void drawLogicSequenceBits(const LogicSequence &sequence, LogicSequence::Layer layer, int currentStep);
-    void drawLogicSequenceBars(const LogicSequence &sequence, LogicSequence::Layer layer, int currentStep);
-    void drawLogicSequenceNotes(const LogicSequence &sequence, LogicSequence::Layer layer, int currentStep);
-    void drawLogicSequenceDots(const LogicSequence &sequence, LogicSequence::Layer layer, int currentStep);
 
     void drawArpSequenceBits(const ArpSequence &sequence, ArpSequence::Layer layer, int currentStep);
     void drawArpSequenceBars(const ArpSequence &sequence, ArpSequence::Layer layer, int currentStep);

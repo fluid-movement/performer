@@ -69,8 +69,6 @@ void NoteTrack::write(VersionedSerializedWriter &writer) const {
     writer.write(_retriggerProbabilityBias.base);
     writer.write(_lengthBias.base);
     writer.write(_noteProbabilityBias.base);
-    writer.write(_logicTrack);
-    writer.write(_logicTrackInput);
     writeArray(writer, _sequences);
     writer.write(_patternFollow);
 }
@@ -92,8 +90,12 @@ void NoteTrack::read(VersionedSerializedReader &reader) {
     reader.read(_retriggerProbabilityBias.base);
     reader.read(_lengthBias.base);
     reader.read(_noteProbabilityBias.base);
-    reader.read(_logicTrack, ProjectVersion::Version37);
-    reader.read(_logicTrackInput, ProjectVersion::Version37);
+    // _logicTrack and _logicTrackInput were added in Version37 and removed; read and discard for backward compat
+    {
+        int8_t dummy;
+        reader.read(dummy, ProjectVersion::Version37);
+        reader.read(dummy, ProjectVersion::Version37);
+    }
 
     // There is a bug in previous firmware versions where writing the properties
     // of a note track did not update the hash value.

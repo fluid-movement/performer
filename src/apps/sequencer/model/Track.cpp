@@ -19,9 +19,6 @@ void Track::clearPattern(int patternIndex) {
     case TrackMode::Stochastic:
         _track.stochastic->sequence(patternIndex).clear();
         break;
-    case TrackMode::Logic:
-        _track.logic->sequence(patternIndex).clear();
-        break;
     case TrackMode::Arp:
         _track.arp->sequence(patternIndex).clear();
         break;
@@ -45,9 +42,6 @@ void Track::copyPattern(int src, int dst) {
         break;
     case TrackMode::Stochastic:
         _track.stochastic->sequence(dst) = _track.stochastic->sequence(src);
-        break;
-    case TrackMode::Logic:
-        _track.logic->sequence(dst) = _track.logic->sequence(src);
         break;
     case TrackMode::Arp:
         _track.arp->sequence(dst) = _track.arp->sequence(src);
@@ -75,7 +69,6 @@ void Track::gateOutputName(int index, StringBuilder &str) const {
     case TrackMode::Note:
     case TrackMode::Curve:
     case TrackMode::Stochastic:
-    case TrackMode::Logic:
     case TrackMode::Arp:
     case TrackMode::Quantizer:
         str("Gate");
@@ -93,7 +86,6 @@ void Track::cvOutputName(int index, StringBuilder &str) const {
     case TrackMode::Note:
     case TrackMode::Curve:
     case TrackMode::Stochastic:
-    case TrackMode::Logic:
     case TrackMode::Arp:
     case TrackMode::Quantizer:
         str("CV");
@@ -122,9 +114,6 @@ void Track::write(VersionedSerializedWriter &writer) const {
         break;
     case TrackMode::Stochastic:
         _track.stochastic->write(writer);
-        break;
-    case TrackMode::Logic:
-        _track.logic->write(writer);
         break;
     case TrackMode::Arp:
         _track.arp->write(writer);
@@ -156,9 +145,6 @@ void Track::read(VersionedSerializedReader &reader) {
     case TrackMode::Stochastic:
         _track.stochastic->read(reader);
         break;
-    case TrackMode::Logic:
-        _track.logic->read(reader);
-        break;
     case TrackMode::Arp:
         _track.arp->read(reader);
         break;
@@ -175,7 +161,6 @@ void Track::initContainer() {
     _track.curve = nullptr;
     _track.midiCv = nullptr;
     _track.stochastic = nullptr;
-    _track.logic = nullptr;
     _track.arp = nullptr;
     _track.quantizer = nullptr;
 
@@ -191,9 +176,6 @@ void Track::initContainer() {
         break;
     case TrackMode::Stochastic:
         _track.stochastic = _container.create<StochasticTrack>();
-        break;
-    case TrackMode::Logic:
-        _track.logic = _container.create<LogicTrack>();
         break;
     case TrackMode::Arp:
         _track.arp = _container.create<ArpTrack>();
@@ -232,11 +214,7 @@ void Track::setContainerTrackIndex(int trackIndex) {
         _track.stochastic->setTrackIndex(trackIndex);
         _track.stochastic->setName(str);
         break;
-    case TrackMode::Logic:
-        _track.logic->setTrackIndex(trackIndex);
-        _track.logic->setName(str);
-        break;
-     case TrackMode::Arp:
+    case TrackMode::Arp:
         _track.arp->setTrackIndex(trackIndex);
         _track.arp->setName(str);
         break;
