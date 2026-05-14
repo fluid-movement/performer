@@ -112,6 +112,9 @@ void ClipBoard::copyPattern(int patternIndex) {
         case Track::TrackMode::Arp:
             pattern.sequences[trackIndex].data.arp = track.arpTrack().sequence(patternIndex);
             break;
+        case Track::TrackMode::Quantizer:
+            // Quantizer gate lane uses embedded NoteSequence; no separate clipboard slot needed
+            break;
         default:
             break;
         }
@@ -227,6 +230,8 @@ void ClipBoard::pastePattern(int patternIndex) const {
                     break;
                 case Track::TrackMode::Arp:
                     track.arpTrack().sequence(patternIndex) = pattern.sequences[trackIndex].data.arp;
+                    break;
+                case Track::TrackMode::Quantizer:
                     break;
                 default:
                     break;

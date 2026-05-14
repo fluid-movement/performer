@@ -135,52 +135,7 @@ public:
 
     int scale() const { return _scale; }
     void setScale(int s) {
-        auto &pScale = Scale::get(scale());
-
         _scale = clamp(s, 0, Scale::Count - 1);
-
-        auto &aScale = Scale::get(s);
-
-        if (pScale == aScale) {
-            return;
-        }
-
-        if (s != -1 && aScale.isChromatic() && pScale.isChromatic()) {
-
-            for (int trackIndex = 0; trackIndex < 8; ++trackIndex) {    
-                    auto &t = track(trackIndex);
-                    switch (t.trackMode()) {
-                        case Track::TrackMode::Note: {
-                            for (auto &seq : t.noteTrack().sequences()) {
-                                if (seq.scale()==-1) {
-                                    for (int i = 0; i < 64; ++i) {
-                                        auto pStep = seq.step(i);
-
-                                        int rN = pScale.noteIndex(pStep.note(), rootNote());
-                                        if (rN > 0) {
-                                            if (aScale.isNotePresent(rN)) {
-                                                int pNoteIndex = aScale.getNoteIndex(rN);
-                                                seq.step(i).setNote(pNoteIndex);
-                                            } else {
-                                                // search nearest note
-                                                while (!aScale.isNotePresent(rN)) {
-                                                    rN--;
-                                                }
-                                                int pNoteIndex = aScale.getNoteIndex(rN);
-                                                seq.step(i).setNote(pNoteIndex);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                        default:
-                            break;
-                    }                    
-                }
-        }
-        
     }
 
     void editScale(int value, bool shift) {
@@ -516,6 +471,9 @@ public:
                 case Track::TrackMode::Arp:
                     StringUtils::copy(_selectedTrackName, selectedTrack().arpTrack().name(), sizeof(_selectedTrackName));
                     break;
+                case Track::TrackMode::Quantizer:
+                    StringUtils::copy(_selectedTrackName, selectedTrack().quantizerTrack().name(), sizeof(_selectedTrackName));
+                    break;
                 case Track::TrackMode::Last:
                     break;
             }
@@ -641,6 +599,30 @@ public:
         _tracks[_selectedTrackIndex].arpTrack().setSequence(selectedPatternIndex(), seq);
     }
 
+    // quantizerSequence
+
+    const NoteSequence &quantizerSequence(int trackIndex, int patternIndex) const { return _tracks[trackIndex].quantizerTrack().sequence(patternIndex); }
+          NoteSequence &quantizerSequence(int trackIndex, int patternIndex)       { return _tracks[trackIndex].quantizerTrack().sequence(patternIndex); }
+
+    // selectedQuantizerTrack
+
+    const QuantizerTrack &selectedQuantizerTrack() const { return _tracks[_selectedTrackIndex].quantizerTrack(); }
+          QuantizerTrack &selectedQuantizerTrack()       { return _tracks[_selectedTrackIndex].quantizerTrack(); }
+
+    // selectedQuantizerSequence
+
+    const NoteSequence &selectedQuantizerSequence() const { return quantizerSequence(_selectedTrackIndex, selectedPatternIndex()); }
+          NoteSequence &selectedQuantizerSequence()       { return quantizerSequence(_selectedTrackIndex, selectedPatternIndex()); }
+
+    void setSelectedQuantizerSequence(NoteSequence seq) {
+        _tracks[_selectedTrackIndex].quantizerTrack().sequence(selectedPatternIndex()) = seq;
+    }
+
+    // selectedQuantizerSequenceLayer
+
+    NoteSequence::Layer selectedQuantizerSequenceLayer() const { return _selectedQuantizerSequenceLayer; }
+    void setSelectedQuantizerSequenceLayer(NoteSequence::Layer layer) { _selectedQuantizerSequenceLayer = layer; }
+
     //----------------------------------------
     // Routing
     //----------------------------------------
@@ -721,6 +703,7 @@ private:
     StochasticSequence::Layer _selectedStochasticSequenceLayer = StochasticSequence::Layer(10);
     LogicSequence::Layer _selectedLogicSequenceLayer = LogicSequence::Layer(0);
     ArpSequence::Layer _selectedArpSequenceLayer = ArpSequence::Layer(0);
+    NoteSequence::Layer _selectedQuantizerSequenceLayer = NoteSequence::Layer(0);
 
     Observable<Event, 2> _observable;
 };

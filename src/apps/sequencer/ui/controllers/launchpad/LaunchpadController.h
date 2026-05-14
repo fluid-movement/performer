@@ -127,6 +127,7 @@ private:
     void sequenceDrawStochasticSequence();
     void sequenceDrawLogicSequence();
     void sequenceDrawArpSequence();
+    void sequenceDrawQuantizerSequence();
 
 
     void manageCircuitKeyboard(const Button &button);

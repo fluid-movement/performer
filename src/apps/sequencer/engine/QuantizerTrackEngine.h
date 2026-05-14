@@ -1,0 +1,80 @@
+#pragma once
+
+#include "TrackEngine.h"
+#include "SequenceState.h"
+#include "SortedQueue.h"
+#include "Groove.h"
+#include "model/QuantizerTrack.h"
+#include "model/NoteSequence.h"
+
+class QuantizerTrackEngine : public TrackEngine {
+public:
+    QuantizerTrackEngine(Engine &engine, Model &model, Track &track, const TrackEngine *linkedTrackEngine) :
+        TrackEngine(engine, model, track, linkedTrackEngine),
+        _quantizerTrack(track.quantizerTrack())
+    {
+        reset();
+    }
+
+    virtual Track::TrackMode trackMode() const override { return Track::TrackMode::Quantizer; }
+
+    virtual void reset() override;
+    virtual void restart() override;
+    virtual TickResult tick(uint32_t tick) override;
+    virtual void update(float dt) override;
+
+    virtual void changePattern() override;
+
+    virtual void monitorMidi(uint32_t tick, const MidiMessage &message) override {}
+    virtual void clearMidiMonitoring() override {}
+
+    virtual const TrackLinkData *linkData() const override { return &_linkData; }
+
+    virtual bool activity() const override { return _gateOutput; }
+    virtual bool gateOutput(int index) const override { return _gateOutput; }
+    virtual float cvOutput(int index) const override { return _cvOutput; }
+    virtual float sequenceProgress() const override {
+        return _currentStep < 0 ? 0.f : float(_currentStep - _sequence->firstStep()) / (_sequence->lastStep() - _sequence->firstStep());
+    }
+
+    const NoteSequence &sequence() const { return *_sequence; }
+    bool isActiveSequence(const NoteSequence &sequence) const { return &sequence == _sequence; }
+
+    int currentStep() const { return _currentStep; }
+
+private:
+    float readInput() const;
+
+    QuantizerTrack &_quantizerTrack;
+
+    TrackLinkData _linkData;
+
+    NoteSequence *_sequence = nullptr;
+
+    uint32_t _freeRelativeTick = 0;
+    SequenceState _sequenceState;
+    int _currentStep = -1;
+    bool _prevCondition = false;
+
+    int _lastQNote = INT32_MIN;
+    float _lastQVolts = 0.f;
+    bool _lastSourceGate = false;
+
+    // IIR low-pass on raw ADC input
+    mutable float _filteredInput = 0.f;
+    mutable bool _filterInit = false;
+
+    // Delayed post-trigger sampling (Internal / External modes)
+    bool _samplePending = false;
+    uint32_t _sampleTick = 0;
+
+    bool _gateOutput = false;
+    float _cvOutput = 0.f;
+    uint32_t _pulseTick = 0;
+
+    static constexpr uint32_t PulseLengthTicks = CONFIG_PPQN / 24;
+    static constexpr float InputFilterAlpha = 0.25f;   // ~8ms TC at 120BPM
+    static constexpr float FilterSnapVolts  = 0.05f;   // jumps >50mV bypass IIR and snap instantly
+    static constexpr float HysteresisVolts  = 0.012f;  // ~14% of semitone
+    static constexpr uint32_t SampleDelayTicks = 4;    // ~10ms at 120BPM
+};

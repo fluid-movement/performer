@@ -8,6 +8,7 @@
 #include "ui/model/StochasticTrackListModel.h"
 #include "ui/model/LogicTrackListModel.h"
 #include "ui/model/ArpTrackListModel.h"
+#include "ui/model/QuantizerTrackListModel.h"
 
 
 class TrackPage : public ListPage {
@@ -41,13 +42,15 @@ private:
     StochasticTrackListModel _stochasticTrackListModel;
     LogicTrackListModel _logicTrackListModel;
     ArpTrackListModel _arpTrackListModel;
+    QuantizerTrackListModel _quantizerTrackListModel;
 
     Track *_track;
-    
+
     NoteTrack *_noteTrack;
     CurveTrack *_curveTrack;
     MidiCvTrack *_midiCvTrack;
     StochasticTrack *_stochasticTrack;
     LogicTrack *_logicTrack;
     ArpTrack *_arpTrack;
+    QuantizerTrack *_quantizerTrack;
 };

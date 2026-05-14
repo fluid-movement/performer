@@ -115,9 +115,16 @@ void TrackPage::keyPress(KeyPressEvent &event) {
                         _project.selectedTrack().arpTrack().setName(text);
                     }
                  });
-            break;  
+            break;
+            case Track::TrackMode::Quantizer:
+                _manager.pages().textInput.show("NAME:", _quantizerTrack->name(), QuantizerTrack::NameLength, [this] (bool result, const char *text) {
+                    if (result) {
+                        _project.selectedTrack().quantizerTrack().setName(text);
+                    }
+                 });
+            break;
             case Track::TrackMode::Last:
-                break;     
+                break;
         }
 
     return;
@@ -221,7 +228,12 @@ void TrackPage::setTrack(Track &track) {
         _arpTrackListModel.setTrack(track.arpTrack());
         newListModel = &_arpTrackListModel;
         _arpTrack = &track.arpTrack();
-        break;   
+        break;
+    case Track::TrackMode::Quantizer:
+        _quantizerTrackListModel.setTrack(track.quantizerTrack());
+        newListModel = &_quantizerTrackListModel;
+        _quantizerTrack = &track.quantizerTrack();
+        break;
     case Track::TrackMode::Last:
         ASSERT(false, "invalid track mode");
         break;

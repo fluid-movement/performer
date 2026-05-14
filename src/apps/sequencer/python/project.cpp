@@ -260,6 +260,7 @@ void register_project(py::module &m) {
         .def_property_readonly("stochasticTrack", [] (Track &track) { return &track.stochasticTrack(); })
         .def_property_readonly("logicTrack", [] (Track &track) { return &track.logicTrack(); })
         .def_property_readonly("arpTrack", [] (Track &track) { return &track.arpTrack(); })
+        .def_property_readonly("quantizerTrack", [] (Track &track) { return &track.quantizerTrack(); })
         .def("clear", &Track::clear)
         .def("clearPattern", &Track::clearPattern, "patternIndex"_a)
         .def("copyPattern", &Track::copyPattern, "srcIndex"_a, "dstIndex"_a)
@@ -272,6 +273,7 @@ void register_project(py::module &m) {
         .value("Stochastic", Track::TrackMode::Stochastic)
         .value("Logic", Track::TrackMode::Logic)
         .value("Arp", Track::TrackMode::Arp)
+        .value("Quantizer", Track::TrackMode::Quantizer)
         .export_values()
     ;
 
@@ -513,6 +515,50 @@ void register_project(py::module &m) {
     py::enum_<ArpTrack::CvUpdateMode>(arpTrack, "CvUpdateMode")
         .value("Gate", ArpTrack::CvUpdateMode::Gate)
         .value("Always", ArpTrack::CvUpdateMode::Always)
+        .export_values()
+    ;
+
+    // ------------------------------------------------------------------------
+    // Quantizer Track
+    // ------------------------------------------------------------------------
+
+    py::class_<QuantizerTrack> quantizerTrack(m, "QuantizerTrack");
+    quantizerTrack
+        .def_property("inputSource", &QuantizerTrack::inputSource, &QuantizerTrack::setInputSource)
+        .def_property("triggerMode", &QuantizerTrack::triggerMode, &QuantizerTrack::setTriggerMode)
+        .def_property("triggerTrack", &QuantizerTrack::triggerTrack, &QuantizerTrack::setTriggerTrack)
+        .def_property("octave", &QuantizerTrack::octave, [] (QuantizerTrack &t, int v) { t.setOctave(v); })
+        .def_property("transpose", &QuantizerTrack::transpose, [] (QuantizerTrack &t, int v) { t.setTranspose(v); })
+        .def_property_readonly("sequences", [] (QuantizerTrack &t) {
+            py::list result;
+            for (int i = 0; i < CONFIG_PATTERN_COUNT; ++i) {
+                result.append(&t.sequence(i));
+            }
+            return result;
+        })
+        .def("clear", &QuantizerTrack::clear)
+    ;
+
+    py::enum_<QuantizerTrack::InputSource>(quantizerTrack, "InputSource")
+        .value("CvIn1",  QuantizerTrack::InputSource::CvIn1)
+        .value("CvIn2",  QuantizerTrack::InputSource::CvIn2)
+        .value("CvIn3",  QuantizerTrack::InputSource::CvIn3)
+        .value("CvIn4",  QuantizerTrack::InputSource::CvIn4)
+        .value("Track1", QuantizerTrack::InputSource::Track1)
+        .value("Track2", QuantizerTrack::InputSource::Track2)
+        .value("Track3", QuantizerTrack::InputSource::Track3)
+        .value("Track4", QuantizerTrack::InputSource::Track4)
+        .value("Track5", QuantizerTrack::InputSource::Track5)
+        .value("Track6", QuantizerTrack::InputSource::Track6)
+        .value("Track7", QuantizerTrack::InputSource::Track7)
+        .value("Track8", QuantizerTrack::InputSource::Track8)
+        .export_values()
+    ;
+
+    py::enum_<QuantizerTrack::TriggerMode>(quantizerTrack, "TriggerMode")
+        .value("Free",     QuantizerTrack::TriggerMode::Free)
+        .value("Internal", QuantizerTrack::TriggerMode::Internal)
+        .value("External", QuantizerTrack::TriggerMode::External)
         .export_values()
     ;
 

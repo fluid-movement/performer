@@ -114,6 +114,8 @@ enum ProjectVersion {
     // add pattern follow
     Version39 = 39,
 
+    // add quantizer track
+    Version40 = 40,
 
     // automatically derive latest version
     Last,

@@ -30,6 +30,8 @@
 #include "LogicSequencePage.h"
 #include "ArpSequenceEditPage.h"
 #include "ArpSequencePage.h"
+#include "QuantizerSequenceEditPage.h"
+#include "QuantizerSequencePage.h"
 #include "SystemPage.h"
 #include "TempoPage.h"
 #include "TextInputPage.h"
@@ -60,6 +62,8 @@ struct Pages {
     LogicSequenceEditPage logicSequenceEdit;
     ArpSequencePage arpSequence;
     ArpSequenceEditPage arpSequenceEdit;
+    QuantizerSequencePage quantizerSequence;
+    QuantizerSequenceEditPage quantizerSequenceEdit;
     PatternPage pattern;
     PerformerPage performer;
     SongPage song;
@@ -107,6 +111,8 @@ struct Pages {
         logicSequenceEdit(manager, context),
         arpSequence(manager, context),
         arpSequenceEdit(manager, context),
+        quantizerSequence(manager, context),
+        quantizerSequenceEdit(manager, context),
         pattern(manager, context),
         performer(manager, context),
         song(manager, context),

@@ -25,6 +25,9 @@ void Track::clearPattern(int patternIndex) {
     case TrackMode::Arp:
         _track.arp->sequence(patternIndex).clear();
         break;
+    case TrackMode::Quantizer:
+        _track.quantizer->sequence(patternIndex).clear();
+        break;
     case TrackMode::MidiCv:
         break;
     case TrackMode::Last:
@@ -49,6 +52,9 @@ void Track::copyPattern(int src, int dst) {
     case TrackMode::Arp:
         _track.arp->sequence(dst) = _track.arp->sequence(src);
         break;
+    case TrackMode::Quantizer:
+        _track.quantizer->sequence(dst) = _track.quantizer->sequence(src);
+        break;
     case TrackMode::MidiCv:
         break;
     case TrackMode::Last:
@@ -71,6 +77,7 @@ void Track::gateOutputName(int index, StringBuilder &str) const {
     case TrackMode::Stochastic:
     case TrackMode::Logic:
     case TrackMode::Arp:
+    case TrackMode::Quantizer:
         str("Gate");
         break;
     case TrackMode::MidiCv:
@@ -88,6 +95,7 @@ void Track::cvOutputName(int index, StringBuilder &str) const {
     case TrackMode::Stochastic:
     case TrackMode::Logic:
     case TrackMode::Arp:
+    case TrackMode::Quantizer:
         str("CV");
         break;
     case TrackMode::MidiCv:
@@ -121,6 +129,9 @@ void Track::write(VersionedSerializedWriter &writer) const {
     case TrackMode::Arp:
         _track.arp->write(writer);
         break;
+    case TrackMode::Quantizer:
+        _track.quantizer->write(writer);
+        break;
     case TrackMode::Last:
         break;
     }
@@ -151,6 +162,9 @@ void Track::read(VersionedSerializedReader &reader) {
     case TrackMode::Arp:
         _track.arp->read(reader);
         break;
+    case TrackMode::Quantizer:
+        _track.quantizer->read(reader);
+        break;
     case TrackMode::Last:
         break;
     }
@@ -163,6 +177,7 @@ void Track::initContainer() {
     _track.stochastic = nullptr;
     _track.logic = nullptr;
     _track.arp = nullptr;
+    _track.quantizer = nullptr;
 
     switch (_trackMode) {
     case TrackMode::Note:
@@ -182,7 +197,10 @@ void Track::initContainer() {
         break;
     case TrackMode::Arp:
         _track.arp = _container.create<ArpTrack>();
-        break;    
+        break;
+    case TrackMode::Quantizer:
+        _track.quantizer = _container.create<QuantizerTrack>();
+        break;
     case TrackMode::Last:
         break;
     }
@@ -220,7 +238,11 @@ void Track::setContainerTrackIndex(int trackIndex) {
         break;
      case TrackMode::Arp:
         _track.arp->setTrackIndex(trackIndex);
-        _track.arp->setName(str);   
+        _track.arp->setName(str);
+        break;
+    case TrackMode::Quantizer:
+        _track.quantizer->setTrackIndex(trackIndex);
+        _track.quantizer->setName(str);
         break;
     case TrackMode::Last:
         break;

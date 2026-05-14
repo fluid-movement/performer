@@ -17,6 +17,7 @@ set(sources
     engine/StochasticEngine.cpp
     engine/LogicTrackEngine.cpp
     engine/ArpTrackEngine.cpp
+    engine/QuantizerTrackEngine.cpp
     engine/RoutingEngine.cpp
     engine/SequenceState.cpp
     # engine/generators
@@ -47,6 +48,7 @@ set(sources
     model/LogicTrack.cpp
     model/ArpSequence.cpp
     model/ArpTrack.cpp
+    model/QuantizerTrack.cpp
     model/PlayState.cpp
     model/Project.cpp
     model/Routing.cpp
@@ -99,6 +101,8 @@ set(sources
     ui/pages/LogicSequencePage.cpp
     ui/pages/ArpSequenceEditPage.cpp
     ui/pages/ArpSequencePage.cpp
+    ui/pages/QuantizerSequenceEditPage.cpp
+    ui/pages/QuantizerSequencePage.cpp
     ui/pages/OverviewPage.cpp
     ui/pages/PatternPage.cpp
     ui/pages/PerformerPage.cpp

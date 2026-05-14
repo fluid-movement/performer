@@ -10,6 +10,7 @@
 #include "StochasticTrack.h"
 #include "LogicTrack.h"
 #include "ArpTrack.h"
+#include "QuantizerTrack.h"
 
 #include "core/Debug.h"
 #include "core/math/Math.h"
@@ -41,32 +42,35 @@ public:
         Stochastic,
         Arp,
         Logic,
+        Quantizer,
         Last,
         Default = Note
     };
 
     static const char *trackModeName(TrackMode trackMode) {
         switch (trackMode) {
-        case TrackMode::Note:   return "Note";
-        case TrackMode::Curve:  return "Curve";
-        case TrackMode::MidiCv: return "MIDI/CV";
+        case TrackMode::Note:      return "Note";
+        case TrackMode::Curve:     return "Curve";
+        case TrackMode::MidiCv:    return "MIDI/CV";
         case TrackMode::Stochastic: return "Stochastic";
-        case TrackMode::Logic:  return "Logic";
-        case TrackMode::Arp:    return "Arp";
-        case TrackMode::Last:   break;
+        case TrackMode::Logic:     return "Logic";
+        case TrackMode::Arp:       return "Arp";
+        case TrackMode::Quantizer: return "Quantizer";
+        case TrackMode::Last:      break;
         }
         return nullptr;
     }
 
     static uint8_t trackModeSerialize(TrackMode trackMode) {
         switch (trackMode) {
-        case TrackMode::Note:   return 0;
-        case TrackMode::Curve:  return 1;
-        case TrackMode::MidiCv: return 2;
+        case TrackMode::Note:      return 0;
+        case TrackMode::Curve:     return 1;
+        case TrackMode::MidiCv:    return 2;
         case TrackMode::Stochastic: return 3;
-        case TrackMode::Logic:  return 4;
-        case TrackMode::Arp:   return 5;
-        case TrackMode::Last:   break;
+        case TrackMode::Logic:     return 4;
+        case TrackMode::Arp:       return 5;
+        case TrackMode::Quantizer: return 6;
+        case TrackMode::Last:      break;
         }
         return 0;
     }
@@ -129,7 +133,10 @@ public:
           LogicTrack &logicTrack()       { SANITIZE_TRACK_MODE(_trackMode, TrackMode::Logic); return *_track.logic; }
 
     const ArpTrack &arpTrack() const { SANITIZE_TRACK_MODE(_trackMode, TrackMode::Arp); return *_track.arp; }
-          ArpTrack &arpTrack()       { SANITIZE_TRACK_MODE(_trackMode, TrackMode::Arp); return *_track.arp; }          
+          ArpTrack &arpTrack()       { SANITIZE_TRACK_MODE(_trackMode, TrackMode::Arp); return *_track.arp; }
+
+    const QuantizerTrack &quantizerTrack() const { SANITIZE_TRACK_MODE(_trackMode, TrackMode::Quantizer); return *_track.quantizer; }
+          QuantizerTrack &quantizerTrack()       { SANITIZE_TRACK_MODE(_trackMode, TrackMode::Quantizer); return *_track.quantizer; }
 
     //----------------------------------------
     // Methods
@@ -177,7 +184,7 @@ private:
     TrackMode _trackMode;
     int8_t _linkTrack;
 
-    Container<NoteTrack, CurveTrack, MidiCvTrack, StochasticTrack, LogicTrack, ArpTrack> _container;
+    Container<NoteTrack, CurveTrack, MidiCvTrack, StochasticTrack, LogicTrack, ArpTrack, QuantizerTrack> _container;
     union {
         NoteTrack *note;
         CurveTrack *curve;
@@ -185,6 +192,7 @@ private:
         StochasticTrack *stochastic;
         LogicTrack *logic;
         ArpTrack *arp;
+        QuantizerTrack *quantizer;
     } _track;
 
     friend class Project;

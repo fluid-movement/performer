@@ -2,6 +2,7 @@
 
 #include "TopPage.h"
 #include "model/NoteTrack.h"
+#include "engine/QuantizerTrackEngine.h"
 
 #include "ui/painters/WindowPainter.h"
 #include "ui/LedPainter.h"
@@ -239,6 +240,28 @@ static void drawCurveTrack(Canvas &canvas, int trackIndex, const CurveTrackEngin
 }
 
 
+static void drawQuantizerTrack(Canvas &canvas, int trackIndex, const QuantizerTrackEngine &trackEngine, NoteSequence &sequence) {
+    canvas.setBlendMode(BlendMode::Set);
+
+    int stepOffset = 16 * sequence.section();
+    int y = trackIndex * 8;
+
+    for (int i = 0; i < 16; ++i) {
+        int stepIndex = stepOffset + i;
+        const auto &step = sequence.step(stepIndex);
+
+        int x = 76 + i * 8;
+
+        if (trackEngine.currentStep() == stepIndex) {
+            canvas.setColor(step.gate() ? Color::Bright : Color::MediumBright);
+            canvas.fillRect(x + 1, y + 1, 6, 6);
+        } else {
+            canvas.setColor(step.gate() ? Color::Medium : Color::Low);
+            canvas.fillRect(x + 1, y + 1, 6, 6);
+        }
+    }
+}
+
 OverviewPage::OverviewPage(PageManager &manager, PageContext &context) :
     BasePage(manager, context)
 {}
@@ -258,7 +281,9 @@ void OverviewPage::exit() {
     } else if (_project.selectedTrack().trackMode()==Track::TrackMode::Arp) {
         _engine.selectedTrackEngine().as<ArpTrackEngine>().setMonitorStep(-1);
     }
+    // Quantizer has no monitor step
 }
+
 
 void OverviewPage::draw(Canvas &canvas) {
     WindowPainter::clear(canvas);
@@ -316,9 +341,14 @@ void OverviewPage::draw(Canvas &canvas) {
                     canvas.drawText(2, y, str);
                 }
                 break;
+            case Track::TrackMode::Quantizer: {
+                    FixedStringBuilder<16> str("%s%s", _project.selectedTrackIndex() == trackIndex ? "+" : "", track.quantizerTrack().name());
+                    canvas.drawText(2, y, str);
+                }
+                break;
             default:
                 break;
-        }  
+        }
 
         if (trackState.pattern()>=9) {
             canvas.fillRect(56 - 1, y - 5, 16,7);
@@ -386,6 +416,10 @@ void OverviewPage::draw(Canvas &canvas) {
                 drawArpTrack(canvas, trackIndex, trackEngine.as<ArpTrackEngine>(), sequence, scale);
             }
             break;
+        case Track::TrackMode::Quantizer: {
+                drawQuantizerTrack(canvas, trackIndex, trackEngine.as<QuantizerTrackEngine>(), track.quantizerTrack().sequence(trackState.pattern()));
+            }
+            break;
         case Track::TrackMode::MidiCv:
             break;
         case Track::TrackMode::Last:
@@ -426,6 +460,12 @@ void OverviewPage::draw(Canvas &canvas) {
                 auto &sequence = _project.selectedArpSequence();
                 drawArpDetail(canvas, sequence.step(_stepSelection.first()));
             }
+                break;
+            case Track::TrackMode::Quantizer: {
+                auto &sequence = _project.selectedQuantizerSequence();
+                drawDetail(canvas, sequence.step(_stepSelection.first()));
+            }
+                break;
             default:
                 break;
         }
@@ -516,6 +556,21 @@ void OverviewPage::updateLeds(Leds &leds) {
             LedPainter::drawSelectedSequenceSection(leds, 0);
             }
             break;
+        case Track::TrackMode::Quantizer: {
+            const auto &trackEngine = _engine.selectedTrackEngine().as<QuantizerTrackEngine>();
+            auto &sequence = _project.selectedQuantizerSequence();
+            int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+
+            for (int i = 0; i < 16; ++i) {
+                int stepIndex = stepOffset() + i;
+                bool red = (stepIndex == currentStep) || _stepSelection[stepIndex];
+                bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection[stepIndex]);
+                leds.set(MatrixMap::fromStep(i), red, green);
+            }
+
+            LedPainter::drawSelectedSequenceSection(leds, sequence.section());
+            }
+            break;
         default:
             break;
     }
@@ -539,6 +594,9 @@ void OverviewPage::updateLeds(Leds &leds) {
                     break;
                 case Track::TrackMode::Arp:
                     leds.set(index, false, arpQuickEditItems[i] != ArpSequenceListModel::Item::Last);
+                    break;
+                case Track::TrackMode::Quantizer:
+                    leds.set(index, false, noteQuickEditItems[i] != NoteSequenceListModel::Item::Last);
                     break;
                 default:
                     break;
@@ -612,6 +670,10 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                     quickEdit(key.quickEdit());
                 }
             }
+                break;
+            case Track::TrackMode::Quantizer:
+                quickEdit(key.quickEdit());
+                break;
             default:
                 break;
         }
@@ -770,6 +832,13 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                     event.consume();
                 }
                 break;
+            case Track::TrackMode::Quantizer: {
+                    int stepIndex = stepOffset() + key.step();
+                    auto &sequence = _project.selectedQuantizerSequence();
+                    sequence.step(stepIndex).toggleGate();
+                    event.consume();
+                }
+                break;
             default:
                 break;
         }
@@ -797,8 +866,13 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                 track.logicTrack().setPatternFollowDisplay(false);
                 break;
             }
+            case Track::TrackMode::Quantizer: {
+                auto &sequence = _project.selectedQuantizerSequence();
+                sequence.setSecion(std::max(0, sequence.section() - 1));
+                break;
+            }
             default:
-                break;        
+                break;
         }
 
         event.consume();
@@ -823,10 +897,15 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                 track.logicTrack().setPatternFollowDisplay(false);
                 break;
             }
+            case Track::TrackMode::Quantizer: {
+                auto &sequence = _project.selectedQuantizerSequence();
+                sequence.setSecion(std::min(3, sequence.section() + 1));
+                break;
+            }
             default:
-                break;        
+                break;
         }
-        
+
         event.consume();
     }
 }
@@ -1239,13 +1318,15 @@ void OverviewPage::updateMonitorStep() {
                 // TODO should we monitor an all layers not just note?
                 if (_stepSelection.any()) {
                     trackEngine.setMonitorStep(_stepSelection.first());
-                }   
+                }
             }
+            break;
+        case Track::TrackMode::Quantizer:
             break;
         default:
             break;
     }
-    
+
 }
 
 void OverviewPage::quickEdit(int index) {
@@ -1290,6 +1371,13 @@ void OverviewPage::quickEdit(int index) {
                 _arpListModel.setSequence(&_project.selectedArpSequence());
                 if (arpQuickEditItems[index] != ArpSequenceListModel::Item::Last) {
                     _manager.pages().quickEdit.show(_arpListModel, int(arpQuickEditItems[index]));
+                }
+            }
+            break;
+        case Track::TrackMode::Quantizer: {
+                _noteListModel.setSequence(&_project.selectedQuantizerSequence());
+                if (noteQuickEditItems[index] != NoteSequenceListModel::Item::Last) {
+                    _manager.pages().quickEdit.show(_noteListModel, int(noteQuickEditItems[index]));
                 }
             }
             break;

@@ -2,6 +2,7 @@
 
 #include "Config.h"
 #include "LogicTrackEngine.h"
+#include "QuantizerTrackEngine.h"
 #include "MidiUtils.h"
 
 #include "NoteTrackEngine.h"
@@ -477,6 +478,9 @@ void Engine::updateTrackSetups() {
                 break;
             case Track::TrackMode::Arp:
                 trackEngine = trackContainer.create<ArpTrackEngine>(*this, _model, track, linkedTrackEngine);
+                break;
+            case Track::TrackMode::Quantizer:
+                trackEngine = trackContainer.create<QuantizerTrackEngine>(*this, _model, track, linkedTrackEngine);
                 break;
             case Track::TrackMode::Last:
                 break;

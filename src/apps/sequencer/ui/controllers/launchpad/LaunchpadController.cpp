@@ -1,6 +1,7 @@
 #include "LaunchpadController.h"
 
 #include "LaunchpadDevice.h"
+#include "engine/QuantizerTrackEngine.h"
 #include "core/Debug.h"
 #include "os/os.h"
 #include <algorithm>
@@ -1018,6 +1019,13 @@ void LaunchpadController::sequenceUpdateNavigation() {
 
         break;
     }
+    case Track::TrackMode::Quantizer: {
+        _sequence.navigation.left = 0;
+        _sequence.navigation.right = 0;
+        _sequence.navigation.top = 0;
+        _sequence.navigation.bottom = 0;
+        break;
+    }
     default:
         break;
     }
@@ -1063,7 +1071,7 @@ void LaunchpadController::sequenceSetLayer(int row, int col) {
             }
         }
         break;  
-    case Track::TrackMode::Arp:   
+    case Track::TrackMode::Arp:
         for (int i = 0; i < arpSequenceLayerMapSize; ++i) {
             const auto &item = arpSequenceLayerMap[i];
             if (row == item.row && col == item.col) {
@@ -1071,7 +1079,9 @@ void LaunchpadController::sequenceSetLayer(int row, int col) {
                 break;
             }
         }
-        break; 
+        break;
+    case Track::TrackMode::Quantizer:
+        break;
     default:
         break;
     }
@@ -1094,6 +1104,9 @@ void LaunchpadController::sequenceSetFirstStep(int step) {
         break;
     case Track::TrackMode::Arp:
         break;
+    case Track::TrackMode::Quantizer:
+        _project.selectedQuantizerSequence().setFirstStep(step);
+        break;
     default:
         break;
     }
@@ -1115,7 +1128,10 @@ void LaunchpadController::sequenceSetLastStep(int step) {
         _project.selectedLogicSequence().setLastStep(step);
         break;
     case Track::TrackMode::Arp:
-        break; 
+        break;
+    case Track::TrackMode::Quantizer:
+        _project.selectedQuantizerSequence().setLastStep(step);
+        break;
     default:
         break;
     }
@@ -1137,6 +1153,10 @@ void LaunchpadController::sequenceSetRunMode(int mode) {
         break;
     case Track::TrackMode::Arp:
         _project.selectedTrack().arpTrack().arpeggiator().setMode(Arpeggiator::Mode(mode));
+        break;
+    case Track::TrackMode::Quantizer:
+        _project.selectedQuantizerSequence().setRunMode(Types::RunMode(mode));
+        break;
     default:
         break;
     }
@@ -1272,6 +1292,12 @@ void LaunchpadController::sequenceEditStep(int row, int col) {
     case Track::TrackMode::Arp:
         sequenceEditArpStep(row, col);
         break;
+    case Track::TrackMode::Quantizer: {
+        auto &sequence = _project.selectedQuantizerSequence();
+        int gridIndex = row * 8 + col;
+        sequence.step(gridIndex).toggleGate();
+        break;
+    }
     default:
         break;
     }
@@ -1443,12 +1469,14 @@ void LaunchpadController::sequenceDrawLayer() {
             setGridLed(item.row, item.col, selected ? colorYellow() : colorGreen());
         }
         break;
-   case Track::TrackMode::Arp: 
+    case Track::TrackMode::Arp:
         for (int i = 0; i < arpSequenceLayerMapSize; ++i) {
             const auto &item = arpSequenceLayerMap[i];
             bool selected = i == int(_project.selectedArpSequenceLayer());
             setGridLed(item.row, item.col, selected ? colorYellow() : colorGreen());
         }
+        break;
+    case Track::TrackMode::Quantizer:
         break;
     default:
         break;
@@ -1478,6 +1506,11 @@ void LaunchpadController::sequenceDrawStepRange(int highlight) {
         break;
     }
     case Track::TrackMode::Arp: {
+        break;
+    }
+    case Track::TrackMode::Quantizer: {
+        const auto &sequence = _project.selectedQuantizerSequence();
+        drawRange(sequence.firstStep(), sequence.lastStep(), highlight == 0 ? sequence.firstStep() : sequence.lastStep());
         break;
     }
     default:
@@ -1523,6 +1556,10 @@ void LaunchpadController::sequenceDrawRunMode() {
         drawEnum(_project.selectedTrack().arpTrack().arpeggiator().mode());
         break;
     }
+    case Track::TrackMode::Quantizer: {
+        drawEnum(_project.selectedQuantizerSequence().runMode());
+        break;
+    }
     default:
         break;
     }
@@ -1563,6 +1600,9 @@ void LaunchpadController::sequenceDrawSequence() {
         break;
     case Track::TrackMode::Arp:
         sequenceDrawArpSequence();
+        break;
+    case Track::TrackMode::Quantizer:
+        sequenceDrawQuantizerSequence();
         break;
     default:
         break;
@@ -1676,6 +1716,19 @@ void LaunchpadController::sequenceDrawArpSequence() {
         drawArpSequenceBars(sequence, layer, currentStep);
         break;
     }
+}
+
+void LaunchpadController::sequenceDrawQuantizerSequence() {
+    const auto &trackEngine = _engine.selectedTrackEngine().as<QuantizerTrackEngine>();
+
+    auto sequence = std::ref(_project.selectedQuantizerSequence());
+    if (_project.playState().songState().playing()) {
+        auto trackIndex = _project.selectedTrackIndex();
+        sequence = std::ref(_project.selectedTrack().quantizerTrack().sequence(_project.playState().trackState(trackIndex).pattern()));
+    }
+    int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+
+    drawNoteSequenceBits(sequence, NoteSequence::Layer::Gate, currentStep);
 }
 
 void LaunchpadController::sequenceDrawCurveSequence() {

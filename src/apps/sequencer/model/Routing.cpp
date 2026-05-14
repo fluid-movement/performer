@@ -241,7 +241,12 @@ void Routing::writeTarget(Target target, uint8_t tracks, float normalized) {
                             track.arpTrack().sequence(patternIndex).writeRouted(target, intValue, floatValue);
                         }
                     }
-                    break;                   
+                    break;
+                case Track::TrackMode::Quantizer:
+                    if (isTrackTarget(target)) {
+                        track.quantizerTrack().writeRouted(target, intValue, floatValue);
+                    }
+                    break;
                 case Track::TrackMode::Last:
                     break;
                 }

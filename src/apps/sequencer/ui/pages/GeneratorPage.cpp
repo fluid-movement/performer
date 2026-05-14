@@ -2,6 +2,7 @@
 
 #include "ui/painters/WindowPainter.h"
 #include "ui/LedPainter.h"
+#include "engine/QuantizerTrackEngine.h"
 
 #include "engine/generators/Generator.h"
 #include "engine/generators/EuclideanGenerator.h"
@@ -137,7 +138,19 @@ void GeneratorPage::updateLeds(Leds &leds) {
                     leds.set(MatrixMap::fromStep(i), red, green);
                 }
             }
-            break;  
+            break;
+        case Track::TrackMode::Quantizer: {
+                const auto &trackEngine = _engine.selectedTrackEngine().as<QuantizerTrackEngine>();
+                const auto &sequence = _project.selectedQuantizerSequence();
+                currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+                for (int i = 0; i < 16; ++i) {
+                    int stepIndex = stepOffset() + i;
+                    bool red = (stepIndex == currentStep) || _stepSelection->at(stepIndex);
+                    bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection->at(stepIndex));
+                    leds.set(MatrixMap::fromStep(i), red, green);
+                }
+            }
+            break;
 
         default:
             return;

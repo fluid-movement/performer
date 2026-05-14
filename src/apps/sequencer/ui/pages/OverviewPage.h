@@ -46,11 +46,13 @@ private:
                 return 0;
             case Track::TrackMode::Curve:
                 return _project.selectedCurveSequence().section() * StepCount; 
+            case Track::TrackMode::Quantizer:
+                return _project.selectedQuantizerSequence().section() * StepCount;
             case Track::TrackMode::MidiCv:
                 return 0;
             default:
                 return 0;
-        
+
         }
     }
 

@@ -29,8 +29,8 @@ public:
     StochasticSequenceListModel()
     {
         _scales[0] = -1;
-        for (int i = 1; i < 23; ++i) {
-            _scales[i] = i-1;
+        for (int i = 1; i < int(_scales.size()); ++i) {
+            _scales[i] = i - 1;
         }
 
         for (int i = 0; i < 8; ++i) {
@@ -113,10 +113,7 @@ public:
         }
     }
 
-    void setSelectedScale(int defaultScale, bool force= false) override {
-        if (_editScale || force) {
-            _sequence->editScale(_scales[_selectedScale[_sequence->trackIndex()]], false, defaultScale);
-        }
+    void setSelectedScale(int defaultScale, bool force = false) override {
         _editScale = !_editScale;
     }
 
@@ -214,8 +211,8 @@ private:
                 int trackIndex = _sequence->trackIndex();
                 bool isRouted = Routing::isRouted(Routing::Target::Scale, trackIndex);
                 if (!isRouted) {
-                    int trackIndex = _sequence->trackIndex();
-                    _selectedScale[trackIndex] = clamp(_selectedScale[trackIndex] + value, 0, 23);
+                    _selectedScale[trackIndex] = clamp(_selectedScale[trackIndex] + value, 0, Scale::Count);
+                    _sequence->editScale(_scales[_selectedScale[trackIndex]], false, 0);
                 }
             }
             break;
@@ -347,7 +344,7 @@ private:
 
     StochasticSequence *_sequence;
     private:
-        std::array<int, 23> _scales;
+        std::array<int, 32> _scales;
         std::array<int, 8> _selectedScale;
         bool _editScale = false;
 };

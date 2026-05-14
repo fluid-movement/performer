@@ -237,6 +237,9 @@ void TopPage::setSequencePage() {
     case Track::TrackMode::Arp:
         setMainPage(pages.arpSequence);
         break;
+    case Track::TrackMode::Quantizer:
+        setMainPage(pages.quantizerSequence);
+        break;
     case Track::TrackMode::Last:
         break;
     }
@@ -263,6 +266,9 @@ void TopPage::setSequenceEditPage() {
         break;
     case Track::TrackMode::Arp:
         setMainPage(pages.arpSequenceEdit);
+        break;
+    case Track::TrackMode::Quantizer:
+        setMainPage(pages.quantizerSequenceEdit);
         break;
     case Track::TrackMode::Last:
         break;

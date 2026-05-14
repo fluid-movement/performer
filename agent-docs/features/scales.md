@@ -19,14 +19,16 @@ Musical scale system used by note-generating track types (NoteTrack, StochasticT
 Defines a chromatic interval pattern:
 - `_name` — display name (e.g. "Major", "Dorian", "Pentatonic Minor")
 - `_octave` — number of semitones per octave (always 12 for standard scales)
-- `_notes` — array of semitone offsets for each degree (e.g. Major = `{0,2,4,5,7,9,11}`)
+- `_notes` — array of semitone offsets for each degree (e.g. `Maj: Ionian` = `{0,2,4,5,7,9,11}`)
 - `_count` — number of degrees in the scale
 
 `Scale` provides:
 - `noteToVolts(int degree, int rootNote)` — converts a scale degree + root to a voltage value (1V/octave, 0V = C4)
 - `isChromatic()` — true for the chromatic scale (all 12 semitones, no filtering)
 
-Built-in scales are defined as a static array in `Scale.cpp`. The chromatic scale is always index 0.
+Built-in scales are defined as a static array in `Scale.cpp`. As of the 2026-05 modal refactor, index 0 is `Maj: Ionian` (the chromatic/Semitones scale was removed). **Scale indices are stored raw in project files — reordering is a breaking change.** The 2026-05 refactor was a deliberate clean break; old projects will load with shifted scale indices.
+
+Changing a sequence's scale does **not** remap step notes — `step.note()` is preserved as a raw degree+octave integer. The same degree pattern produces different pitches under different scales; this is intentional and supports scale-sweeping as a sound-design move.
 
 ### `UserScale` (user-defined, up to 4)
 Same structure as `Scale` but user-editable:
