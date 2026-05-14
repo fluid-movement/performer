@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git status --porcelain -- src/ | grep -q . && echo '{\"systemMessage\":\"Reminder: update RELEASE-NOTES.md if these changes are user-facing.\"}' || true"
+          }
+        ]
+      }
+    ]
+  }
+}

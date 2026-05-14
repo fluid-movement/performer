@@ -4,6 +4,12 @@ Append-only log of shipped features. Newest first. Links to detailed agent-docs 
 
 ---
 
+## UI reference
+
+For a full map of all pages, button combos, and held-button overlays, see [`agent-docs/ui-state.md`](../ui-state.md).
+
+---
+
 ## 2026-05-13 — Quantizer track mode
 
 New `Quantizer` track type. Samples an input CV (from one of 4 hardware CV inputs or another track's CV output), quantizes to the project's global scale, and holds the value until re-triggered. Three trigger modes: **Free** (fires whenever the quantized degree changes), **Internal** (own gate sequencer lane, reuses NoteSequence), **External** (rising edge of another track's gate). Track-level octave and transpose applied after quantize. Outputs quantized CV on the track's CV jack; ~5ms pulse on the gate jack on each note change. The gate lane is a full NoteSequence, giving access to all existing menus (first/last step, run mode, divisor, scale via shift shortcuts). Especially useful with a Curve track as input for generative pitch sequences.
