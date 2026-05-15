@@ -177,7 +177,7 @@ void ArpSequence::Step::clear() {
     setGateProbability(GateProbability::Max);
     setGateOffset(0);
     setSlide(false);
-    setBypassScale(true);
+
     setRetrigger(0);
     setRetriggerProbability(RetriggerProbability::Max);
     setLength(Length::Max / 2);

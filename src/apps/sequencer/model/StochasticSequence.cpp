@@ -22,6 +22,7 @@ Types::LayerRange StochasticSequence::layerRange(Layer layer) {
     CASE(Length)
     CASE(LengthVariationRange)
     CASE(LengthVariationProbability)
+    CASE(Note)
     CASE(NoteOctave)
     CASE(NoteOctaveProbability)
     CASE(NoteVariationProbability)
@@ -60,6 +61,8 @@ int StochasticSequence::layerDefaultValue(Layer layer)
         return step.lengthVariationRange();
     case Layer::LengthVariationProbability:
         return step.lengthVariationProbability();
+    case Layer::Note:
+        return step.note();
     case Layer::NoteOctave:
         return step.noteOctave();
     case Layer::NoteOctaveProbability:
@@ -99,6 +102,8 @@ int StochasticSequence::Step::layerValue(Layer layer) const {
         return lengthVariationRange();
     case Layer::LengthVariationProbability:
         return lengthVariationProbability();
+    case Layer::Note:
+        return note();
     case Layer::NoteOctave:
         return noteOctave();
     case Layer::NoteOctaveProbability:
@@ -147,6 +152,9 @@ void StochasticSequence::Step::setLayerValue(Layer layer, int value) {
     case Layer::LengthVariationProbability:
         setLengthVariationProbability(value);
         break;
+    case Layer::Note:
+        setNote(value);
+        break;
     case Layer::NoteOctave:
         setNoteOctave(value);
         break;
@@ -177,7 +185,7 @@ void StochasticSequence::Step::clear() {
     setGateProbability(GateProbability::Max);
     setGateOffset(0);
     setSlide(false);
-    setBypassScale(true);
+
     setRetrigger(0);
     setRetriggerProbability(RetriggerProbability::Max);
     setLength(Length::Max / 2);

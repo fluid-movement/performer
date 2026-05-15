@@ -154,20 +154,8 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
         switch (layer()) {
         case Layer::Gate: {
                 int rootNote = _project.rootNote();
-
-                if (scale.isNotePresent(step.note())) {
-                    canvas.setColor(Color::Bright);
-                } else {
-                    canvas.setColor(Color::Low);
-                }
-                
+                canvas.setColor(Color::Bright);
                 FixedStringBuilder<8> str;
-                if (step.bypassScale()) {
-                    const Scale &bypassScale = std::ref(Scale::get(0));
-                    bypassScale.noteName(str, step.note(), rootNote, Scale::Short1);
-                    canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-                    break;
-                } 
                 scale.noteName(str, step.note(), rootNote, Scale::Short1);
                 canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
             }
@@ -222,28 +210,13 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
             );
             break;
         case Layer::NoteOctave: {
-            if (step.noteOctave() != 0) {
-                canvas.setColor(Color::Bright);
-            }
-            FixedStringBuilder<8> str;
-
             int rootNote = _project.rootNote();
-            if (scale.isNotePresent(step.note())) {
-                canvas.setColor(Color::Bright);
-            } else {
-                canvas.setColor(Color::Low);
-            }
-            if (step.bypassScale()) {
-                const Scale &bypassScale = std::ref(Scale::get(0));
-                bypassScale.noteName(str, step.note(), rootNote, Scale::Short1);
-            
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-                str.reset();
-                str("%d", step.noteOctave());
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-                break;
-            } 
+            canvas.setColor(Color::Bright);
+            FixedStringBuilder<8> str;
             scale.noteName(str, step.note(), rootNote, Scale::Short1);
+            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
+            str.reset();
+            str("%+d", step.noteOctave());
             canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
             break;
         }
@@ -254,18 +227,8 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
                 step.noteOctaveProbability() + 1, ArpSequence::NoteOctaveProbability::Range
             );
             int rootNote = _project.rootNote();
-            if (scale.isNotePresent(step.note())) {
-                canvas.setColor(Color::Bright);
-            } else {
-                canvas.setColor(Color::Low);
-            }
+            canvas.setColor(Color::Bright);
             FixedStringBuilder<8> str;
-            if (step.bypassScale()) {
-                const Scale &bypassScale = std::ref(Scale::get(0));
-                bypassScale.noteName(str, step.note(), rootNote, Scale::Short1);
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-                break;
-            } 
             scale.noteName(str, step.note(), rootNote, Scale::Short1);
             canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
             break;
@@ -274,38 +237,11 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
             int rootNote = _project.rootNote();
             canvas.setColor(Color::Bright);
             FixedStringBuilder<8> str;
-
-            if (step.bypassScale()) {
-                if (scale.isNotePresent(step.note())) {
-                    canvas.setColor(Color::Bright);
-                } else {
-                    canvas.setColor(Color::Low);
-                }
-                const Scale &bypassScale = std::ref(Scale::get(0));
-                bypassScale.noteName(str, step.note(), rootNote, Scale::Short1);
-            
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-                str.reset();
-                str("%d", step.noteOctave());
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-                break;
-            } 
-            if (scale.isChromatic() && scale.notesPerOctave() < 12) {
-                int note = step.note();
-                int npo = scale.notesPerOctave();
-                int octave = note / npo - (note % npo != 0 && note < 0 ? 1 : 0);
-                int degree = note - octave * npo + 1;
-                str("%d", degree);
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-                str.reset();
-                str("%+d", octave);
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-            } else {
-                scale.noteName(str, step.note(), rootNote, Scale::Short1);
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-                str.reset();
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-            }
+            scale.noteName(str, step.note(), rootNote, Scale::Short1);
+            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
+            str.reset();
+            scale.noteName(str, step.note(), rootNote, Scale::Short2);
+            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
             break;
         }
         case Layer::NoteVariationRange: {
@@ -321,20 +257,8 @@ void ArpSequenceEditPage::draw(Canvas &canvas) {
                 step.noteVariationProbability() + 1, ArpSequence::NoteVariationProbability::Range
             );
             int rootNote = _project.rootNote();
-
-            if (scale.isNotePresent(step.note())) {
-                canvas.setColor(Color::Bright);
-            } else {
-                canvas.setColor(Color::Low);
-            }
-            
+            canvas.setColor(Color::Bright);
             FixedStringBuilder<8> str;
-            if (step.bypassScale()) {
-                const Scale &bypassScale = std::ref(Scale::get(0));
-                bypassScale.noteName(str, step.note(), rootNote, Scale::Short1);
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-                break;
-            } 
             scale.noteName(str, step.note(), rootNote, Scale::Short1);
             canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
             break;
@@ -672,11 +596,11 @@ void ArpSequenceEditPage::encoder(EncoderEvent &event) {
                 step.setNoteOctaveProbability(step.noteOctaveProbability() + event.value());
                 break;
             case Layer::Note:
-                step.setNote(step.note() + event.value() * ((shift && scale.isChromatic()) ? scale.notesPerOctave() : 1));
+                step.setNote(step.note() + event.value() * (shift ? scale.notesPerOctave() : 1));
                 updateMonitorStep();
                 break;
             case Layer::NoteVariationRange:
-                step.setNoteVariationRange(step.noteVariationRange() + event.value() * ((shift && scale.isChromatic()) ? scale.notesPerOctave() : 1));
+                step.setNoteVariationRange(step.noteVariationRange() + event.value() * (shift ? scale.notesPerOctave() : 1));
                 updateMonitorStep();
                 break;
             case Layer::NoteVariationProbability:

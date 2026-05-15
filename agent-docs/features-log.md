@@ -10,6 +10,27 @@ For a full map of all pages, button combos, and held-button overlays, see [`agen
 
 ---
 
+## 2026-05-14 — Fix: Arp & Stochastic tracks now use scale degrees
+
+Arp and Stochastic tracks were stuck displaying and rendering as C Major regardless of the project scale. Two root causes:
+
+1. `scale.isNotePresent(step.note())` was called throughout `ArpSequenceEditPage` and `StochasticSequenceEditPage` to dim/brighten steps. `isNotePresent` interprets its argument as a **chromatic semitone**, but `step.note()` stores a **scale-degree index**. Only degree values 0, 2, 4, 5, 7, 9, 11 (the Ionian pattern) appeared bright.
+
+2. `bypassScale` paths grabbed `Scale::get(0)` — formerly the chromatic scale, now `Maj:Ionian` after the 2026-05 modal-scale refactor. All note-name rendering via `bypassScale.noteName(...)` produced Ionian degree names regardless of the project scale.
+
+**Fix:**
+- Removed `BypassScale` entirely from Arp and Stochastic tracks (engine, model `Step::clear()`, and all UI rendering). Step notes are always scale degrees.
+- Replaced all `isNotePresent` dimming with `Color::Bright` (degrees are always valid in the project scale).
+- Replaced all `bypassScale.noteName(...)` calls with `scale.noteName(...)` using the project scale.
+- Simplified `ArpTrackEngine::evalStepNote`'s variation walk: removed the chromatic `isNotePresent` loop; offset now applied directly in degree space.
+- Encoder shift+turn now jumps by `scale.notesPerOctave()` degrees (was gated on the now-removed chromatic scale check).
+- Added `Layer::Note` to `StochasticSequence` so users can directly edit step degrees with the encoder (previously only settable via MIDI).
+- `LaunchpadController` keyboard views for Arp/Stochastic now only light scale-degree keys; non-scale chromatic positions are unlit.
+
+**Files changed:** `ArpTrackEngine.cpp`, `StochasticEngine.cpp`, `ArpSequence.cpp`, `StochasticSequence.h/.cpp`, `ArpSequenceEditPage.cpp`, `StochasticSequenceEditPage.cpp`, `LaunchpadController.cpp`.
+
+---
+
 ## 2026-05-14 — Fix: scale selection stuck on Ionian after Tempo row removal
 
 `ProjectPage.cpp` had a hardcoded `row == 5` to detect encoder-press on the Scale row and commit the scale preview to the project. Removing the `Tempo` row in phase 1 shifted Scale from row 5 to row 4, so the commit never fired and the scale was permanently stuck on Ionian (index 0).

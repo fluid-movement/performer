@@ -51,6 +51,7 @@ public:
         Length,
         LengthVariationRange,
         LengthVariationProbability,
+        Note,
         NoteVariationProbability,
         NoteOctave,
         NoteOctaveProbability,
@@ -70,6 +71,7 @@ public:
         case Layer::Length:                     return "LENGTH";
         case Layer::LengthVariationRange:       return "LENGTH RANGE";
         case Layer::LengthVariationProbability: return "LENGTH PROB";
+        case Layer::Note:                        return "NOTE";
         case Layer::NoteOctave:                 return "OCTAVE";
         case Layer::NoteOctaveProbability:      return "OCTAVE PROB";
         case Layer::NoteVariationProbability:   return "NOTE PROB";

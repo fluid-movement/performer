@@ -111,6 +111,7 @@ static const LayerMapItem stochasticSequenceLayerMap[] = {
     [int(StochasticSequence::Layer::Length)]                      =  { 0, 2 },
     [int(StochasticSequence::Layer::LengthVariationRange)]        =  { 1, 2 },
     [int(StochasticSequence::Layer::LengthVariationProbability)]  =  { 2, 2 },
+    [int(StochasticSequence::Layer::Note)]                        =  { 3, 2 },
     [int(StochasticSequence::Layer::NoteVariationProbability)]    =  { 0, 3 },
     [int(StochasticSequence::Layer::NoteOctave)]                  =  { 1, 3 },
     [int(StochasticSequence::Layer::NoteOctaveProbability)]       =  { 2, 3 },    
@@ -2462,7 +2463,6 @@ void LaunchpadController::drawStochasticSequenceBars(const StochasticSequence &s
 void LaunchpadController::drawStochasticSequenceNotes(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep) {
 
     const auto &scale = _project.selectedScale();
-      const Scale &bypassScale = Scale::get(0);
         int stepIndex = selectedNote;
         const auto &step = sequence.step(stepIndex);  
         if (step.noteVariationProbability() > 7) { 
@@ -2524,31 +2524,12 @@ void LaunchpadController::drawStochasticSequenceNotes(const StochasticSequence &
                         Color color = selectedNote == n && !fullNoteSelected ? colorYellow() : alternate;
                         setGridLed(row, col, color);
                     } else {
-                        int stepIndex = -1;
-                        if (row == 3) {
-                            stepIndex = getMapValue(semitones, col);
-                        } else if (row == 4) {
-                            stepIndex = getMapValue(tones, col);
-                        }
-                        const auto &step = sequence.step(stepIndex);
-                        Color alternate = colorGreen(1);
-                        if (step.gate()) {
-                            alternate = colorYellow(1);
-                        }
-                        n = bypassScale.getNoteIndex(n);
-                        Color color = selectedNote == n && fullNoteSelected ? colorYellow() : alternate;
-                        setGridLed(row, col, color);
-                        
+                        setGridLed(row, col, colorOff());
                     }
                 }
                 if (_engine.state().running()) {
                     const auto &step = sequence.step(currentStep);
-
-                    if (step.bypassScale()) {
-                        drawRunningStochasticKeyboardCircuit(row, col, step, bypassScale, rootNote);
-                    } else {
-                        drawRunningStochasticKeyboardCircuit(row, col, step, scale, rootNote);
-                    }
+                    drawRunningStochasticKeyboardCircuit(row, col, step, scale, rootNote);
                 }
 
                 Color transposeUpColor = colorOff();
@@ -2698,7 +2679,6 @@ void LaunchpadController::drawArpSequenceBars(const ArpSequence &sequence, ArpSe
 void LaunchpadController::drawArpSequenceNotes(const ArpSequence &sequence, ArpSequence::Layer layer, int currentStep) {
     const auto &scale = _project.selectedScale();
     const auto &track = _project.selectedTrack().arpTrack();
-    const Scale &bypassScale = Scale::get(0);
     int stepIndex = selectedNote;
     const auto &step = sequence.step(stepIndex);  
     if (step.gateProbability() > 7) { 
@@ -2761,31 +2741,12 @@ void LaunchpadController::drawArpSequenceNotes(const ArpSequence &sequence, ArpS
                     Color color =  selectedNote== n && !fullNoteSelected ? colorYellow() : alternate;
                     setGridLed(row, col, color);
                 } else {
-                    int stepIndex = -1;
-                    if (row == 3) {
-                        stepIndex = getMapValue(semitones, col);
-                    } else if (row == 4) {
-                        stepIndex = getMapValue(tones, col);
-                    }
-                    const auto &step = sequence.step(stepIndex);
-                    Color alternate = colorGreen(1);
-                    if (step.gate()) {
-                        alternate = colorYellow(1);
-                    }
-                    n = bypassScale.getNoteIndex(n);
-                    Color color = selectedNote == n && fullNoteSelected ? colorYellow() : alternate;
-                    setGridLed(row, col, color);
-                    
+                    setGridLed(row, col, colorOff());
                 }
             }
             if (_engine.state().running()) {
                 const auto &step = sequence.step(currentStep);
-
-                if (step.bypassScale()) {
-                    drawRunningArpKeyboardCircuit(row, col, step, bypassScale, rootNote);
-                } else {
-                    drawRunningArpKeyboardCircuit(row, col, step, scale, rootNote);
-                }
+                drawRunningArpKeyboardCircuit(row, col, step, scale, rootNote);
             }
 
             Color transposeUpColor = colorOff();
