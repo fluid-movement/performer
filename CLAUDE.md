@@ -1,3 +1,5 @@
+@CONTEXT.md
+
 # Instructions
 - always read the agent-docs before searching code, you will find features and code faster that way
 - check `agent-docs/features-log.md` for a list of features built in this project — it links to detailed feature docs in `agent-docs/features/`
