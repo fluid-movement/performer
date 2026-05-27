@@ -6,6 +6,10 @@
           {
             "type": "command",
             "command": "git status --porcelain -- src/ | grep -q . && echo '{\"systemMessage\":\"Reminder: update RELEASE-NOTES.md if these changes are user-facing.\"}' || true"
+          },
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"Housekeeping: glance at CONTEXT.md. If you completed any todos, changed focus, or have new context that would help the next session — update it now. Keep the file under 120 lines.\"}'"
           }
         ]
       }
