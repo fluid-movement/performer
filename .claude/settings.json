@@ -1,5 +1,15 @@
 {
   "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"BEFORE COMPACTING: update CONTEXT.md RIGHT NOW. This is your last chance before context is lost. Check: todos, decisions, focus shift, key pointers. Keep it under 120 lines.\"}'"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -9,7 +19,7 @@
           },
           {
             "type": "command",
-            "command": "echo '{\"systemMessage\": \"Housekeeping: glance at CONTEXT.md. If you completed any todos, changed focus, or have new context that would help the next session — update it now. Keep the file under 120 lines.\"}'"
+            "command": "echo '{\"systemMessage\": \"CRITICAL — update CONTEXT.md before this turn ends. This is not optional. Check: did todos change? did focus shift? did new decisions get made? Update the file now. Keep it under 120 lines. Skipping this breaks continuity for the next session.\"}'"
           }
         ]
       }

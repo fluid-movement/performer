@@ -3,7 +3,7 @@
 Per-type parameter tables for the redesigned Track Edit pages. Use this when designing each type's visual layout and F-key tab schema.
 
 **Source:** `05-current-ui-functions.md`, §4–9.  
-**Cuts applied:** Removes BypassScale, RetriggerProbability, StageRepeats/StageRepeatsMode, NoteVariationRange/Probability per `00-ia.md`.
+**Cuts applied:** Removes BypassScale, RetriggerProbability, NoteVariationRange/Probability per `00-ia.md`. StageRepeats/StageRepeatsMode restored (Metropolix-style beat repeats from mebitek fork).
 
 ---
 
@@ -30,13 +30,14 @@ Each section lists:
 | GateOffset | –8 to +7 | Sub-step timing offset |
 | Retrigger | 0–7 | Retriggers within the step |
 | Length | 0–15 | Gate length as fraction of step duration |
-| LengthVariationRange | –8 to +7 | Random length variation ±range |
-| LengthVariationProbability | 0–15 | Probability of length variation firing |
 | Note | –64 to +63 | Scale degree index |
 | Slide | bool | Legato / portamento into next step |
 | Condition | 0–127 | Conditional trigger (fill conditions, pattern conditions) |
+| StageRepeats | 1–8 | Times this step repeats before advancing (Metropolix-style) |
+| StageRepeatsMode | enum | How repeats are spaced: Free / Triplets / Dotted / Bisect / Last / FirstLast |
 
-**Cut from original:** BypassScale, RetriggerProbability, StageRepeats, StageRepeatsMode, NoteVariationRange, NoteVariationProbability.
+**Cut from original:** BypassScale, RetriggerProbability, NoteVariationRange, NoteVariationProbability, LengthVariationRange, LengthVariationProbability.
+**Note on variation params:** LengthVariation and NoteVariation are superseded by a planned track-level "humanize" setting that applies subtle random variation globally — no need to expose them per-step.
 
 ### Sequence-level parameters (quick-edit + Track Config)
 
@@ -56,16 +57,18 @@ Each section lists:
 
 | Tab | Label | Layers cycled |
 |---|---|---|
-| F0 | GATE | Gate → GateProbability → GateOffset → Retrigger |
-| F1 | LEN | Length → LengthVariationRange → LengthVariationProbability |
-| F2 | NOTE | Note → Slide |
-| F3 | COND | Condition |
-| F4 | (action — TBD per design session) | e.g., context menu / pattern copy |
+| F0 | GATE | Gate → GateProbability → GateOffset → Retrigger → Length |
+| F1 | NOTE | Note → Slide |
+| F2 | COND | Condition |
+| F3 | REPT | StageRepeats → StageRepeatsMode |
+| F4 | — | free |
 
 **Rationale for changes from current firmware:**
-- Retrigger folded into GATE family (RetriggerProbability cut; Retrigger alone doesn't need its own tab)
-- RETRIG tab (F1 in old firmware) is removed; its surviving content moves to GATE
-- NoteVariationRange/Prob removed → NOTE tab is cleaner (Note → Slide only)
+- Length folded into GATE family — all gate/time parameters in one tab
+- LEN tab eliminated (LengthVariation cut; plain Length doesn't need its own tab)
+- LengthVariationRange/Prob and NoteVariationRange/Prob replaced by planned track-level humanize
+- REPT tab for StageRepeats/StageRepeatsMode — no paging needed, all tabs first-class
+- F4 free for a future action (pattern copy, context menu, etc.)
 
 ### Design notes
 
@@ -319,7 +322,7 @@ Since there's no editing loop, F-keys surface the most-changed config values:
 
 | Track type | Step layers | F-key tabs | Unique design challenge |
 |---|---|---|---|
-| Note | 10 | GATE / LEN / NOTE / COND | Rich step editing, 64-step navigation |
+| Note | 10 | GATE / NOTE / COND / REPT / — | Rich step editing, 64-step navigation, stage repeats |
 | Curve | 5 | SHPE / RNGE / — / — | Bar-height CV visualization, curve shape glyph |
 | Stochastic | 9 | GATE / LEN / NOTE / PROB | Communicating probability without grey levels |
 | Arp | 10 + 5 arp params | GATE / LEN / NOTE / ARP | Arp tab shows non-step config in grid area |
