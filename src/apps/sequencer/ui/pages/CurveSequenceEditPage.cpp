@@ -6,11 +6,9 @@
 #include "ui/painters/SequencePainter.h"
 #include "ui/painters/WindowPainter.h"
 
-#include "model/Curve.h"
-
 #include "core/utils/StringBuilder.h"
-#include <iostream>
-#include <map>
+
+#include <cmath>
 
 enum class ContextAction {
     Init,
@@ -30,79 +28,26 @@ static const ContextMenuModel::Item contextMenuItems[] = {
 };
 
 enum class Function {
-    Shape   = 0,
-    Min     = 1,
-    Max     = 2,
-    Gate    = 3,
+    Shape  = 0,
+    Skew   = 1,
+    Length = 2,
+    Level  = 3,
+    Offset = 4,
 };
 
-static const char *functionNames[] = { "SHAPE", "MIN", "MAX", "GATE", nullptr };
+static const char *functionNames[] = { "SHPE", "SKEW", "LEN", "LVL", "OFST", nullptr };
 
 static const CurveSequenceListModel::Item quickEditItems[8] = {
-    CurveSequenceListModel::Item::FirstStep,
-    CurveSequenceListModel::Item::LastStep,
-    CurveSequenceListModel::Item::RunMode,
     CurveSequenceListModel::Item::Divisor,
-    CurveSequenceListModel::Item::ResetMeasure,
-    CurveSequenceListModel::Item::Range,
+    CurveSequenceListModel::Item::SegmentCount,
+    CurveSequenceListModel::Item::Last,
+    CurveSequenceListModel::Item::Last,
+    CurveSequenceListModel::Item::Last,
+    CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last
 };
 
-static void drawCurve(Canvas &canvas, int x, int y, int w, int h, float &lastY, const Curve::Function function, float min, float max) {
-    const int Step = 1;
-
-    auto eval = [=] (float x) {
-        return (1.f - (function(x) * (max - min) + min)) * h;
-    };
-
-    float fy0 = y + eval(0.f);
-
-    if (lastY >= 0.f && lastY != fy0) {
-        canvas.line(x, lastY, x, fy0);
-    }
-
-    for (int i = 0; i < w; i += Step) {
-        float fy1 = y + eval((float(i) + Step) / w);
-        canvas.line(x + i, fy0, x + i + Step, fy1);
-        fy0 = fy1;
-    }
-
-    lastY = fy0;
-}
-
-static void drawMinMax(Canvas &canvas, int x, int y, int w, int h, float minMax) {
-    y += std::round((1.f - minMax) * h);
-    canvas.hline(x, y, w);
-}
-
-static void drawGatePattern(Canvas &canvas, int x, int y, int w, int h, int gate) {
-    int gs = w / 4;
-    int gw = w / 8;
-    for (int i = 0; i < 4; ++i) {
-        canvas.setColor((gate & (1 << i)) ? Color::Bright : Color::Medium);
-        canvas.fillRect(x + i * gs, y, gw, h);
-    }
-}
-
-static std::pair<int, int> calculateMultiStepShapeMinMax(size_t stepsSelected,
-                                                         size_t multiStepsProcessed,
-                                                         int shape,
-                                                         bool reverse) {
-    // If shift is pressed, reverse ascension
-    int m = !reverse ? multiStepsProcessed : stepsSelected - multiStepsProcessed - 1;
-
-    int min, max;
-    if (shape == 0) {
-        min = CurveSequence::Min::Min;
-        max = CurveSequence::Max::Max;
-    } else {
-        min = std::ceil(float(m) * CurveSequence::Min::Max / stepsSelected);
-        max = std::ceil(float(m + 1) * CurveSequence::Max::Max / stepsSelected);
-    }
-
-    return std::make_pair(min, max);
-}
 
 CurveSequenceEditPage::CurveSequenceEditPage(PageManager &manager, PageContext &context) :
     BasePage(manager, context)
@@ -115,9 +60,6 @@ CurveSequenceEditPage::CurveSequenceEditPage(PageManager &manager, PageContext &
 }
 
 void CurveSequenceEditPage::enter() {
-    updateMonitorStep();
-
-    _showDetail = false;
 }
 
 void CurveSequenceEditPage::exit() {
@@ -126,197 +68,191 @@ void CurveSequenceEditPage::exit() {
 void CurveSequenceEditPage::draw(Canvas &canvas) {
     WindowPainter::clear(canvas);
 
-    /* Prepare flags shown before mode name (top right header) */
     auto &track = _project.selectedTrack().curveTrack();
-
     const auto pattern_follow = track.patternFollow();
     const char* pf_repr = Types::patternFollowShortRepresentation(pattern_follow);
 
     WindowPainter::drawHeader(canvas, _model, _engine, "STEPS", pf_repr);
-
     WindowPainter::drawActiveFunction(canvas, CurveSequence::layerName(layer()));
-    WindowPainter::drawFooter(canvas, functionNames, pageKeyState(), activeFunctionKey());
+    static const char *actionLabelsActive[]   = { "DEL", "DUPL", "RSET", nullptr, nullptr, nullptr };
+    static const char *actionLabelsInactive[] = { "ADD", nullptr, nullptr, nullptr, nullptr, nullptr };
+    int selMode = selectionMode();
+    const char **footerLabels = functionNames;
+    int activeF = activeFunctionKey();
+    if (selMode == 1) { footerLabels = actionLabelsActive;   activeF = -1; }
+    if (selMode == 2) { footerLabels = actionLabelsInactive; activeF = -1; }
+
+    WindowPainter::drawFooter(canvas, footerLabels, pageKeyState(), activeF);
 
     auto &trackEngine = _engine.selectedTrackEngine().as<CurveTrackEngine>();
     auto &sequence = _project.selectedCurveSequence();
-    int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+    int currentSegment = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+    float currentFraction = trackEngine.currentStepFraction();
 
-    bool isActiveSequence = trackEngine.isActiveSequence(sequence);
+    int segCount = sequence.segmentCount();
 
-    canvas.setBlendMode(BlendMode::Add);
+    // Layout constants (128 × 64 canvas)
+    const int curveY = 18;
+    const int curveH = 24;
+    const int indY   = 44;  // indicator strip separator y
+    const int indContent = 45;
 
-    const int stepWidth = Width / StepCount;
-    const int stepOffset = this->stepOffset();
+    // Compute total loop length and per-segment pixel widths
+    int totalLength = 0;
+    for (int i = 0; i < segCount; ++i) {
+        totalLength += sequence.step(i).length();
+    }
+    if (totalLength <= 0) totalLength = 1;
 
-    const int loopY = 16;
-    const int curveY = 24;
-    const int curveHeight = 20;
-    const int bottomY = 48;
-
-    bool drawShapeVariation = layer() == Layer::ShapeVariation || layer() == Layer::ShapeVariationProbability;
-
-
-    // Track Pattern Section on the UI
-    if (track.isPatternFollowDisplayOn() && _engine.state().running()) {
-        bool section_change = bool((currentStep) % StepCount == 0); // StepCount is relative to screen
-        int section_no = int((currentStep) / StepCount);
-        if (section_change && section_no != sequence.section()) {
-            sequence.setSecion(section_no);
-        }
+    int segX[CONFIG_STEP_COUNT];
+    int segW[CONFIG_STEP_COUNT];
+    int cumLen = 0;
+    int xAccum = 0;
+    for (int i = 0; i < segCount; ++i) {
+        segX[i] = xAccum;
+        cumLen += sequence.step(i).length();
+        int nextX = int(std::round(float(cumLen) / float(totalLength) * Width));
+        segW[i] = std::max(1, nextX - xAccum);
+        xAccum = nextX;
     }
 
-    // draw loop points
-    canvas.setBlendMode(BlendMode::Set);
-    canvas.setColor(Color::Bright);
-    SequencePainter::drawLoopStart(canvas, (sequence.firstStep() - stepOffset) * stepWidth + 1, loopY, stepWidth - 2);
-    SequencePainter::drawLoopEnd(canvas, (sequence.lastStep() - stepOffset) * stepWidth + 1, loopY, stepWidth - 2);
-
-    // draw grid
-    if (!drawShapeVariation) {
-        canvas.setColor(Color::Low);
-        for (int stepIndex = 1; stepIndex < StepCount; ++stepIndex) {
-            int x = stepIndex * stepWidth;
-            for (int y = 0; y <= curveHeight; y += 2) {
-                canvas.point(x, curveY + y);
-            }
-        }
-    }
-
-    // draw curve
-    canvas.setColor(Color::Bright);
-    float lastY = -1.f;
-    float lastYVariation = -1.f;
-    for (int i = 0; i < StepCount; ++i) {
-        int stepIndex = stepOffset + i;
-        const auto &step = sequence.step(stepIndex);
-        float min = step.minNormalized();
-        float max = step.maxNormalized();
-
-        int x = i * stepWidth;
-        int y = 20;
-
+    // 1. Segment boundary vertical lines (only when a step is held)
+    if (_stepSelection.any()) {
         canvas.setBlendMode(BlendMode::Set);
-
-        // loop
-        if (stepIndex > sequence.firstStep() && stepIndex <= sequence.lastStep()) {
-            canvas.setColor(Color::Bright);
-            canvas.point(x, loopY);
+        canvas.setColor(Color::Low);
+        for (int i = 1; i < segCount; ++i) {
+            canvas.vline(segX[i], curveY, curveH);
         }
+    }
 
-        // step index
-        {
-            canvas.setColor(_stepSelection[stepIndex] ? Color::Bright : Color::Medium);
-            FixedStringBuilder<8> str("%d", stepIndex + 1);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y - 2, str);
-        }
+    // 2. Segment number labels
+    for (int i = 0; i < segCount; ++i) {
+        bool isCursor = _stepSelection[i];
+        canvas.setBlendMode(BlendMode::Set);
+        canvas.setColor(isCursor ? Color::Bright : Color::Low);
+        FixedStringBuilder<4> str("%d", i + 1);
+        int textW = canvas.textWidth(str);
+        canvas.drawText(segX[i] + (segW[i] - textW + 1) / 2, 14, str);
+    }
 
-        // curve
-        {
-            const auto function = Curve::function(Curve::Type(std::min(Curve::Last - 1, step.shape())));
+    // 3. Per-segment curves
+    for (int i = 0; i < segCount; ++i) {
+        const auto &step = sequence.step(i);
+        bool isCursor = _stepSelection[i];
 
-            canvas.setColor(drawShapeVariation ? Color::MediumLow : Color::Bright);
-            canvas.setBlendMode(BlendMode::Add);
+        canvas.setBlendMode(BlendMode::Add);
+        canvas.setColor(isCursor ? Color::Bright : Color::Low);
 
-            drawCurve(canvas, x, curveY, stepWidth, curveHeight, lastY, function, min, max);
-        }
+        float shp = step.shapeNorm();
+        float skw = step.skewNorm();
+        float lvl = step.levelNorm();
+        float off = step.offsetNorm();
 
-        if (drawShapeVariation) {
-            const auto function = Curve::function(Curve::Type(std::min(Curve::Last - 1, step.shapeVariation())));
+        int w = segW[i];
+        int x0 = segX[i];
 
-            canvas.setColor(Color::Bright);
-            canvas.setBlendMode(BlendMode::Add);
-
-            drawCurve(canvas, x, curveY, stepWidth, curveHeight, lastYVariation, function, min, max);
-        }
-
-        switch (layer()) {
-        case Layer::Shape:
-            break;
-        case Layer::ShapeVariation:
-            break;
-        case Layer::ShapeVariationProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, bottomY, stepWidth - 4, 2,
-                step.shapeVariationProbability(), 8
-            );
-            break;
-        case Layer::Min:
-        case Layer::Max: {
-            bool functionPressed = globalKeyState()[MatrixMap::fromFunction(activeFunctionKey())];
-            canvas.setColor(Color::MediumLow);
-            canvas.setBlendMode(BlendMode::Add);
-            if (layer() == Layer::Min || functionPressed) {
-                drawMinMax(canvas, x, curveY, stepWidth, curveHeight, min);
+        int prevPY = -1;
+        for (int px = 0; px < w; ++px) {
+            float phase = w > 1 ? float(px) / float(w - 1) : 0.5f;
+            float amp = CurveSequence::evalSegment(phase, shp, skw);
+            float val = off + lvl * amp;
+            if (val < 0.f) val = 0.f;
+            if (val > 1.f) val = 1.f;
+            int py = curveY + curveH - 1 - int(std::round(val * (curveH - 1)));
+            if (prevPY >= 0 && prevPY != py) {
+                canvas.line(x0 + px - 1, prevPY, x0 + px, py);
+            } else {
+                canvas.point(x0 + px, py);
             }
-            if (layer() == Layer::Max || functionPressed) {
-                drawMinMax(canvas, x, curveY, stepWidth, curveHeight, max);
+            prevPY = py;
+        }
+    }
+
+    // 4. Play scanline
+    if (currentSegment >= 0 && currentSegment < segCount) {
+        int playX = segX[currentSegment] + std::min(int(std::round(currentFraction * segW[currentSegment])), segW[currentSegment] - 1);
+        canvas.setBlendMode(BlendMode::Set);
+        canvas.setColor(Color::Bright);
+        canvas.vline(playX, curveY, curveH);
+    }
+
+    // 5. Indicator strip separator
+    canvas.setBlendMode(BlendMode::Set);
+    canvas.setColor(Color::Low);
+    canvas.hline(0, indY, Width);
+
+    // 6. Indicator strip per tab
+    auto activeLayer = layer();
+    for (int i = 0; i < segCount; ++i) {
+        const auto &step = sequence.step(i);
+        canvas.setBlendMode(BlendMode::Set);
+        canvas.setColor(Color::Bright);
+
+        switch (activeLayer) {
+        case Layer::Shape: {
+            int val = int(std::round(step.shapeNorm() * 100.f));
+            if (segW[i] >= 8) {
+                FixedStringBuilder<8> str("%d", val);
+                int tw = canvas.textWidth(str);
+                canvas.drawText(segX[i] + (segW[i] - tw) / 2, indContent, str);
             }
             break;
         }
-        case Layer::Gate:
-            canvas.setColor(Color::Bright);
-            canvas.setBlendMode(BlendMode::Set);
-            drawGatePattern(canvas, x, bottomY, stepWidth, 2, step.gate());
+        case Layer::Skew: {
+            int tickX = segX[i] + std::min(int(std::round(step.skewNorm() * segW[i])), segW[i] - 1);
+            canvas.vline(tickX, indContent, 4);
             break;
-        case Layer::GateProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, bottomY, stepWidth - 4, 2,
-                step.gateProbability() + 1, CurveSequence::GateProbability::Range
-            );
+        }
+        case Layer::Length: {
+            FixedStringBuilder<8> str("%d", step.length());
+            int tw = canvas.textWidth(str);
+            if (segW[i] >= tw + 2) {
+                canvas.drawText(segX[i] + (segW[i] - tw) / 2, indContent, str);
+            }
             break;
+        }
+        case Layer::Level: {
+            int val = int(std::round(step.levelNorm() * 100.f));
+            if (segW[i] >= 8) {
+                FixedStringBuilder<8> str("%d", val);
+                int tw = canvas.textWidth(str);
+                canvas.drawText(segX[i] + (segW[i] - tw) / 2, indContent, str);
+            }
+            break;
+        }
+        case Layer::Offset: {
+            int val = int(std::round(step.offsetNorm() * 100.f));
+            if (segW[i] >= 8) {
+                FixedStringBuilder<8> str("%d", val);
+                int tw = canvas.textWidth(str);
+                canvas.drawText(segX[i] + (segW[i] - tw) / 2, indContent, str);
+            }
+            break;
+        }
         case Layer::Last:
             break;
         }
-    }
-
-    // draw cursor
-    if (isActiveSequence) {
-        canvas.setColor(Color::Bright);
-
-        int x = 0;
-        auto dir = trackEngine.sequenceState().direction();
-        if (dir == 1) {
-            x = ((trackEngine.currentStep() - stepOffset) + trackEngine.currentStepFraction()) * stepWidth;
-        } else if (dir == -1) {
-            x = ((trackEngine.currentStep() + stepOffset)- trackEngine.currentStepFraction()) * stepWidth;
-        }
-
-        canvas.vline(x, curveY, curveHeight);
-    }
-
-    // handle detail display
-
-    if (_showDetail) {
-        if (!(layer() == Layer::ShapeVariationProbability || layer() == Layer::GateProbability) || _stepSelection.none()) {
-            _showDetail = false;
-        }
-        if (_stepSelection.isPersisted() && os::ticks() > _showDetailTicks + os::time::ms(500)) {
-            _showDetail = false;
-        }
-    }
-
-    if (_showDetail) {
-        drawDetail(canvas, sequence.step(_stepSelection.first()));
     }
 }
 
 void CurveSequenceEditPage::updateLeds(Leds &leds) {
     const auto &trackEngine = _engine.selectedTrackEngine().as<CurveTrackEngine>();
     const auto &sequence = _project.selectedCurveSequence();
-    int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+    int currentSegment = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+    int segCount = sequence.segmentCount();
 
     for (int i = 0; i < 16; ++i) {
-        int stepIndex = stepOffset() + i;
-        bool red = (stepIndex == currentStep) || _stepSelection[stepIndex];
-        bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() > 0 || _stepSelection[stepIndex]);
-        leds.set(MatrixMap::fromStep(i), red, green);
+        if (i >= segCount) {
+            leds.set(MatrixMap::fromStep(i), false, false);
+        } else {
+            bool isCursor   = _stepSelection[i];
+            bool isPlaying  = (i == currentSegment);
+            // red = playing, amber = cursor (red+green), green = normal
+            bool red   = isPlaying || isCursor;
+            bool green = isCursor || (!isPlaying && i < segCount);
+            leds.set(MatrixMap::fromStep(i), red, green);
+        }
     }
-
-    LedPainter::drawSelectedSequenceSection(leds, sequence.section());
-
-    LedPainter::drawSelectedSequenceSection(leds, sequence.section());
 
     // show quick edit keys
     if (globalKeyState()[Key::Page] && !globalKeyState()[Key::Shift]) {
@@ -330,20 +266,16 @@ void CurveSequenceEditPage::updateLeds(Leds &leds) {
 }
 
 void CurveSequenceEditPage::keyDown(KeyEvent &event) {
-    _stepSelection.keyDown(event, stepOffset());
-    updateMonitorStep();
+    _stepSelection.keyDown(event, 0);
 }
 
 void CurveSequenceEditPage::keyUp(KeyEvent &event) {
-    _stepSelection.keyUp(event, stepOffset());
-    updateMonitorStep();
+    _stepSelection.keyUp(event, 0);
 }
 
 void CurveSequenceEditPage::keyPress(KeyPressEvent &event) {
     const auto &key = event.key();
-    auto &sequence = _project.selectedCurveSequence();
     auto &track = _project.selectedTrack().curveTrack();
-
 
     if (key.isContextMenu()) {
         contextShow();
@@ -358,7 +290,6 @@ void CurveSequenceEditPage::keyPress(KeyPressEvent &event) {
     }
 
     if (key.isQuickEdit()) {
-        // XXX Added here, but should we move it to pageModifier structure?
         if (key.is(Key::Step15)) {
             track.togglePatternFollowDisplay();
         } else {
@@ -372,45 +303,29 @@ void CurveSequenceEditPage::keyPress(KeyPressEvent &event) {
         return;
     }
 
-    if (key.isEncoder() && layer() == Layer::Shape && globalKeyState()[Key::Shift] && _stepSelection.count() > 1) {
-        for (size_t stepIndex = 0; stepIndex < _stepSelection.size(); ++stepIndex) {
-        if (_stepSelection[stepIndex]) {
-            auto &step = sequence.step(stepIndex);
-            auto reverseShape = Curve::invAt(step.shape());
-            step.setShape(reverseShape);
-        }
-    }
-    }
-
-    _stepSelection.keyPress(event, stepOffset());
-    updateMonitorStep();
+    _stepSelection.keyPress(event, 0);
 
     if (key.isFunction()) {
-        switchLayer(key.function(), key.shiftModifier());
+        if (_stepSelection.any()) {
+            int mode = selectionMode();
+            if (mode == 1) {
+                handleActiveSegmentAction(key.function());
+                event.consume();
+                return;
+            } else if (mode == 2) {
+                if (key.function() == 0)
+                    _project.selectedCurveSequence().addSegment();
+                event.consume();
+                return;
+            }
+            // mode == 3 (mixed active+inactive): fall through to switchLayer
+        }
+        switchLayer(key.function());
         event.consume();
     }
 
     if (key.isEncoder()) {
         track.setPatternFollowDisplay(false);
-        event.consume();
-    }
-
-    if (key.isLeft()) {
-        if (key.shiftModifier()) {
-            sequence.shiftSteps(_stepSelection.selected(), -1);
-        } else {
-            track.setPatternFollowDisplay(false);
-            sequence.setSecion(std::max(0, sequence.section() - 1));
-        }
-        event.consume();
-    }
-    if (key.isRight()) {
-        if (key.shiftModifier()) {
-            sequence.shiftSteps(_stepSelection.selected(), 1);
-        } else {
-            track.setPatternFollowDisplay(false);
-            sequence.setSecion(std::min(3, sequence.section() + 1));
-        }
         event.consume();
     }
 }
@@ -419,233 +334,77 @@ void CurveSequenceEditPage::encoder(EncoderEvent &event) {
     auto &sequence = _project.selectedCurveSequence();
 
     if (!_stepSelection.any()) {
-        switch (layer()) {
-        case Layer::Shape:
-            setLayer(event.value() > 0 ? Layer::ShapeVariation : Layer::ShapeVariationProbability);
-            break;
-        case Layer::ShapeVariation:
-            setLayer(event.value() > 0 ? Layer::ShapeVariationProbability : Layer::Shape);
-            break;
-        case Layer::ShapeVariationProbability:
-            setLayer(event.value() > 0 ? Layer::Shape : Layer::ShapeVariation);
-            break;
-        case Layer::Gate:
-            setLayer(Layer::GateProbability);
-            break;
-        case Layer::GateProbability:
-            setLayer(Layer::Gate);
-            break;
-        default:
-            break;
-        }
         return;
-    } else {
-        _showDetail = true;
-        _showDetailTicks = os::ticks();
     }
 
-    for (size_t stepIndex = 0, multiStepsProcessed = 0; stepIndex < sequence.steps().size(); ++stepIndex) {
-        if (_stepSelection[stepIndex]) {
-            auto &step = sequence.step(stepIndex);
-            bool shift = globalKeyState()[Key::Shift];
+    bool shift = globalKeyState()[Key::Shift];
+
+    for (size_t i = 0; i < size_t(sequence.segmentCount()); ++i) {
+        if (_stepSelection[i]) {
+            auto &step = sequence.step(i);
             switch (layer()) {
-            case Layer::Shape:
-                if (_stepSelection.count() > 1 && shift) { // Create a multi-step shape
-                    auto &firstStep = sequence.step(_stepSelection.firstSetIndex());
-                    int firstStepShape = multiStepsProcessed == 0 ? firstStep.shape() + event.value() : firstStep.shape();
-                    step.setShape(firstStepShape);
-
-                    int min, max;
-                    std::tie(min, max) = calculateMultiStepShapeMinMax(_stepSelection.count(), multiStepsProcessed, firstStepShape, false);
-
-                    step.setMin(min);
-                    step.setMax(max);
-                } else {
-                    step.setShape(step.shape() + event.value());
-                }
-                break;
-            case Layer::ShapeVariation:
-                step.setShapeVariation(step.shapeVariation() + event.value());
-                break;
-            case Layer::ShapeVariationProbability:
-                step.setShapeVariationProbability(step.shapeVariationProbability() + event.value());
-                break;
-            case Layer::Min:
-            case Layer::Max: {
-                bool functionPressed = globalKeyState()[MatrixMap::fromFunction(activeFunctionKey())];
-                int offset = event.value() * ((shift || event.pressed()) ? 1 : 8);
-                if (functionPressed) {
-                    // adjust both min and max
-                    offset = clamp(offset, -step.min(), CurveSequence::Max::max() - step.max());
-                    step.setMin(step.min() + offset);
-                    step.setMax(step.max() + offset);
-                } else {
-                    // adjust min or max
-                    if (layer() == Layer::Min) {
-                        step.setMin(step.min() + offset);
-                    } else {
-                        step.setMax(step.max() + offset);
-                    }
-                }
+            case Layer::Shape: {
+                float delta = event.value() * (shift ? 0.01f : 0.05f);
+                step.setShapeNorm(clamp(step.shapeNorm() + delta, 0.f, 1.f));
                 break;
             }
-            case Layer::Gate:
-                step.setGate(step.gate() + event.value());
+            case Layer::Skew: {
+                float delta = event.value() * (shift ? 0.01f : 0.05f);
+                step.setSkewNorm(clamp(step.skewNorm() + delta, 0.f, 1.f));
                 break;
-            case Layer::GateProbability:
-                step.setGateProbability(step.gateProbability() + event.value());
+            }
+            case Layer::Length:
+                step.setLength(step.length() + event.value());
                 break;
+            case Layer::Level: {
+                float delta = event.value() * (shift ? 0.01f : 0.05f);
+                step.setLevelNorm(clamp(step.levelNorm() + delta, 0.f, 1.f));
+                break;
+            }
+            case Layer::Offset: {
+                float delta = event.value() * (shift ? 0.01f : 0.05f);
+                step.setOffsetNorm(clamp(step.offsetNorm() + delta, 0.f, 1.f));
+                break;
+            }
             case Layer::Last:
                 break;
             }
-
-            multiStepsProcessed++;
         }
     }
 
     event.consume();
 }
 
-void CurveSequenceEditPage::switchLayer(int functionKey, bool shift) {
-    if (shift) {
-        switch (Function(functionKey)) {
-        case Function::Shape:
-            setLayer(Layer::Shape);
-            break;
-        case Function::Min:
-            setLayer(Layer::Min);
-            break;
-        case Function::Max:
-            setLayer(Layer::Max);
-            break;
-        case Function::Gate:
-            setLayer(Layer::Gate);
-            break;
-        }
-        return;
-    }
-
+void CurveSequenceEditPage::switchLayer(int functionKey) {
     switch (Function(functionKey)) {
     case Function::Shape:
-        switch (layer()) {
-        case Layer::Shape:
-            setLayer(Layer::ShapeVariation);
-            break;
-        case Layer::ShapeVariation:
-            setLayer(Layer::ShapeVariationProbability);
-            break;
-        case Layer::ShapeVariationProbability:
-            setLayer(Layer::Shape);
-            break;
-        default:
-            setLayer(Layer::Shape);
-            break;
-        }
+        setLayer(Layer::Shape);
         break;
-    case Function::Min:
-        setLayer(Layer::Min);
+    case Function::Skew:
+        setLayer(Layer::Skew);
         break;
-    case Function::Max:
-        setLayer(Layer::Max);
+    case Function::Length:
+        setLayer(Layer::Length);
         break;
-    case Function::Gate:
-        switch (layer()) {
-        case Layer::Gate:
-            setLayer(Layer::GateProbability);
-            break;
-        case Layer::GateProbability:
-            setLayer(Layer::Gate);
-            break;
-        default:
-            setLayer(Layer::Gate);
-            break;
-        }
+    case Function::Level:
+        setLayer(Layer::Level);
+        break;
+    case Function::Offset:
+        setLayer(Layer::Offset);
         break;
     }
 }
 
 int CurveSequenceEditPage::activeFunctionKey() {
-    switch(layer()) {
-    case Layer::Shape:
-    case Layer::ShapeVariation:
-    case Layer::ShapeVariationProbability:
-        return 0;
-    case Layer::Min:
-        return 1;
-    case Layer::Max:
-        return 2;
-    case Layer::Gate:
-    case Layer::GateProbability:
-        return 3;
-    case Layer::Last:
-        break;
-    }
-
-    return -1;
-}
-
-void CurveSequenceEditPage::updateMonitorStep() {
-    auto &trackEngine = _engine.selectedTrackEngine().as<CurveTrackEngine>();
-
-    if ((layer() == Layer::Min || layer() == Layer::Max) && !_stepSelection.isPersisted() && _stepSelection.any()) {
-        trackEngine.setMonitorStep(_stepSelection.first());
-        trackEngine.setMonitorStepLevel(layer() == Layer::Min ? CurveTrackEngine::MonitorLevel::Min : CurveTrackEngine::MonitorLevel::Max);
-    } else {
-        trackEngine.setMonitorStep(-1);
-    }
-}
-
-void CurveSequenceEditPage::drawDetail(Canvas &canvas, const CurveSequence::Step &step) {
-
-    FixedStringBuilder<16> str;
-
-    WindowPainter::drawFrame(canvas, 64, 16, 128, 32);
-
-    canvas.setBlendMode(BlendMode::Set);
-    canvas.setColor(Color::Bright);
-    canvas.vline(64 + 32, 16, 32);
-
-    canvas.setFont(Font::Small);
-    str("%d", _stepSelection.first() + 1);
-    if (_stepSelection.count() > 1) {
-        str("*");
-    }
-    canvas.drawTextCentered(64, 16, 32, 32, str);
-
-    canvas.setFont(Font::Tiny);
-
     switch (layer()) {
-    case Layer::Shape:
-    case Layer::ShapeVariation:
-        break;
-    case Layer::ShapeVariationProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.shapeVariationProbability(), 8
-        );
-        str.reset();
-        str("%.1f%%", 100.f * step.shapeVariationProbability() / 8.f);
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Min:
-    case Layer::Max:
-    case Layer::Gate:
-    case Layer::GateProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.gateProbability(), CurveSequence::GateProbability::Range-1
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.gateProbability()) / (CurveSequence::GateProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Last:
-        break;
+    case Layer::Shape:  return 0;
+    case Layer::Skew:   return 1;
+    case Layer::Length: return 2;
+    case Layer::Level:  return 3;
+    case Layer::Offset: return 4;
+    case Layer::Last:   break;
     }
+    return -1;
 }
 
 void CurveSequenceEditPage::contextShow(bool doubleClick) {
@@ -709,7 +468,6 @@ void CurveSequenceEditPage::duplicateSequence() {
     showMessage("STEPS DUPLICATED");
 }
 
-
 void CurveSequenceEditPage::generateSequence() {
     _manager.pages().generatorSelect.show([this] (bool success, Generator::Mode mode) {
         if (success) {
@@ -723,6 +481,40 @@ void CurveSequenceEditPage::generateSequence() {
             }
         }
     });
+}
+
+int CurveSequenceEditPage::selectionMode() const {
+    if (!_stepSelection.any()) return 0;
+    int segCount = _project.selectedCurveSequence().segmentCount();
+    bool hasActive = false, hasInactive = false;
+    for (int i = 0; i < 16; ++i) {
+        if (_stepSelection[i]) {
+            if (i < segCount) hasActive = true;
+            else hasInactive = true;
+        }
+    }
+    if (hasActive && hasInactive) return 3;
+    if (hasActive) return 1;
+    return 2;
+}
+
+void CurveSequenceEditPage::handleActiveSegmentAction(int f) {
+    auto &seq = _project.selectedCurveSequence();
+    // collect active selected indices descending to avoid index shifts
+    std::array<int, 16> indices;
+    int count = 0;
+    for (int i = 15; i >= 0; --i) {
+        if (_stepSelection[i] && i < seq.segmentCount())
+            indices[count++] = i;
+    }
+    for (int k = 0; k < count; ++k) {
+        int i = indices[k];
+        switch (f) {
+        case 0: seq.deleteSegment(i);    break;
+        case 1: seq.duplicateSegment(i); break;
+        case 2: seq.resetSegment(i);     break;
+        }
+    }
 }
 
 void CurveSequenceEditPage::quickEdit(int index) {

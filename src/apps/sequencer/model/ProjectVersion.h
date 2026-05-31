@@ -120,6 +120,9 @@ enum ProjectVersion {
     // remove per-sequence scale and rootNote (project scale is now authoritative)
     Version41 = 41,
 
+    // curve track V1: add _segmentCount to CurveSequence
+    Version42 = 42,
+
     // automatically derive latest version
     Last,
     Latest = Last - 1,

@@ -30,50 +30,39 @@ public:
     virtual bool activity() const override { return _activity; }
     virtual bool gateOutput(int index) const override { return _gateOutput; }
     virtual float cvOutput(int index) const override { return _cvOutput; }
-    virtual float sequenceProgress() const override {
-        return _currentStep < 0 ? 0.f : float(_currentStep - _sequence->firstStep()) / (_sequence->lastStep() - _sequence->firstStep());
-    }
+    virtual float sequenceProgress() const override { return _loopProgress; }
 
     const CurveSequence &sequence() const { return *_sequence; }
     bool isActiveSequence(const CurveSequence &sequence) const { return &sequence == _sequence; }
 
-    int currentStep() const { return _currentStep; }
-    float currentStepFraction() const { return _currentStepFraction; }
-
-    enum class MonitorLevel { Min, Max };
-
-    void setMonitorStep(int index) { _monitorStepIndex = (index >= 0 && index < CONFIG_STEP_COUNT) ? index : -1; }
-    void setMonitorStepLevel(MonitorLevel level) { _monitorStepLevel = level; }
+    int currentStep() const { return _currentSegment; }
+    float currentStepFraction() const { return _segmentFraction; }
 
     SequenceState sequenceState() {
         return _sequenceState;
     }
 
 private:
-    void triggerStep(uint32_t tick, uint32_t divisor);
+    void advancePulse(uint32_t tick, uint32_t divisor);
     void updateOutput(uint32_t relativeTick, uint32_t divisor);
-
-    bool isRecording() const;
-    void updateRecordValue();
-    void updateRecording(uint32_t relativeTick, uint32_t divisor);
 
     CurveTrack &_curveTrack;
 
     TrackLinkData _linkData;
 
-    float _recordValue;
+    float _recordValue = 0.f;
     CurveRecorder _recorder;
-
-    int _monitorStepIndex = -1;
-    MonitorLevel _monitorStepLevel = MonitorLevel::Min;
 
     CurveSequence *_sequence;
     CurveSequence *_fillSequence;
     SequenceState _sequenceState;
-    int _currentStep;
-    float _currentStepFraction;
-    bool _shapeVariation;
-    CurveTrack::FillMode _fillMode;
+
+    int   _currentSegment  = -1;
+    int   _currentPulse    = 0;
+    int   _loopLength      = 0;
+    int   _loopPulse       = 0;
+    float _segmentFraction = 0.f;
+    float _loopProgress    = 0.f;
 
     bool _activity;
     bool _gateOutput;

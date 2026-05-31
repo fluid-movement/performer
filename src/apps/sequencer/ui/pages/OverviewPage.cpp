@@ -21,12 +21,12 @@ static const NoteSequenceListModel::Item noteQuickEditItems[8] = {
 };
 
 static const CurveSequenceListModel::Item curveQuickEditItems[8] = {
-    CurveSequenceListModel::Item::FirstStep,
-    CurveSequenceListModel::Item::LastStep,
-    CurveSequenceListModel::Item::RunMode,
     CurveSequenceListModel::Item::Divisor,
-    CurveSequenceListModel::Item::ResetMeasure,
+    CurveSequenceListModel::Item::SegmentCount,
     CurveSequenceListModel::Item::Range,
+    CurveSequenceListModel::Item::ResetMeasure,
+    CurveSequenceListModel::Item::Last,
+    CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last
 };
@@ -599,22 +599,25 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
      if (key.isEncoder() && _project.selectedTrack().trackMode() == Track::TrackMode::Curve) {
         switch (_project.selectedCurveSequenceLayer()) {
             case CurveSequence::Layer::Shape:
-                showMessage("Min");
-                _project.setSelectedCurveSequenceLayer(CurveSequence::Layer::Min);
+                showMessage("SKEW");
+                _project.setSelectedCurveSequenceLayer(CurveSequence::Layer::Skew);
                 break;
-            case CurveSequence::Layer::Min:
-                showMessage("Max");
-                _project.setSelectedCurveSequenceLayer(CurveSequence::Layer::Max);
+            case CurveSequence::Layer::Skew:
+                showMessage("LEN");
+                _project.setSelectedCurveSequenceLayer(CurveSequence::Layer::Length);
                 break;
-            case CurveSequence::Layer::Max:
-                showMessage("Gate");
-                _project.setSelectedCurveSequenceLayer(CurveSequence::Layer::Gate);
+            case CurveSequence::Layer::Length:
+                showMessage("LVL");
+                _project.setSelectedCurveSequenceLayer(CurveSequence::Layer::Level);
                 break;
-            case CurveSequence::Layer::Gate:
-                showMessage("Shape");
+            case CurveSequence::Layer::Level:
+                showMessage("OFST");
+                _project.setSelectedCurveSequenceLayer(CurveSequence::Layer::Offset);
+                break;
+            case CurveSequence::Layer::Offset:
+                showMessage("SHPE");
                 _project.setSelectedCurveSequenceLayer(CurveSequence::Layer::Shape);
                 break;
-
             default:
                 break;
         }
@@ -656,60 +659,10 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
             case Track::TrackMode::Curve: {
                 int stepIndex = stepOffset() + key.step();
                 auto &sequence = _project.selectedCurveSequence();
-                const auto step = sequence.step(stepIndex);
-                FixedStringBuilder<8> str;
-                switch (step.gate()) {
-                case 0:
-                    str("____");
-                    break;
-                case 1:
-                    str("|___");
-                    break;
-                case 2:
-                    str("_|__");
-                    break;
-                case 3:
-                    str("||__");
-                    break;
-                case 4:
-                    str("__|_");
-                    break;
-                case 5:
-                    str("|_|_");
-                    break;
-                case 6:
-                    str("_||_");
-                    break;
-                case 7:
-                    str("|||_");
-                    break;
-                case 8:
-                    str("___|");
-                    break;
-                case 9:
-                    str("|__|");
-                    break;
-                case 10:
-                    str("_|_|");
-                    break;
-                case 11:
-                    str("||_|");
-                    break;
-                case 12:
-                    str("__||");
-                    break;
-                case 13:
-                    str("|_||");
-                    break;
-                case 14:
-                    str("_|||");
-                    break;
-                case 15:
-                    str("||||");
-                    break;
-            }
-            showMessage(str);
-            break;
+                const auto &step = sequence.step(stepIndex);
+                FixedStringBuilder<8> str("SEG%d LEN%d", stepIndex + 1, step.length());
+                showMessage(str);
+                break;
             }
             case Track::TrackMode::Arp: {
                     int stepIndex = stepOffset() + key.step();
@@ -838,16 +791,19 @@ void OverviewPage::encoder(EncoderEvent &event) {
                         
                         switch (_project.selectedCurveSequenceLayer()) {
                             case CurveSequence::Layer::Shape:
-                                step.setShape(step.shape() + event.value());
+                                step.setShapeNorm(clamp(step.shapeNorm() + event.value() * 0.05f, 0.f, 1.f));
                                 break;
-                            case CurveSequence::Layer::Min:
-                                step.setMin(step.min() + event.value()*8);
+                            case CurveSequence::Layer::Skew:
+                                step.setSkewNorm(clamp(step.skewNorm() + event.value() * 0.05f, 0.f, 1.f));
                                 break;
-                            case CurveSequence::Layer::Max:
-                                step.setMax(step.max() + event.value()*8);
+                            case CurveSequence::Layer::Length:
+                                step.setLength(step.length() + event.value());
                                 break;
-                            case CurveSequence::Layer::Gate:
-                                step.setGate(step.gate()+ event.value());
+                            case CurveSequence::Layer::Level:
+                                step.setLevelNorm(clamp(step.levelNorm() + event.value() * 0.05f, 0.f, 1.f));
+                                break;
+                            case CurveSequence::Layer::Offset:
+                                step.setOffsetNorm(clamp(step.offsetNorm() + event.value() * 0.05f, 0.f, 1.f));
                                 break;
                             default:
                                 break;
@@ -914,85 +870,34 @@ void OverviewPage::drawCurveDetail(Canvas &canvas, const CurveSequence::Step &st
 
     switch (_project.selectedCurveSequenceLayer()) {
         case CurveSequence::Layer::Shape: {
-            float min = step.minNormalized();
-            float max = step.maxNormalized();
-            float lastY = -1.f;
-            const auto function = Curve::function(Curve::Type(std::min(Curve::Last - 1, step.shape())));
-            drawCurve(canvas, 64 + 64, 24 + 1, 18, 12, lastY, function, min, max);
+            str("%.0f", step.shapeNorm() * 100.f);
+            canvas.setFont(Font::Small);
+            canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
+            break;
         }
+        case CurveSequence::Layer::Skew: {
+            str("%.0f", step.skewNorm() * 100.f);
+            canvas.setFont(Font::Small);
+            canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
             break;
-        case CurveSequence::Layer::Min: {
-                str("%.1f%%", 100.f * (step.min()) / (CurveSequence::Min::Range-1));
-                canvas.setFont(Font::Small);
-                canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-            }
+        }
+        case CurveSequence::Layer::Length: {
+            str("%d", step.length());
+            canvas.setFont(Font::Small);
+            canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
             break;
-        case CurveSequence::Layer::Max: {
-                str("%.1f%%", 100.f * (step.max()) / (CurveSequence::Max::Range-1));
-                canvas.setFont(Font::Small);
-                canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-            }
+        }
+        case CurveSequence::Layer::Level: {
+            str("%.0f", step.levelNorm() * 100.f);
+            canvas.setFont(Font::Small);
+            canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
             break;
-        case CurveSequence::Layer::Gate: {
-            const std::bitset<4> mask = 0x1;
-            std::bitset<4> enabled;
-            switch (step.gate()) {
-                case 0:
-                    enabled =0x0;
-                    break;
-                case 1:
-                    enabled = 0x1;
-                    break;
-                case 2:
-                    enabled = 0x2;
-                    break;
-                case 3:
-                    enabled = 0x3;
-                    break;
-                case 4:
-                    enabled = 0x4;
-                    break;
-                case 5:
-                    enabled = 0x5;
-                    break;
-                case 6:
-                    enabled = 0x6;
-                    break;
-                case 7:
-                    enabled = 0x7;
-                    break;
-                case 8:
-                    enabled = 0x8;
-                case 9:
-                    enabled = 0x9;
-                    break;
-                case 10:
-                    enabled = 0xa;
-                    break;
-                case 11:
-                    enabled = 0xb;
-                    break;
-                case 12:
-                    enabled = 0xc;
-                    break;
-                case 13:
-                    enabled = 0xd;
-                    break;
-                case 14:
-                    enabled = 0xe;
-                    break;
-                case 15:
-                    enabled = 0xf;
-                    break;
-            }
-
-            for (int i = 0; i < 4; i++) {
-                if (((enabled >> i) & mask) == 1) {
-                    canvas.vline(64 + 64 +  (i*2), 24, 16);
-                } else {
-                    canvas.hline(64 + 64 + (i*2), 24, 1);
-                }
-            }
+        }
+        case CurveSequence::Layer::Offset: {
+            str("%.0f", step.offsetNorm() * 100.f);
+            canvas.setFont(Font::Small);
+            canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
+            break;
         }
         default:
             break;
@@ -1049,13 +954,8 @@ void OverviewPage::updateMonitorStep() {
                 }   
             }
             break;
-        case Track::TrackMode::Curve: {
-                auto &trackEngine = _engine.selectedTrackEngine().as<CurveTrackEngine>();
-                if ( _stepSelection.any()) {
-                    trackEngine.setMonitorStep(_stepSelection.first());
-                    trackEngine.setMonitorStepLevel(_project.selectedCurveSequenceLayer() == CurveSequence::Layer::Min ? CurveTrackEngine::MonitorLevel::Min : CurveTrackEngine::MonitorLevel::Max);
-                }
-            }
+        case Track::TrackMode::Curve:
+            // V1: monitoring removed
             break;
         case Track::TrackMode::Stochastic: {
                 auto &trackEngine = _engine.selectedTrackEngine().as<StochasticEngine>();

@@ -659,6 +659,7 @@ void register_project(py::module &m) {
         .def_property("runMode", &CurveSequence::runMode, &CurveSequence::setRunMode)
         .def_property("firstStep", &CurveSequence::firstStep, &CurveSequence::setFirstStep)
         .def_property("lastStep", &CurveSequence::lastStep, &CurveSequence::setLastStep)
+        .def_property("segmentCount", &CurveSequence::segmentCount, &CurveSequence::setSegmentCount)
         .def_property_readonly("steps", [] (CurveSequence &curveSequence) {
             py::list result;
             for (int i = 0; i < CONFIG_STEP_COUNT; ++i) {
@@ -670,28 +671,28 @@ void register_project(py::module &m) {
         .def("clearSteps", &CurveSequence::clearSteps)
         .def("shiftSteps", &CurveSequence::shiftSteps, "selected"_a, "direction"_a)
         .def("duplicateSteps", &CurveSequence::duplicateSteps)
+        .def("deleteSegment", &CurveSequence::deleteSegment, "idx"_a)
+        .def("duplicateSegment", &CurveSequence::duplicateSegment, "idx"_a)
+        .def("resetSegment", &CurveSequence::resetSegment, "idx"_a)
+        .def("addSegment", &CurveSequence::addSegment)
     ;
 
     py::enum_<CurveSequence::Layer>(curveSequence, "Layer")
-        .value("Shape", CurveSequence::Layer::Shape)
-        .value("ShapeVariation", CurveSequence::Layer::ShapeVariation)
-        .value("ShapeVariationProbability", CurveSequence::Layer::ShapeVariationProbability)
-        .value("Min", CurveSequence::Layer::Min)
-        .value("Max", CurveSequence::Layer::Max)
-        .value("Gate", CurveSequence::Layer::Gate)
-        .value("GateProbability", CurveSequence::Layer::GateProbability)
+        .value("Shape",  CurveSequence::Layer::Shape)
+        .value("Skew",   CurveSequence::Layer::Skew)
+        .value("Length", CurveSequence::Layer::Length)
+        .value("Level",  CurveSequence::Layer::Level)
+        .value("Offset", CurveSequence::Layer::Offset)
         .export_values()
     ;
 
     py::class_<CurveSequence::Step> curveSequenceStep(curveSequence, "Step");
     curveSequenceStep
-        .def_property("shape", &CurveSequence::Step::shape, &CurveSequence::Step::setShape)
-        .def_property("shapeVariation", &CurveSequence::Step::shapeVariation, &CurveSequence::Step::setShapeVariation)
-        .def_property("shapeVariationProbability", &CurveSequence::Step::shapeVariationProbability, &CurveSequence::Step::setShapeVariationProbability)
-        .def_property("min", &CurveSequence::Step::min, &CurveSequence::Step::setMin)
-        .def_property("max", &CurveSequence::Step::max, &CurveSequence::Step::setMax)
-        .def_property("gate", &CurveSequence::Step::gate, &CurveSequence::Step::setGate)
-        .def_property("gateProbability", &CurveSequence::Step::gateProbability, &CurveSequence::Step::setGateProbability)
+        .def_property("shapeNorm",  &CurveSequence::Step::shapeNorm,  &CurveSequence::Step::setShapeNorm)
+        .def_property("skewNorm",   &CurveSequence::Step::skewNorm,   &CurveSequence::Step::setSkewNorm)
+        .def_property("levelNorm",  &CurveSequence::Step::levelNorm,  &CurveSequence::Step::setLevelNorm)
+        .def_property("offsetNorm", &CurveSequence::Step::offsetNorm, &CurveSequence::Step::setOffsetNorm)
+        .def_property("length",     &CurveSequence::Step::length,     &CurveSequence::Step::setLength)
         .def("clear", &CurveSequence::Step::clear)
     ;
 

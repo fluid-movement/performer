@@ -31,12 +31,8 @@ private:
 
     int stepOffset() const { return _project.selectedCurveSequence().section() * StepCount; }
 
-    void switchLayer(int functionKey, bool shift);
+    void switchLayer(int functionKey);
     int activeFunctionKey();
-
-    void updateMonitorStep();
-
-    void drawDetail(Canvas &canvas, const CurveSequence::Step &step);
 
     void contextShow(bool doubleClick = false);
     void contextAction(int index);
@@ -50,13 +46,13 @@ private:
 
     void quickEdit(int index);
 
+    int selectionMode() const;
+    void handleActiveSegmentAction(int f);
+
     CurveSequence::Layer layer() const { return _project.selectedCurveSequenceLayer(); }
     void setLayer(CurveSequence::Layer layer) { _project.setSelectedCurveSequenceLayer(layer); }
 
     ContextMenu _contextMenu;
-
-    bool _showDetail;
-    uint32_t _showDetailTicks;
 
     CurveSequenceListModel _listModel;
 

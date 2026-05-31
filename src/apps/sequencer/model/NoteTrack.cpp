@@ -90,12 +90,9 @@ void NoteTrack::read(VersionedSerializedReader &reader) {
     reader.read(_retriggerProbabilityBias.base);
     reader.read(_lengthBias.base);
     reader.read(_noteProbabilityBias.base);
-    // _logicTrack and _logicTrackInput were added in Version37 and removed; read and discard for backward compat
-    {
-        int8_t dummy;
-        reader.read(dummy, ProjectVersion::Version37);
-        reader.read(dummy, ProjectVersion::Version37);
-    }
+    // _logicTrack and _logicTrackInput were added in Version37, removed in Version41
+    reader.skip<int8_t>(ProjectVersion::Version37, ProjectVersion::Version41);
+    reader.skip<int8_t>(ProjectVersion::Version37, ProjectVersion::Version41);
 
     // There is a bug in previous firmware versions where writing the properties
     // of a note track did not update the hash value.

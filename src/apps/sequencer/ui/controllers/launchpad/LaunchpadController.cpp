@@ -81,13 +81,11 @@ static const LayerMapItem noteSequenceLayerMap[] = {
 static constexpr int noteSequenceLayerMapSize = sizeof(noteSequenceLayerMap) / sizeof(noteSequenceLayerMap[0]);
 
 static const LayerMapItem curveSequenceLayerMap[] = {
-    [int(CurveSequence::Layer::Shape)]                      =  { 0, 0 },
-    [int(CurveSequence::Layer::ShapeVariation)]             =  { 1, 0 },
-    [int(CurveSequence::Layer::ShapeVariationProbability)]  =  { 2, 0 },
-    [int(CurveSequence::Layer::Min)]                        =  { 0, 1 },
-    [int(CurveSequence::Layer::Max)]                        =  { 0, 2 },
-    [int(CurveSequence::Layer::Gate)]                       =  { 0, 3 },
-    [int(CurveSequence::Layer::GateProbability)]            =  { 1, 3 },
+    [int(CurveSequence::Layer::Shape)]  = { 0, 0 },
+    [int(CurveSequence::Layer::Skew)]   = { 1, 0 },
+    [int(CurveSequence::Layer::Length)] = { 2, 0 },
+    [int(CurveSequence::Layer::Level)]  = { 0, 1 },
+    [int(CurveSequence::Layer::Offset)] = { 1, 1 },
 };
 
 static const LayerMapItem performLayerMap[] = {
@@ -157,13 +155,11 @@ struct RangeMap {
 static const RangeMap curveMinMaxRangeMap = { { 0, 0 }, { 255, 7 } };
 
 static const RangeMap *curveSequenceLayerRangeMap[] = {
-    [int(CurveSequence::Layer::Shape)]                      = nullptr,
-    [int(CurveSequence::Layer::ShapeVariation)]             = nullptr,
-    [int(CurveSequence::Layer::ShapeVariationProbability)]  = nullptr,
-    [int(CurveSequence::Layer::Min)]                        = &curveMinMaxRangeMap,
-    [int(CurveSequence::Layer::Max)]                        = &curveMinMaxRangeMap,
-    [int(CurveSequence::Layer::Gate)]                       = nullptr,
-    [int(CurveSequence::Layer::GateProbability)]            = nullptr,
+    [int(CurveSequence::Layer::Shape)]  = nullptr,
+    [int(CurveSequence::Layer::Skew)]   = nullptr,
+    [int(CurveSequence::Layer::Length)] = nullptr,
+    [int(CurveSequence::Layer::Level)]  = nullptr,
+    [int(CurveSequence::Layer::Offset)] = nullptr,
 };
 
 UserSettings _userSettings;
@@ -1593,15 +1589,11 @@ void LaunchpadController::sequenceDrawCurveSequence() {
 
     switch (layer) {
     case CurveSequence::Layer::Shape:
-    case CurveSequence::Layer::ShapeVariation:
-    case CurveSequence::Layer::Min:
-    case CurveSequence::Layer::Max:
-    case CurveSequence::Layer::Gate:
+    case CurveSequence::Layer::Skew:
+    case CurveSequence::Layer::Length:
+    case CurveSequence::Layer::Level:
+    case CurveSequence::Layer::Offset:
         drawCurveSequenceDots(sequence, layer, currentStep);
-        break;
-    case CurveSequence::Layer::ShapeVariationProbability:
-    case CurveSequence::Layer::GateProbability:
-        drawCurveSequenceBars(sequence, layer, currentStep);
         break;
     default:
         break;

@@ -6,48 +6,22 @@
 #include "SequenceUtils.h"
 
 #include "core/Debug.h"
-#include "core/utils/Random.h"
 #include "core/math/Math.h"
 
-#include "model/Curve.h"
 #include "model/Types.h"
 
-static Random rng;
-
-static float evalStepShape(const CurveSequence::Step &step, bool variation, bool invert, float fraction, int direction) {
-    auto function = Curve::function(Curve::Type(variation ? step.shapeVariation() : step.shape()));
-    if (direction == -1) {
-        function = Curve::function(Curve::Type(variation ? step.shapeVariation() : Curve::revAt(step.shape())));
-    }
-    float value = function(fraction);
-    if (invert) {
-        value = 1.f - value;
-    }
-    float min = float(step.min()) / CurveSequence::Min::Max;
-    float max = float(step.max()) / CurveSequence::Max::Max;
-    return min + value * (max - min);
-}
-
-static bool evalShapeVariation(const CurveSequence::Step &step, int probabilityBias) {
-    int probability = clamp(step.shapeVariationProbability() + probabilityBias, 0, 8);
-    return int(rng.nextRange(8)) < probability;
-}
-
-static bool evalGate(const CurveSequence::Step &step, int probabilityBias) {
-    int probability = clamp(step.gateProbability() + probabilityBias, -1, CurveSequence::GateProbability::Max);
-    return int(rng.nextRange(CurveSequence::GateProbability::Range)) <= probability;
-}
+#include <cmath>
 
 void CurveTrackEngine::reset() {
     _sequenceState.reset();
-    _currentStep = -1;
-    _currentStepFraction = 0.f;
-    _shapeVariation = false;
-    _fillMode = CurveTrack::FillMode::None;
+    _currentSegment  = -1;
+    _currentPulse    = 0;
+    _loopLength      = 0;
+    _loopPulse       = -1;
+    _segmentFraction = 0.f;
     _activity = false;
     _gateOutput = false;
 
-    _recorder.reset();
     _gateQueue.clear();
 
     changePattern();
@@ -55,8 +29,10 @@ void CurveTrackEngine::reset() {
 
 void CurveTrackEngine::restart() {
     _sequenceState.reset();
-    _currentStep = -1;
-    _currentStepFraction = 0.f;
+    _currentSegment  = -1;
+    _currentPulse    = 0;
+    _loopPulse       = -1;
+    _segmentFraction = 0.f;
 }
 
 TrackEngine::TickResult CurveTrackEngine::tick(uint32_t tick) {
@@ -68,10 +44,10 @@ TrackEngine::TickResult CurveTrackEngine::tick(uint32_t tick) {
         _linkData = *linkData;
         _sequenceState = *linkData->sequenceState;
 
-        updateRecording(linkData->relativeTick, linkData->divisor);
+        // TODO: V1 recording not implemented
 
         if (linkData->relativeTick % linkData->divisor == 0) {
-            triggerStep(tick, linkData->divisor);
+            advancePulse(tick, linkData->divisor);
         }
 
         updateOutput(linkData->relativeTick, linkData->divisor);
@@ -79,7 +55,6 @@ TrackEngine::TickResult CurveTrackEngine::tick(uint32_t tick) {
         uint32_t divisor = sequence.divisor() * (CONFIG_PPQN / CONFIG_SEQUENCE_PPQN);
         uint32_t resetDivisor = sequence.resetMeasure() * _engine.measureDivisor();
         uint32_t relativeTick = resetDivisor == 0 ? tick : tick % resetDivisor;
-
 
         if (int(_model.project().stepsToStop()) != 0 && int(relativeTick / divisor) == int(_model.project().stepsToStop())) {
             _engine.clockStop();
@@ -90,22 +65,10 @@ TrackEngine::TickResult CurveTrackEngine::tick(uint32_t tick) {
             reset();
         }
 
-        updateRecording(relativeTick, divisor);
+        // TODO: V1 recording not implemented
 
         if (relativeTick % divisor == 0) {
-            // advance sequence
-            switch (_curveTrack.playMode()) {
-            case Types::PlayMode::Aligned:
-                _sequenceState.advanceAligned(relativeTick / divisor, sequence.runMode(), sequence.firstStep(), sequence.lastStep(), rng);
-                triggerStep(tick, divisor);
-                break;
-            case Types::PlayMode::Free:
-                _sequenceState.advanceFree(sequence.runMode(), sequence.firstStep(), sequence.lastStep(), rng);
-                triggerStep(tick, divisor);
-                break;
-            case Types::PlayMode::Last:
-                break;
-            }
+            advancePulse(tick, divisor);
         }
 
         updateOutput(relativeTick, divisor);
@@ -130,25 +93,8 @@ TrackEngine::TickResult CurveTrackEngine::tick(uint32_t tick) {
 }
 
 void CurveTrackEngine::update(float dt) {
-    bool running = _engine.state().running();
-    bool recording = isRecording();
-
-    const auto &sequence = *_sequence;
-    const auto &range = Types::voltageRangeInfo(_sequence->range());
-
-    // override due to monitoring or recording
-    if (!running && !recording && _monitorStepIndex >= 0) {
-        // step monitoring (first priority)
-        const auto &step = sequence.step(_monitorStepIndex);
-        float min = float(step.min()) / CurveSequence::Min::Max;
-        float max = float(step.max()) / CurveSequence::Max::Max;
-        _cvOutput = _cvOutputTarget = range.denormalize(_monitorStepLevel == MonitorLevel::Min ? min : max);
-        // pass through to midi engine
-        auto &midiOutputEngine = _engine.midiOutputEngine();
-        midiOutputEngine.sendCv(_track.trackIndex(), _cvOutput);
-    } else if (recording) {
-        updateRecordValue();
-        _cvOutput = _cvOutputTarget = range.denormalize(_recordValue);
+    if (!_engine.clockRunning()) {
+        _cvOutputTarget = 0.f;
     }
 
     float offset = mute() ? 0.f : _curveTrack.offsetVolts();
@@ -163,48 +109,59 @@ void CurveTrackEngine::update(float dt) {
 void CurveTrackEngine::changePattern() {
     _sequence = &_curveTrack.sequence(pattern());
     _fillSequence = &_curveTrack.sequence(std::min(pattern() + 1, CONFIG_PATTERN_COUNT - 1));
+
+    _loopLength = 0;
+    for (int i = 0; i < _sequence->segmentCount(); ++i) {
+        _loopLength += _sequence->step(i).length();
+    }
+    if (_loopLength <= 0) {
+        _loopLength = 1;
+    }
 }
 
-void CurveTrackEngine::triggerStep(uint32_t tick, uint32_t divisor) {
-    int rotate = _curveTrack.rotate();
-    int shapeProbabilityBias = _curveTrack.shapeProbabilityBias();
-    int gateProbabilityBias = _curveTrack.gateProbabilityBias();
+void CurveTrackEngine::advancePulse(uint32_t tick, uint32_t divisor) {
+    // Recompute in case segments were edited live
+    _loopLength = 0;
+    for (int i = 0; i < _sequence->segmentCount(); ++i) {
+        _loopLength += _sequence->step(i).length();
+    }
+    if (_loopLength <= 0) _loopLength = 1;
 
-    const auto &sequence = *_sequence;
-    _currentStep = SequenceUtils::rotateStep(_sequenceState.step(), sequence.firstStep(), sequence.lastStep(), rotate);
-    const auto &step = sequence.step(_currentStep);
+    _loopPulse = (_loopPulse + 1) % _loopLength;
 
-    _shapeVariation = evalShapeVariation(step, shapeProbabilityBias);
-
-    bool fillStep = fill() && (rng.nextRange(100) < uint32_t(fillAmount()));
-    _fillMode = fillStep ? _curveTrack.fillMode() : CurveTrack::FillMode::None;
-
-    // Trigger gate pattern
-    int gate = step.gate();
-    for (int i = 0; i < 4; ++i) {
-        if (gate & (1 << i) && evalGate(step, gateProbabilityBias)) {
-            uint32_t gateStart = (divisor * i) / 4;
-            uint32_t gateLength = divisor / 8;
-            _gateQueue.pushReplace({ Groove::applySwing(tick + gateStart, swing()), true });
-            _gateQueue.pushReplace({ Groove::applySwing(tick + gateStart + gateLength, swing()), false });
+    int pulse = 0;
+    for (int i = 0; i < _sequence->segmentCount(); ++i) {
+        int len = _sequence->step(i).length();
+        if (_loopPulse < pulse + len) {
+            bool segmentStart = (_loopPulse == pulse);
+            _currentSegment  = i;
+            _currentPulse    = _loopPulse - pulse;
+            _segmentFraction = float(_currentPulse) / float(len);
+            if (segmentStart) {
+                _gateQueue.pushReplace({ Groove::applySwing(tick, swing()), true });
+                _gateQueue.pushReplace({ Groove::applySwing(tick + divisor / 8, swing()), false });
+            }
+            break;
         }
+        pulse += len;
     }
 }
 
 void CurveTrackEngine::updateOutput(uint32_t relativeTick, uint32_t divisor) {
-    if (_sequenceState.step() < 0) {
+    if (_currentSegment < 0) {
         return;
     }
 
-    const auto &sequence = *_sequence;
-    const auto &range = Types::voltageRangeInfo(sequence.range());
+    float intra = float(relativeTick % divisor) / float(divisor);
+    _loopProgress = _loopLength > 0
+        ? clamp((float(_loopPulse) + intra) / float(_loopLength), 0.f, 1.f)
+        : 0.f;
 
-    _currentStepFraction = float(relativeTick % divisor) / divisor;
+    const auto &range = Types::voltageRangeInfo(_sequence->range());
 
     if (mute()) {
         switch (_curveTrack.muteMode()) {
         case CurveTrack::MuteMode::LastValue:
-            // keep value
             break;
         case CurveTrack::MuteMode::Zero:
             _cvOutputTarget = 0.f;
@@ -219,70 +176,14 @@ void CurveTrackEngine::updateOutput(uint32_t relativeTick, uint32_t divisor) {
             break;
         }
     } else {
-        bool fillVariation = _fillMode == CurveTrack::FillMode::Variation;
-        bool fillNextPattern = _fillMode == CurveTrack::FillMode::NextPattern;
-        bool fillInvert = _fillMode == CurveTrack::FillMode::Invert;
-
-        const auto &evalSequence = fillNextPattern ? *_fillSequence : *_sequence;
-        const auto &step = evalSequence.step(_currentStep);
-
-        float value = evalStepShape(step, _shapeVariation || fillVariation, fillInvert, _currentStepFraction, _sequenceState.direction());
-        value = range.denormalize(value);
-
-        float min = float(_curveTrack.min()) / CurveSequence::Min::Max;
-        float max = float(_curveTrack.max()) / CurveSequence::Max::Max;
-
-
-        _cvOutputTarget = min + value * (max - min);
+        const auto &step = _sequence->step(_currentSegment);
+        int len = step.length();
+        float fraction = clamp((float(_currentPulse) + intra) / float(len), 0.f, 1.f);
+        _segmentFraction = fraction;
+        float amp   = CurveSequence::evalSegment(fraction, step.shapeNorm(), step.skewNorm());
+        float value = clamp(step.offsetNorm() + step.levelNorm() * amp, 0.f, 1.f);
+        _cvOutputTarget = range.denormalize(value);
     }
 
     _engine.midiOutputEngine().sendCv(_track.trackIndex(), _cvOutputTarget);
-}
-
-bool CurveTrackEngine::isRecording() const {
-    bool val =
-        _engine.state().recording() &&
-        _curveTrack.curveCvInput() != Types::CurveCvInput::Off;
-
-    if (!_model.project().useMultiCvRec()) {
-        return val && _model.project().selectedTrackIndex() == _track.trackIndex();
-    }
-    return val;
-}
-
-void CurveTrackEngine::updateRecordValue() {
-    auto &sequence = *_sequence;
-    const auto &range = Types::voltageRangeInfo(sequence.range());
-    auto curveCvInput = _curveTrack.curveCvInput();
-
-    switch (curveCvInput) {
-    case Types::CurveCvInput::Cv1:
-    case Types::CurveCvInput::Cv2:
-    case Types::CurveCvInput::Cv3:
-    case Types::CurveCvInput::Cv4:
-        _recordValue = range.normalize(_engine.cvInput().channel(int(curveCvInput) - int(Types::CurveCvInput::Cv1)));
-        break;
-    default:
-        _recordValue = 0.f;
-        break;
-    }
-}
-
-void CurveTrackEngine::updateRecording(uint32_t relativeTick, uint32_t divisor) {
-    if (!isRecording()) {
-        _recorder.reset();
-        return;
-    }
-
-    updateRecordValue();
-
-    if (_recorder.write(relativeTick, divisor, _recordValue) && _sequenceState.step() >= 0) {
-        auto &sequence = *_sequence;
-        int rotate = _curveTrack.rotate();
-        auto &step = sequence.step(SequenceUtils::rotateStep(_sequenceState.step(), sequence.firstStep(), sequence.lastStep(), rotate));
-        auto match = _recorder.matchCurve();
-        step.setShape(match.type);
-        step.setMinNormalized(match.min);
-        step.setMaxNormalized(match.max);
-    }
 }

@@ -3,47 +3,35 @@
 #include "ModelUtils.h"
 
 Types::LayerRange CurveSequence::layerRange(Layer layer) {
-    #define CASE(_name_) \
-    case Layer::_name_: \
-        return { _name_::Min, _name_::Max };
-
     switch (layer) {
     case Layer::Shape:
-    case Layer::ShapeVariation:
-        return { 0, int(Curve::Last) - 1 };
-    CASE(ShapeVariationProbability)
-    CASE(Min)
-    CASE(Max)
-    CASE(Gate)
-    CASE(GateProbability)
+    case Layer::Skew:
+        return { 0, 63 };
+    case Layer::Length:
+        return { 1, 16 };
+    case Layer::Level:
+    case Layer::Offset:
+        return { 0, 255 };
     case Layer::Last:
         break;
     }
-
-    #undef CASE
 
     return { 0, 0 };
 }
 
 int CurveSequence::layerDefaultValue(Layer layer)
 {
-    CurveSequence::Step step;
-
     switch (layer) {
     case Layer::Shape:
-        return step.shape();
-    case Layer::ShapeVariation:
-        return step.shapeVariation();
-    case Layer::ShapeVariationProbability:
-        return step.shapeVariationProbability();
-    case Layer::Min:
-        return step.min();
-    case Layer::Max:
-        return step.max();
-    case Layer::Gate:
-        return step.gate();
-    case Layer::GateProbability:
-        return step.gateProbability();
+        return 32;
+    case Layer::Skew:
+        return 32;
+    case Layer::Length:
+        return 2;
+    case Layer::Level:
+        return 255;
+    case Layer::Offset:
+        return 0;
     case Layer::Last:
         break;
     }
@@ -53,65 +41,35 @@ int CurveSequence::layerDefaultValue(Layer layer)
 
 int CurveSequence::Step::layerValue(Layer layer) const {
     switch (layer) {
-    case Layer::Shape:
-        return shape();
-    case Layer::ShapeVariation:
-        return shapeVariation();
-    case Layer::ShapeVariationProbability:
-        return shapeVariationProbability();
-    case Layer::Min:
-        return min();
-    case Layer::Max:
-        return max();
-    case Layer::Gate:
-        return gate();
-    case Layer::GateProbability:
-        return gateProbability();
-    case Layer::Last:
-        break;
+    case Layer::Shape:  return _data0.shape;
+    case Layer::Skew:   return _data0.shapeVariation;
+    case Layer::Length: return length();
+    case Layer::Level:  return _data0.max;
+    case Layer::Offset: return _data0.min;
+    case Layer::Last:   break;
     }
-
     return 0;
 }
 
 void CurveSequence::Step::setLayerValue(Layer layer, int value) {
     switch (layer) {
-    case Layer::Shape:
-        setShape(value);
-        break;
-    case Layer::ShapeVariation:
-        setShapeVariation(value);
-        break;
-    case Layer::ShapeVariationProbability:
-        setShapeVariationProbability(value);
-        break;
-    case Layer::Min:
-        setMin(value);
-        break;
-    case Layer::Max:
-        setMax(value);
-        break;
-    case Layer::Gate:
-        setGate(value);
-        break;
-    case Layer::GateProbability:
-        setGateProbability(value);
-        break;
-    case Layer::Last:
-        break;
+    case Layer::Shape:  _data0.shape = clamp(value, 0, 63); break;
+    case Layer::Skew:   _data0.shapeVariation = clamp(value, 0, 63); break;
+    case Layer::Length: setLength(value); break;
+    case Layer::Level:  _data0.max = clamp(value, 0, 255); break;
+    case Layer::Offset: _data0.min = clamp(value, 0, 255); break;
+    case Layer::Last:   break;
     }
 }
 
 void CurveSequence::Step::clear() {
     _data0.raw = 0;
     _data1.raw = 0;
-    setShape(0);
-    setShapeVariation(0);
-    setShapeVariationProbability(0);
-    setMin(0);
-    setMax(Max::Max);
-    setGate(0);
-    setGateProbability(GateProbability::Max);
+    setShapeNorm(0.5f);
+    setSkewNorm(0.5f);
+    setOffsetNorm(0.0f);
+    setLevelNorm(1.0f);
+    setLength(2);
 }
 
 void CurveSequence::Step::write(VersionedSerializedWriter &writer) const {
@@ -167,6 +125,7 @@ void CurveSequence::clear() {
     setRunMode(Types::RunMode::Forward);
     setFirstStep(0);
     setLastStep(15);
+    _segmentCount = 1;
 
     clearSteps();
 }
@@ -187,6 +146,36 @@ void CurveSequence::clearSteps() {
     for (auto &step : _steps) {
         step.clear();
     }
+}
+
+void CurveSequence::deleteSegment(int idx) {
+    int n = segmentCount();
+    if (idx < 0 || idx >= n) return;
+    for (int i = idx; i < n - 1; ++i)
+        _steps[i] = _steps[i + 1];
+    _steps[n - 1].clear();
+    setSegmentCount(n - 1);
+}
+
+void CurveSequence::duplicateSegment(int idx) {
+    int n = segmentCount();
+    if (idx < 0 || idx >= n || n >= 16) return;
+    for (int i = n - 1; i > idx; --i)
+        _steps[i + 1] = _steps[i];
+    _steps[idx + 1] = _steps[idx];
+    setSegmentCount(n + 1);
+}
+
+void CurveSequence::resetSegment(int idx) {
+    if (idx < 0 || idx >= segmentCount()) return;
+    _steps[idx].clear();
+}
+
+void CurveSequence::addSegment() {
+    int n = segmentCount();
+    if (n >= 16) return;
+    _steps[n].clear();
+    setSegmentCount(n + 1);
 }
 
 bool CurveSequence::isEdited() const {
@@ -232,6 +221,7 @@ void CurveSequence::write(VersionedSerializedWriter &writer) const {
     writeArray(writer, _steps);
     writer.write(_name, NameLength + 1);
     writer.write(_slot);
+    writer.write(_segmentCount);
     writer.writeHash();
 }
 
@@ -251,6 +241,11 @@ bool CurveSequence::read(VersionedSerializedReader &reader) {
     if (reader.dataVersion() >= ProjectVersion::Version35) {
         reader.read(_name, NameLength + 1, ProjectVersion::Version35);
         reader.read(_slot);
+        if (reader.dataVersion() >= ProjectVersion::Version42) {
+            reader.read(_segmentCount);
+        } else {
+            _segmentCount = 8;
+        }
         bool success = reader.checkHash();
         if (!success) {
             clear();
@@ -259,6 +254,4 @@ bool CurveSequence::read(VersionedSerializedReader &reader) {
     } else {
         return true;
     }
-
-    
 }

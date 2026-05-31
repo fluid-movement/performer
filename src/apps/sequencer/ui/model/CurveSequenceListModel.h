@@ -20,7 +20,8 @@ public:
         Divisor     = 4,
         ResetMeasure = 5,
         Range       = 6,
-        Last        = 7,
+        SegmentCount = 7,
+        Last        = 8,
     };
 
     CurveSequenceListModel() {}
@@ -63,6 +64,8 @@ public:
             return 16;
         case Range:
             return int(Types::VoltageRange::Last);
+        case SegmentCount:
+            return 16;
         default:
             break;
         }
@@ -83,6 +86,8 @@ public:
             return _sequence->resetMeasure();
         case Range:
             return int(_sequence->range());
+        case SegmentCount:
+            return _sequence->segmentCount() - 1;
         default:
             break;
         }
@@ -103,6 +108,8 @@ public:
             return _sequence->setResetMeasure(index);
         case Range:
             return _sequence->setRange(Types::VoltageRange(index));
+        case SegmentCount:
+            return _sequence->setSegmentCount(index + 1);
         default:
             break;
         }
@@ -135,6 +142,7 @@ private:
         case Divisor:       return "Divisor";
         case ResetMeasure:  return "Reset Measure";
         case Range:         return "Range";
+        case SegmentCount:  return "Segments";
         case Last:          break;
         }
         return nullptr;
@@ -167,6 +175,9 @@ private:
         case Range:
             _sequence->printRange(str);
             break;
+        case SegmentCount:
+            _sequence->printSegmentCount(str);
+            break;
         case Last:
             break;
         }
@@ -193,6 +204,9 @@ private:
             break;
         case Range:
             _sequence->editRange(value, shift);
+            break;
+        case SegmentCount:
+            _sequence->editSegmentCount(value, shift);
             break;
         case Last:
             break;

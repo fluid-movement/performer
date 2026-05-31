@@ -15,6 +15,7 @@
 
 #include <array>
 #include <bitset>
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
 
@@ -33,25 +34,21 @@ public:
 
     enum class Layer {
         Shape,
-        ShapeVariation,
-        ShapeVariationProbability,
-        Min,
-        Max,
-        Gate,
-        GateProbability,
+        Skew,
+        Length,
+        Level,
+        Offset,
         Last
     };
 
     static const char *layerName(Layer layer) {
         switch (layer) {
-        case Layer::Shape:                      return "SHAPE";
-        case Layer::ShapeVariation:             return "SHAPE VAR";
-        case Layer::ShapeVariationProbability:  return "SHAPE PROB";
-        case Layer::Min:                        return "MIN";
-        case Layer::Max:                        return "MAX";
-        case Layer::Gate:                       return "GATE";
-        case Layer::GateProbability:            return "GATE PROB";
-        case Layer::Last:                       break;
+        case Layer::Shape:  return "SHPE";
+        case Layer::Skew:   return "SKEW";
+        case Layer::Length: return "LEN";
+        case Layer::Level:  return "LVL";
+        case Layer::Offset: return "OFST";
+        case Layer::Last:   break;
         }
         return nullptr;
     }
@@ -60,6 +57,18 @@ public:
 
     static Types::LayerRange layerRange(Layer layer);
     static int layerDefaultValue(Layer layer);
+
+    static float evalSegment(float phase, float shape, float skew) {
+        float sk = clamp(skew, 0.02f, 0.98f);
+        float t = phase < sk
+            ? (phase / sk) * 0.5f
+            : 0.5f + ((phase - sk) / (1.0f - sk)) * 0.5f;
+        float s = std::sin(t * float(M_PI));
+        float p = shape <= 0.5f
+            ? 1.0f + (1.0f - shape * 2.0f) * 7.0f
+            : std::pow(1.0f - (shape - 0.5f) * 2.0f, 2.0f) * 0.95f + 0.05f;
+        return std::pow(std::max(0.0f, s), p);
+    }
 
     class Step {
     public:
@@ -128,6 +137,25 @@ public:
             _data1.gateProbability = GateProbability::clamp(gateProbability);
         }
 
+        // V1 accessors (segment assembler model)
+
+        float shapeNorm() const { return float(_data0.shape) / 63.0f; }
+        void  setShapeNorm(float v) { _data0.shape = clamp(int(v * 63.0f + 0.5f), 0, 63); }
+
+        int   skewRaw() const { return _data0.shapeVariation; }
+        void  setSkewRaw(int v) { _data0.shapeVariation = clamp(v, 0, 63); }
+        float skewNorm() const { return float(_data0.shapeVariation) / 63.0f; }
+        void  setSkewNorm(float v) { _data0.shapeVariation = clamp(int(v * 63.0f + 0.5f), 0, 63); }
+
+        float offsetNorm() const { return float(_data0.min) / 255.0f; }
+        void  setOffsetNorm(float v) { _data0.min = clamp(int(v * 255.0f + 0.5f), 0, 255); }
+
+        float levelNorm() const { return float(_data0.max) / 255.0f; }
+        void  setLevelNorm(float v) { _data0.max = clamp(int(v * 255.0f + 0.5f), 0, 255); }
+
+        int   length() const { return _data1.gate + 1; }
+        void  setLength(int len) { _data1.gate = clamp(len - 1, 0, 15); }
+
         int layerValue(Layer layer) const;
         void setLayerValue(Layer layer, int value);
 
@@ -143,7 +171,7 @@ public:
         void read(VersionedSerializedReader &reader);
 
         bool operator==(const Step &other) const {
-            return _data0.raw == other._data0.raw;
+            return _data0.raw == other._data0.raw && _data1.raw == other._data1.raw;
         }
 
         bool operator!=(const Step &other) const {
@@ -320,6 +348,16 @@ public:
         str("%d", lastStep() + 1);
     }
 
+    // segmentCount (V1)
+
+    int  segmentCount() const { return _segmentCount; }
+    void setSegmentCount(int n) { _segmentCount = uint8_t(clamp(n, 1, 16)); }
+    void editSegmentCount(int value, bool shift) { setSegmentCount(int(_segmentCount) + value); }
+
+    void printSegmentCount(StringBuilder &str) const {
+        str("%d", int(_segmentCount));
+    }
+
     // steps
 
     const StepArray &steps() const { return _steps; }
@@ -345,6 +383,11 @@ public:
     void clear();
     void clearSteps();
     void clearStepsSelected(const std::bitset<CONFIG_STEP_COUNT> &selected);
+
+    void deleteSegment(int idx);
+    void duplicateSegment(int idx);
+    void resetSegment(int idx);
+    void addSegment();
 
 
     bool isEdited() const;
@@ -390,6 +433,8 @@ private:
     Routable<uint8_t> _lastStep;
 
     StepArray _steps;
+
+    uint8_t _segmentCount = 8;
 
     int _section = 0;
 
