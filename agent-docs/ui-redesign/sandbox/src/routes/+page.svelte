@@ -2428,8 +2428,8 @@
 		const s = Math.sin(t * Math.PI);
 		const p = shape <= 0.5
 			? 1 + (1 - shape * 2) * 7
-			: Math.pow(1 - (shape - 0.5) * 2, 2) * 0.95 + 0.05;
-		return Math.pow(Math.max(0, s), p);
+			: Math.pow(1 - (shape - 0.5) * 2, 2);
+		return p <= 0 ? 1 : Math.pow(Math.max(0, s), p);
 	}
 
 	function drawCurveV1(c: Canvas, tab = 0): void {
@@ -2557,10 +2557,236 @@
 		return s;
 	}
 
+	// ── Stochastic track — Trunk (current firmware port) ─────────────────────
+	// 12 steps at 16px each (same stepWidth as Note track), centered:
+	//   x = i * 16 + 32   →   steps span x=32..208, leaving 32px margins each side.
+	// This centering is the visual signature of the Stochastic firmware page.
+
+	const STCH_TRUNK_TABS   = ['GATE', 'RETRIG', 'LEN', 'NOTE', 'COND'];
+	const STCH_TRUNK_CURSOR = 3;
+	const STCH_TRUNK_PLAY   = 1;
+	const STCH_TRUNK_NSTEPS = 12;
+	const STCH_TRUNK_SW     = 16;
+	const STCH_TRUNK_XOFF   = ((16 - 12) / 2) * 16;  // = 32
+
+	const STCH_TRUNK_GATES = [1,0,1,0,1,0,0,1,0,1,0,0];
+	const STCH_TRUNK_GPROB = [15,0, 8,0,12,0,0, 4,0,15,0,0];  // GateProbability 0–15
+	const STCH_TRUNK_RPROB = [ 0,0, 6,0,10,0,0, 8,0, 0,0,0];  // RetriggerProbability 0–15
+	const STCH_TRUNK_LEN   = [ 8,0, 4,0,12,0,0, 6,0, 8,0,0];  // Length 0–15
+	const STCH_TRUNK_NOTE  = [60,0,62,0,64,0,0,67,0,60,0,0];  // MIDI note
+	const STCH_TRUNK_COND  = [ 0,0, 0,0, 2,0,0, 0,0, 0,0,0];  // condition index
+
+	function drawStochasticTrunk(c: Canvas, tab = 0): void {
+		c.setFont(Font.Tiny);
+
+		const SW   = STCH_TRUNK_SW;
+		const XOFF = STCH_TRUNK_XOFF;
+		const y    = 20;
+
+		fwDrawHeader(c, STCH_TRUNK_TABS[tab]);
+
+		for (let i = 0; i < STCH_TRUNK_NSTEPS; i++) {
+			const x        = i * SW + XOFF;
+			const on       = Boolean(STCH_TRUNK_GATES[i]);
+			const isCursor = i === STCH_TRUNK_CURSOR;
+			const isPlay   = i === STCH_TRUNK_PLAY;
+
+			// Step number (same as Note track)
+			const numStr = String(i + 1);
+			c.setColorValue(isCursor ? Color.Bright : Color.Medium);
+			c.drawText(x + (SW - c.textWidth(numStr) + 1) / 2, y - 2, numStr);
+
+			// Gate box 12×12 (identical to Note track)
+			c.setColorValue(isPlay ? Color.Bright : Color.Medium);
+			c.rect(x + 2, y + 2, SW - 4, SW - 4);
+
+			if (on) {
+				c.setColorValue(Color.Bright);
+				c.fillRect(x + 4, y + 4, SW - 8, SW - 8);
+			}
+
+			// Sub-indicator at y+18 (identical Y to Note track)
+			switch (tab) {
+			case 0:  // GATE → GateProbability bar
+				fwDrawProbability(c, x + 2, y + 18, SW - 4, 2, STCH_TRUNK_GPROB[i], 15);
+				break;
+			case 1:  // RETRIG → RetriggerProbability bar
+				fwDrawProbability(c, x + 2, y + 18, SW - 4, 2, STCH_TRUNK_RPROB[i], 15);
+				break;
+			case 2:  // LEN → gate length bracket
+				if (on) fwDrawLength(c, x + 2, y + 18, SW - 4, 6, STCH_TRUNK_LEN[i], 15);
+				break;
+			case 3:  // NOTE → note name two-line (Short1 + Short2)
+				if (on) {
+					const midi   = STCH_TRUNK_NOTE[i];
+					const letter = NOTE_NAMES_12[midi % 12];
+					const oct    = String(Math.floor(midi / 12) - 1);
+					c.setColorValue(Color.Bright);
+					c.drawText(x + (SW - c.textWidth(letter) + 1) / 2, y + 20, letter);
+					c.drawText(x + (SW - c.textWidth(oct) + 1) / 2,    y + 27, oct);
+				}
+				break;
+			case 4:  // COND → condition abbreviation
+				if (on && STCH_TRUNK_COND[i]) {
+					const s = COND_SHORT4[STCH_TRUNK_COND[i]] ?? '';
+					c.setColorValue(Color.Bright);
+					c.drawText(x + (SW - c.textWidth(s) + 1) / 2, y + 20, s);
+				}
+				break;
+			}
+		}
+
+		fwDrawFooter(c, STCH_TRUNK_TABS, tab);
+	}
+
+	function ledsStochasticTrunk(): LedState {
+		const s = defaultLeds();
+		s.play = 'green';
+		s.track[3] = 'green';
+		for (let i = 0; i < STCH_TRUNK_NSTEPS; i++) {
+			s.step[i] = i === STCH_TRUNK_CURSOR ? 'amber' : (STCH_TRUNK_GATES[i] ? 'green' : 'off');
+		}
+		s.fkey[0] = 'green';
+		return s;
+	}
+
+	// ── Stochastic track ──────────────────────────────────────────────────────
+
+	const STOCH_TABS   = ['GATE', 'LEN', 'NOTE', 'PROB', '—'];
+	const STOCH_CURSOR = 4;
+	const STOCH_PLAY   = 2;
+	const STOCH_FIRST  = 0;
+	const STOCH_LAST   = 15;
+	const STOCH_SEED   = 42;
+	const STOCH_RESTPR = 3;   // sequence-level rest probability 0–8
+
+	const STOCH_GATES  = [1,0,1,0,1,0,0,1,0,1,0,0,1,0,1,0];
+	const STOCH_GPROB  = [15,0, 8,0,12,0,0, 4,0,15,0,0, 6,0,10,0];
+	const STOCH_LEN    = [ 8,0, 4,0,12,0,0, 6,0, 8,0,0, 4,0,10,0];
+	const STOCH_NOTE   = [ 0,0, 4,0, 2,0,0, 7,0, 0,0,0, 5,0, 2,0];
+	const STOCH_REST2  = [ 0,0, 2,0, 1,0,0, 3,0, 0,0,0, 2,0, 1,0];
+
+	function drawStochastic(c: Canvas, tab = 0): void {
+		c.setFont(Font.Tiny);
+
+		const SW    = 16;
+		const loopY = 16;
+		const numY  = 13;
+		const cellY = 19;
+		const cellH = 20;
+		const indY  = 42;
+
+		const LAYER_NAMES = ['GATE', 'LEN', 'NOTE', 'PROB'];
+		fwDrawHeader(c, LAYER_NAMES[tab]);
+
+		// Seed + global rest probability in spare header space
+		c.setColorValue(Color.MediumLow);
+		c.drawText(162, 6, 'S:' + String(STOCH_SEED));
+		c.drawText(195, 6, 'R:' + String(STOCH_RESTPR));
+
+		// Loop brackets
+		c.setColorValue(Color.Bright);
+		const lsx = STOCH_FIRST * SW + 1;
+		c.vline(lsx, loopY - 1, 3);
+		c.point(lsx + 1, loopY);
+		const lex = STOCH_LAST * SW + SW - 2;
+		c.vline(lex, loopY - 1, 3);
+		c.point(lex - 1, loopY);
+		for (let i = 0; i < 16; i++) {
+			if (i > STOCH_FIRST && i <= STOCH_LAST) c.point(i * SW, loopY);
+		}
+
+		// Step cells
+		for (let i = 0; i < 16; i++) {
+			const x        = i * SW;
+			const gate     = Boolean(STOCH_GATES[i]);
+			const prob     = STOCH_GPROB[i];
+			const isCursor = i === STOCH_CURSOR;
+
+			c.setBlendMode(BlendMode.Set);
+
+			// Step number — Bright for cursor, MediumLow otherwise
+			const numStr = String(i + 1);
+			const nw = c.textWidth(numStr);
+			c.setColorValue(isCursor ? Color.Bright : Color.MediumLow);
+			c.drawText(x + Math.floor((SW - nw) / 2), numY, numStr);
+
+			if (!gate) continue;  // absence: no cell for gate-off steps
+
+			// Probability fill from bottom up
+			const fillH  = Math.max(1, Math.round(cellH * prob / 15));
+			const emptyH = cellH - fillH;
+
+			c.setColorValue(Color.Bright);
+			c.fillRect(x + 1, cellY + emptyH, SW - 2, fillH);
+		}
+
+		// Play cursor: vertical scanline through cell area
+		c.setColorValue(Color.Bright);
+		c.setBlendMode(BlendMode.Add);
+		c.vline(STOCH_PLAY * SW, cellY - 1, cellH + 2);
+		c.setBlendMode(BlendMode.Set);
+
+		// Indicator strip separator
+		c.setColorValue(Color.MediumLow);
+		c.hline(0, indY, 256);
+
+		// Indicator strip — tab-specific secondary layer
+		for (let i = 0; i < 16; i++) {
+			if (!STOCH_GATES[i]) continue;
+			const x        = i * SW;
+			const isCursor = i === STOCH_CURSOR;
+
+			c.setBlendMode(BlendMode.Set);
+
+			switch (tab) {
+			case 0: {  // GATE — probability bar (reinforces cell fill at precise scale)
+				const bw = Math.max(1, Math.round((SW - 2) * STOCH_GPROB[i] / 15));
+				c.setColorValue(isCursor ? Color.Bright : Color.MediumLow);
+				c.fillRect(x + 1, indY + 3, bw, 4);
+				break;
+			}
+			case 1: {  // LEN — length proportion bar
+				const bw = Math.max(1, Math.round((SW - 2) * STOCH_LEN[i] / 15));
+				c.setColorValue(isCursor ? Color.Bright : Color.MediumLow);
+				c.fillRect(x + 1, indY + 3, bw, 4);
+				break;
+			}
+			case 2: {  // NOTE — scale degree label
+				const s  = String(STOCH_NOTE[i]);
+				const tw = c.textWidth(s);
+				c.setColorValue(isCursor ? Color.Bright : Color.MediumLow);
+				c.drawText(x + Math.floor((SW - tw) / 2), indY + 8, s);
+				break;
+			}
+			case 3: {  // PROB — rest probability 2× bar
+				const bw = Math.max(1, Math.round((SW - 2) * STOCH_REST2[i] / 8));
+				c.setColorValue(isCursor ? Color.Bright : Color.MediumLow);
+				c.fillRect(x + 1, indY + 3, bw, 4);
+				break;
+			}
+			}
+		}
+
+		c.setBlendMode(BlendMode.Set);
+		fwDrawFooter(c, STOCH_TABS, tab);
+	}
+
+	function ledsStochastic(): LedState {
+		const s = defaultLeds();
+		s.play = 'green';
+		s.track[3] = 'green';
+		STOCH_GATES.forEach((on, i) => {
+			s.step[i] = i === STOCH_CURSOR ? 'amber' : (on ? 'green' : 'off');
+		});
+		s.fkey[0] = 'green';
+		return s;
+	}
+
 	// ── routing ───────────────────────────────────────────────────────────────
 
 	type PageId =
-		| 'dashboard' | 'perform' | 'trackedit' | 'curvetrack' | 'trackconfig'
+		| 'dashboard' | 'perform' | 'trackedit' | 'curvetrack' | 'stochastic' | 'trackconfig'
 		| 'song' | 'settings' | 'tempo' | 'quickedit';
 
 	interface Variation {
@@ -2591,6 +2817,10 @@
 			{ label: '★ TRUNK — current firmware UI (SHPE|MIN|MAX|GATE)', draw: drawCurveTrunk, tabs: CURVE_TABS, leds: ledsCurveTrunk },
 			{ label: 'V1 — segment assembler (SKEW|LEN|SHPE|LVL|OFST)', draw: drawCurveV1, tabs: SEG_TABS, leds: ledsCurveV1 },
 		],
+		stochastic: [
+			{ label: '★ TRUNK — current firmware UI (GATE|RETRIG|LEN|NOTE|COND)', draw: drawStochasticTrunk, tabs: STCH_TRUNK_TABS, leds: ledsStochasticTrunk },
+			{ label: 'V1 — probability fill cells (GATE|LEN|NOTE|PROB)', draw: drawStochastic, tabs: STOCH_TABS, leds: ledsStochastic },
+		],
 		trackconfig: [
 			{ label: 'Option 1 — flat list',             draw: drawCfg_A },
 			{ label: 'Option 2 — grouped sections',      draw: drawCfg_B },
@@ -2620,7 +2850,7 @@
 
 	const PAGE_NAMES: Record<PageId, string> = {
 		dashboard: 'Dashboard', perform: 'Perform', trackedit: 'Note Track Edit',
-		curvetrack: 'Curve Track Edit',
+		curvetrack: 'Curve Track Edit', stochastic: 'Stochastic Track Edit',
 		trackconfig: 'Track Config', song: 'Song', settings: 'Settings',
 		tempo: 'Tempo', quickedit: 'Quick Edit',
 	};
@@ -2630,8 +2860,9 @@
 		{ label: 'PATT key',  target: 'perform' },
 		{ label: 'PG+STP0',   target: 'trackedit' },
 		{ label: 'PG+STP1',   target: 'curvetrack' },
-		{ label: 'PG+STP2',   target: 'trackconfig' },
-		{ label: 'PG+STP3',   target: 'song' },
+		{ label: 'PG+STP2',   target: 'stochastic' },
+		{ label: 'PG+STP3',   target: 'trackconfig' },
+		{ label: 'PG+STP4',   target: 'song' },
 		{ label: 'PG+TRK0',   target: 'settings' },
 		{ label: 'TEMPO',     target: 'tempo' },
 		{ label: 'PG+STP8',   target: 'quickedit' },

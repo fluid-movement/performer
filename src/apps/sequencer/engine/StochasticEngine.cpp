@@ -432,7 +432,17 @@ void StochasticEngine::triggerStep(uint32_t tick, uint32_t divisor, bool forNext
             }
             sum = sum + probability.at(i).probability();
         }
-        if (sum==0) { return;}
+        if (sum == 0) {
+            // noteVariationProbability defaults to 0; fall back to equal weighting
+            // so the track plays even when the user hasn't set explicit note probabilities.
+            for (int i = 0; i < 12; i++) {
+                if (sequence.step(i).gate()) {
+                    probability[i] = StochasticStep(i, 1);
+                    sum++;
+                }
+            }
+            if (sum == 0) { return; }
+        }
         std::sort (std::begin(probability), std::end(probability), sortTaskByProbRev);
         stepIndex = getNextWeightedPitch(probability, probability.size());
 
