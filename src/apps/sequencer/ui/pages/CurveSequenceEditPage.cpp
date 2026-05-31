@@ -38,10 +38,10 @@ enum class Function {
 static const char *functionNames[] = { "SHPE", "SKEW", "LEN", "LVL", "OFST", nullptr };
 
 static const CurveSequenceListModel::Item quickEditItems[8] = {
-    CurveSequenceListModel::Item::Divisor,
-    CurveSequenceListModel::Item::SegmentCount,
-    CurveSequenceListModel::Item::Last,
-    CurveSequenceListModel::Item::Last,
+    CurveSequenceListModel::Item::FirstStep,     // S9  FIRST
+    CurveSequenceListModel::Item::SegmentCount,  // S10 LAST
+    CurveSequenceListModel::Item::RunMode,       // S11 MODE
+    CurveSequenceListModel::Item::Divisor,       // S12 DIVISOR
     CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last,

@@ -66,8 +66,8 @@ public:
         float s = std::sin(t * float(M_PI));
         float p = shape <= 0.5f
             ? 1.0f + (1.0f - shape * 2.0f) * 7.0f
-            : std::pow(1.0f - (shape - 0.5f) * 2.0f, 2.0f) * 0.95f + 0.05f;
-        return std::pow(std::max(0.0f, s), p);
+            : std::pow(1.0f - (shape - 0.5f) * 2.0f, 2.0f);
+        return p <= 0.0f ? 1.0f : std::pow(std::max(0.0f, s), p);
     }
 
     class Step {

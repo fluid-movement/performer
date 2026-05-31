@@ -7,17 +7,19 @@
 
 #include "core/Debug.h"
 #include "core/math/Math.h"
+#include "core/utils/Random.h"
 
 #include "model/Types.h"
 
 #include <cmath>
+
+static Random rng;
 
 void CurveTrackEngine::reset() {
     _sequenceState.reset();
     _currentSegment  = -1;
     _currentPulse    = 0;
     _loopLength      = 0;
-    _loopPulse       = -1;
     _segmentFraction = 0.f;
     _activity = false;
     _gateOutput = false;
@@ -31,7 +33,6 @@ void CurveTrackEngine::restart() {
     _sequenceState.reset();
     _currentSegment  = -1;
     _currentPulse    = 0;
-    _loopPulse       = -1;
     _segmentFraction = 0.f;
 }
 
@@ -120,31 +121,34 @@ void CurveTrackEngine::changePattern() {
 }
 
 void CurveTrackEngine::advancePulse(uint32_t tick, uint32_t divisor) {
-    // Recompute in case segments were edited live
-    _loopLength = 0;
-    for (int i = 0; i < _sequence->segmentCount(); ++i) {
-        _loopLength += _sequence->step(i).length();
-    }
-    if (_loopLength <= 0) _loopLength = 1;
+    const auto &seq = *_sequence;
+    int count = seq.segmentCount();
+    int first = clamp(seq.firstStep(), 0, count - 1);
+    int last  = count - 1;
+    auto mode = seq.runMode();
 
-    _loopPulse = (_loopPulse + 1) % _loopLength;
-
-    int pulse = 0;
-    for (int i = 0; i < _sequence->segmentCount(); ++i) {
-        int len = _sequence->step(i).length();
-        if (_loopPulse < pulse + len) {
-            bool segmentStart = (_loopPulse == pulse);
-            _currentSegment  = i;
-            _currentPulse    = _loopPulse - pulse;
-            _segmentFraction = float(_currentPulse) / float(len);
-            if (segmentStart) {
-                _gateQueue.pushReplace({ Groove::applySwing(tick, swing()), true });
-                _gateQueue.pushReplace({ Groove::applySwing(tick + divisor / 8, swing()), false });
-            }
-            break;
+    if (_currentSegment < 0) {
+        _sequenceState.advanceFree(mode, 0, last, rng);
+        _currentSegment = (_sequenceState.step() + first) % count;
+        _currentPulse   = 0;
+        _gateQueue.pushReplace({ Groove::applySwing(tick, swing()), true });
+        _gateQueue.pushReplace({ Groove::applySwing(tick + divisor / 8, swing()), false });
+    } else {
+        _currentPulse++;
+        int segLen = seq.step(_currentSegment).length();
+        if (_currentPulse >= segLen) {
+            _sequenceState.advanceFree(mode, 0, last, rng);
+            _currentSegment = (_sequenceState.step() + first) % count;
+            _currentPulse   = 0;
+            _gateQueue.pushReplace({ Groove::applySwing(tick, swing()), true });
+            _gateQueue.pushReplace({ Groove::applySwing(tick + divisor / 8, swing()), false });
         }
-        pulse += len;
     }
+
+    // Recompute loop length (all segments) for progress display
+    _loopLength = 0;
+    for (int i = 0; i < count; ++i) _loopLength += seq.step(i).length();
+    if (_loopLength <= 0) _loopLength = 1;
 }
 
 void CurveTrackEngine::updateOutput(uint32_t relativeTick, uint32_t divisor) {
@@ -153,8 +157,11 @@ void CurveTrackEngine::updateOutput(uint32_t relativeTick, uint32_t divisor) {
     }
 
     float intra = float(relativeTick % divisor) / float(divisor);
+    int pulsesBeforeCurrent = 0;
+    for (int i = 0; i < _currentSegment; ++i)
+        pulsesBeforeCurrent += _sequence->step(i).length();
     _loopProgress = _loopLength > 0
-        ? clamp((float(_loopPulse) + intra) / float(_loopLength), 0.f, 1.f)
+        ? clamp((float(pulsesBeforeCurrent + _currentPulse) + intra) / float(_loopLength), 0.f, 1.f)
         : 0.f;
 
     const auto &range = Types::voltageRangeInfo(_sequence->range());

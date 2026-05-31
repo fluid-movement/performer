@@ -60,7 +60,6 @@ private:
     int   _currentSegment  = -1;
     int   _currentPulse    = 0;
     int   _loopLength      = 0;
-    int   _loopPulse       = 0;
     float _segmentFraction = 0.f;
     float _loopProgress    = 0.f;
 
