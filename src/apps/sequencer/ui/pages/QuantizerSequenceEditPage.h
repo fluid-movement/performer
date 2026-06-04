@@ -30,6 +30,16 @@ private:
 
     int stepOffset() const { return _project.selectedQuantizerSequence().section() * StepCount; }
 
+    int maxForTab() const;
+
+    void drawGateTab(Canvas &canvas, const NoteSequence &sequence);
+    void drawSourceTab(Canvas &canvas, const QuantizerTrack &track);
+    void drawTriggerTab(Canvas &canvas, const QuantizerTrack &track);
+    void drawTuneTab(Canvas &canvas, const QuantizerTrack &track);
+
+    void switchTab(int fKey);
+    int activeFunctionKey();
+
     void contextShow(bool doubleClick = false);
     void contextAction(int index);
     bool contextActionEnabled(int index) const;
@@ -52,4 +62,8 @@ private:
     StepSelection<CONFIG_STEP_COUNT> _stepSelection;
 
     NoteSequence _inMemorySequence;
+
+    int     _activeTab  = 0;
+    uint8_t _heldSteps  = 0;
+    int     _cursor     = 0;
 };

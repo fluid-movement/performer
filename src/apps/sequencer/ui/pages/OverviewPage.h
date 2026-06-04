@@ -25,9 +25,9 @@ public:
 private:
 
     void drawDetail(Canvas &canvas, const NoteSequence::Step &step);
-    void drawStochasticDetail(Canvas &canvas, const StochasticSequence::Step &step);
+    void drawStochasticDetail(Canvas &canvas);
     void drawCurveDetail(Canvas &canvas, const CurveSequence::Step &step);
-    void drawArpDetail(Canvas &canvas, const ArpSequence::Step &step);
+    void drawArpDetail(Canvas &canvas);
 
     void updateMonitorStep();
     void quickEdit(int index);

@@ -101,66 +101,50 @@ static void drawCurve(Canvas &canvas, int x, int y, int w, int h, float &lastY, 
     lastY = fy0;
 }
 
-static void drawStochasticTrack(Canvas &canvas, int trackIndex, const StochasticEngine &trackEngine, const StochasticSequence &sequence, const Scale &scale) {
-
+static void drawStochasticTrack(Canvas &canvas, int trackIndex, const StochasticEngine &trackEngine, const StochasticSequence &sequence) {
     canvas.setBlendMode(BlendMode::Set);
-
-    int stepOffset = (std::max(0, trackEngine.currentStep()) / 12) * 12;
     int y = trackIndex * 8;
+    int currentDegree = trackEngine.currentStep();
+    const int barW  = 6;
+    const int barMaxH = 6;
+    const int xStart = 16 + 76;
 
-    for (int i = 0; i < 12; ++i) {
-        
-        int stepIndex = stepOffset + i;
-        const auto &step = sequence.step(stepIndex);
-
-        int x = 16 + (76+ i * 8);
-
-        if (trackEngine.currentStep() == stepIndex) {
-            canvas.setColor(step.gate() ? Color::Bright : Color::MediumBright);
-            canvas.fillRect(x + 1, y + 1, 6, 6);
-            
-        } else {
-            canvas.setColor(step.gate() ? Color::Medium : Color::Low);
-            canvas.fillRect(x + 1, y + 1, 6, 6);
-        }
-        if (step.gate() && scale.isNotePresent(step.note())) {
-            canvas.setBlendMode(BlendMode::Sub);
-            canvas.fillRect(x + 3, y + 3, 3, 3);
-            canvas.setBlendMode(BlendMode::Set);
+    for (int i = 0; i < 7; i++) {
+        int x = xStart + i * (barW + 1);
+        int barH = (sequence.degreeProb(i) * barMaxH) / 15;
+        bool active = (i == currentDegree) && trackEngine.isActiveSequence(sequence);
+        canvas.setColor(active ? Color::Bright : Color::Low);
+        canvas.fillRect(x, y + 1, barW, barMaxH);
+        if (barH > 0 && !active) {
+            canvas.setColor(Color::Medium);
+            canvas.fillRect(x, y + 1 + (barMaxH - barH), barW, barH);
         }
     }
-
 }
 
-static void drawArpTrack(Canvas &canvas, int trackIndex, const ArpTrackEngine &trackEngine, const ArpSequence &sequence, const Scale &scale) {
-
+static void drawArpTrack(Canvas &canvas, int trackIndex, const ArpTrackEngine &trackEngine, const ArpSequence &sequence, const Scale &/*scale*/) {
+    // Arp V2: show degree mask as 7 squares, highlight current step
     canvas.setBlendMode(BlendMode::Set);
-
-    int stepOffset = (std::max(0, trackEngine.currentStep()) / 12) * 12;
     int y = trackIndex * 8;
+    int currentDegree = trackEngine.currentDegree();
 
-    for (int i = 0; i < 12; ++i) {
-        
-        int stepIndex = stepOffset + i;
-        const auto &step = sequence.step(stepIndex);
+    for (int i = 0; i < 7; ++i) {
+        bool active = sequence.isDegreeActive(i);
+        int x = 16 + 76 + i * 8;
 
-        int x = 16 + (76+ i * 8);
-
-        if (trackEngine.currentStep() == stepIndex) {
-            canvas.setColor(step.gate() ? Color::Bright : Color::MediumBright);
+        if (i == currentDegree) {
+            canvas.setColor(Color::Bright);
             canvas.fillRect(x + 1, y + 1, 6, 6);
-            
         } else {
-            canvas.setColor(step.gate() ? Color::Medium : Color::Low);
+            canvas.setColor(active ? Color::Medium : Color::Low);
             canvas.fillRect(x + 1, y + 1, 6, 6);
         }
-        if (step.gate() && scale.isNotePresent(step.note())) {
+        if (active) {
             canvas.setBlendMode(BlendMode::Sub);
             canvas.fillRect(x + 3, y + 3, 3, 3);
             canvas.setBlendMode(BlendMode::Set);
         }
     }
-
 }
 
 static void drawCurveTrack(Canvas &canvas, int trackIndex, const CurveTrackEngine &trackEngine, CurveSequence &sequence, bool running, bool patternFollow) {
@@ -344,7 +328,7 @@ void OverviewPage::draw(Canvas &canvas) {
                 if (sequence.useLoop()) {
                     canvas.drawText(256 - 46, y, FixedStringBuilder<8>("L"));
                 }
-                drawStochasticTrack(canvas, trackIndex, trackEngine.as<StochasticEngine>(), sequence, scale);
+                drawStochasticTrack(canvas, trackIndex, trackEngine.as<StochasticEngine>(), sequence);
             }
             break;
         case Track::TrackMode::Arp: {
@@ -382,10 +366,8 @@ void OverviewPage::draw(Canvas &canvas) {
                     drawDetail(canvas, sequence.step(_stepSelection.first()));
                 }
                 break;
-            case Track::TrackMode::Stochastic: {
-                    auto &sequence = _project.selectedStochasticSequence();
-                    drawStochasticDetail(canvas, sequence.step(_stepSelection.first()));
-                }
+            case Track::TrackMode::Stochastic:
+                drawStochasticDetail(canvas);
                 break;
             case Track::TrackMode::Curve: {
                     auto &sequence = _project.selectedCurveSequence();
@@ -393,8 +375,7 @@ void OverviewPage::draw(Canvas &canvas) {
                 }
                 break;
             case Track::TrackMode::Arp: {
-                auto &sequence = _project.selectedArpSequence();
-                drawArpDetail(canvas, sequence.step(_stepSelection.first()));
+                drawArpDetail(canvas);
             }
                 break;
             case Track::TrackMode::Quantizer: {
@@ -431,17 +412,14 @@ void OverviewPage::updateLeds(Leds &leds) {
             break;
         case Track::TrackMode::Stochastic: {
             const auto &trackEngine = _engine.selectedTrackEngine().as<StochasticEngine>();
-            auto &sequence = _project.selectedStochasticSequence();
-            int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+            const auto &sequence = _project.selectedStochasticSequence();
+            int currentDegree = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
 
-            for (int i = 0; i < 16; ++i) {
-                int stepIndex = stepOffset() + i;
-                bool red = (stepIndex == currentStep) || _stepSelection[stepIndex];
-                bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection[stepIndex]);
+            for (int i = 0; i < 16; i++) {
+                bool red = (i < 7 && i == currentDegree);
+                bool green = (i < 7 && i != currentDegree && sequence.degreeProb(i) > 0);
                 leds.set(MatrixMap::fromStep(i), red, green);
             }
-
-            LedPainter::drawSelectedSequenceSection(leds, 0);
             }
             break;
         case Track::TrackMode::Curve: {
@@ -467,9 +445,8 @@ void OverviewPage::updateLeds(Leds &leds) {
             int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
 
             for (int i = 0; i < 16; ++i) {
-                int stepIndex = stepOffset() + i;
-                bool red = (stepIndex == currentStep) || _stepSelection[stepIndex];
-                bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection[stepIndex]);
+                bool red   = (i < 7) && (i == currentStep);
+                bool green = (i < 7) && !red && sequence.isDegreeActive(i);
                 leds.set(MatrixMap::fromStep(i), red, green);
             }
 
@@ -649,12 +626,8 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                     event.consume();
                 }
                 break;
-            case Track::TrackMode::Stochastic: {
-                    int stepIndex = stepOffset() + key.step();
-                    auto &sequence = _project.selectedStochasticSequence();
-                    sequence.step(stepIndex).toggleGate();
-                    event.consume();
-                }
+            case Track::TrackMode::Stochastic:
+                // No per-step gate editing in V2
                 break;
             case Track::TrackMode::Curve: {
                 int stepIndex = stepOffset() + key.step();
@@ -665,9 +638,11 @@ void OverviewPage::keyPress(KeyPressEvent &event) {
                 break;
             }
             case Track::TrackMode::Arp: {
-                    int stepIndex = stepOffset() + key.step();
-                    auto &sequence = _project.selectedArpSequence();
-                    sequence.step(stepIndex).toggleGate();
+                    // Arp V2: step buttons toggle degree mask
+                    int stepIndex = key.step();
+                    if (stepIndex < 7) {
+                        _project.selectedArpSequence().toggleDegree(stepIndex);
+                    }
                     event.consume();
                 }
                 break;
@@ -773,15 +748,8 @@ void OverviewPage::encoder(EncoderEvent &event) {
                 }
             }   
             break;
-        case Track::TrackMode::Stochastic: {
-                auto &sequence = _project.selectedStochasticSequence();
-                for (size_t stepIndex = 0; stepIndex < sequence.steps().size(); ++stepIndex) {
-                    if (_stepSelection[stepIndex]) {
-                        auto &step = sequence.step(stepIndex);
-                        step.setNoteVariationProbability(step.noteVariationProbability() + event.value());
-                    }
-                }
-            }
+        case Track::TrackMode::Stochastic:
+            // V2: no per-step encoder editing in OverviewPage
             break;
         case Track::TrackMode::Curve: {
             auto &sequence = _project.selectedCurveSequence();
@@ -908,39 +876,13 @@ void OverviewPage::drawCurveDetail(Canvas &canvas, const CurveSequence::Step &st
 }
 
 
-void OverviewPage::drawStochasticDetail(Canvas &canvas, const StochasticSequence::Step &step) {
-    FixedStringBuilder<16> str;
-
-    WindowPainter::drawFrame(canvas, 64, 16, 128, 32);
-
-    canvas.setBlendMode(BlendMode::Set);
-    canvas.setColor(Color::Bright);
-    canvas.vline(64 + 32, 16, 32);
-
-    canvas.setFont(Font::Small);
-    str("%d", _stepSelection.first() + 1);
-    if (_stepSelection.count() > 1) {
-        str("*");
-    }
-    canvas.drawTextCentered(64, 16, 32, 32, str);
-
-    canvas.setFont(Font::Tiny);
-
-    str.reset();
-    SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.noteVariationProbability() + 1, StochasticSequence::NoteVariationProbability::Range
-        );
-        str.reset();
-    str("%.1f%%", 100.f * (step.noteVariationProbability()) / (StochasticSequence::NoteVariationProbability::Range -1));
-    canvas.setColor(Color::Bright);
-    canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-    canvas.setFont(Font::Tiny);
+void OverviewPage::drawStochasticDetail(Canvas &canvas) {
+    // No per-step detail in V2 stochastic model
+    (void)canvas;
 }
 
-void OverviewPage::drawArpDetail(Canvas &canvas, const ArpSequence::Step &step) {
-
+void OverviewPage::drawArpDetail(Canvas &/*canvas*/) {
+    // Arp V2: no per-step detail
 }
 
 void OverviewPage::updateMonitorStep() {

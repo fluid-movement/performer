@@ -2783,11 +2783,935 @@
 		return s;
 	}
 
+	// ── Stochastic V2 — SIG-inspired (NOTE|OCT|LEN|ART|LOOP) ────────────────
+	// Core concept from the Stochastic Inspiration Generator:
+	// 7 scale-degree slots with probability weights, no step positions.
+	// Bar height = selection weight + automatic density (taller = more likely & denser).
+
+	const STCH_V2_TABS        = ['NOTE', 'OCT', 'LEN', 'LOOP'];
+	const STCH_V2_CURSOR      = 2;    // degree 3 is the edit cursor
+	const STCH_V2_PLAY        = 4;    // degree 5 is currently playing
+
+	//                                  1   2   3   4   5   6   7
+	const STCH_V2_NPROB: number[]     = [15,  5, 12,  8, 15,  6,  4];
+	const STCH_V2_OPROB: number[]     = [ 0,  3, 15,  5,  0];   // -2  -1   0  +1  +2
+	const STCH_V2_DPROB: number[]     = [15,  8,  5,  2,  0,  0]; // 1/16 1/8 1/4 1/2 1 2
+	const STCH_V2_DUR_LABELS          = ['1/16','1/8','1/4','1/2','1','2'];
+	const STCH_V2_OCT_LABELS          = ['-2','-1',' 0','+1','+2'];
+	// Loop state: step buttons set length, encoder sets chance (0=locked, 1=fully random)
+	const STCH_V2_LOOP_LEN    =  8;    // active loop length (1–16 steps)
+	const STCH_V2_LOOP_CHANCE = 0.3;   // mutation chance: 0.0=locked, 1.0=fully random
+	const STCH_V2_LOOP_GATES  = [true, false, true, true, false, true, true, false,
+	                              false, false, false, false, false, false, false, false];
+
+	function drawStochasticV2(c: Canvas, tab = 0): void {
+		c.setFont(Font.Tiny);
+
+		const SW        = 36;   // column width: 7×36=252, 2px margins each side
+		const XOFF      = 2;
+		const barFloor  = 48;   // y of bar bottom — leave room for degree labels
+		const barTop    = 10;   // y of bar top (fwDrawHeader separator is at y=9)
+		const barHMax   = barFloor - barTop + 1;  // 39px
+
+		// ── header ──────────────────────────────────────────────────────────
+		fwDrawHeader(c, STCH_V2_TABS[tab]);
+
+		// ── content ─────────────────────────────────────────────────────────
+		if (tab === 0) {
+			// NOTE — 7 scale-degree probability bars
+			for (let i = 0; i < 7; i++) {
+				const x        = XOFF + i * SW;
+				const prob     = STCH_V2_NPROB[i];
+				const barH     = Math.round(prob * barHMax / 15);
+				const isPlay   = i === STCH_V2_PLAY;
+				const isCursor = i === STCH_V2_CURSOR;
+
+				// Cursor: inverted column (Bright background, dark bar via Sub blend)
+				if (isCursor) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(x, barTop, SW, barHMax);
+					if (barH > 0) {
+						c.setBlendMode(BlendMode.Sub);
+						c.setColorValue(Color.Bright);
+						c.fillRect(x + 2, barFloor - barH + 1, SW - 4, barH);
+						c.setBlendMode(BlendMode.Set);
+					}
+				} else {
+					// Normal bar: Bright fill from bottom up
+					if (barH > 0) {
+						c.setColorValue(Color.Bright);
+						c.fillRect(x + 2, barFloor - barH + 1, SW - 4, barH);
+					}
+				}
+
+				// Playing note: bright outline rect around column
+				if (isPlay) {
+					c.setColorValue(Color.Bright);
+					c.rect(x, barTop, SW, barHMax);
+				}
+
+				// Degree label (1–7) below bar
+				const lbl = String(i + 1);
+				c.setColorValue(Color.MediumLow);
+				c.drawText(x + Math.floor((SW - c.textWidth(lbl)) / 2), 53, lbl);
+			}
+
+		} else if (tab === 1) {
+			// OCT — 5 octave probability bars, centered
+			const bw   = 36;
+			const xOff = Math.round((256 - 5 * bw) / 2);
+			for (let i = 0; i < 5; i++) {
+				const x    = xOff + i * bw;
+				const prob = STCH_V2_OPROB[i];
+				const barH = Math.round(prob * barHMax / 15);
+				if (barH > 0) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(x + 2, barFloor - barH + 1, bw - 4, barH);
+				}
+				// "0 octave" column: Low tick at top marks the default centre
+				if (i === 2) {
+					c.setColorValue(Color.MediumLow);
+					c.hline(x, barTop, bw);
+				}
+				const lbl = STCH_V2_OCT_LABELS[i];
+				c.setColorValue(Color.MediumLow);
+				c.drawText(x + Math.floor((bw - c.textWidth(lbl)) / 2), 53, lbl);
+			}
+
+		} else if (tab === 2) {
+			// LEN — 6 duration probability bars, centered
+			const bw   = 36;
+			const xOff = Math.round((256 - 6 * bw) / 2);
+			for (let i = 0; i < 6; i++) {
+				const x    = xOff + i * bw;
+				const prob = STCH_V2_DPROB[i];
+				const barH = Math.round(prob * barHMax / 15);
+				if (barH > 0) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(x + 2, barFloor - barH + 1, bw - 4, barH);
+				}
+				const lbl = STCH_V2_DUR_LABELS[i];
+				c.setColorValue(Color.MediumLow);
+				c.drawText(x + Math.floor((bw - c.textWidth(lbl)) / 2), 53, lbl);
+			}
+
+		} else {
+			// LOOP — left: chance box (encoder target), right: 8×2 step grid
+			const cY = 10;
+			const cH = 45;
+
+			// ── Chance box (left) ────────────────────────────────────────────
+			const boxX = 1;
+			const boxW = 50;
+			c.setColorValue(Color.Bright);
+			c.rect(boxX, cY, boxW, cH);
+
+			const chcLbl = 'CHC';
+			c.setColorValue(Color.Low);
+			c.drawText(boxX + Math.floor((boxW - c.textWidth(chcLbl)) / 2), cY + 7, chcLbl);
+
+			// Vertical fill bar inside box
+			const barX  = boxX + 12;
+			const barW  = 26;
+			const barY  = cY + 11;
+			const barH  = 22;
+			c.setColorValue(Color.Low);
+			c.rect(barX, barY, barW, barH);
+			const fillH = Math.round(STCH_V2_LOOP_CHANCE * (barH - 2));
+			if (fillH > 0) {
+				c.setColorValue(Color.Bright);
+				c.fillRect(barX + 1, barY + barH - 1 - fillH, barW - 2, fillH);
+			}
+
+			// Percentage label below bar
+			const pct = Math.round(STCH_V2_LOOP_CHANCE * 100) + '%';
+			c.setColorValue(Color.Bright);
+			c.drawText(boxX + Math.floor((boxW - c.textWidth(pct)) / 2), cY + 38, pct);
+
+			// ── Step grid (right) ────────────────────────────────────────────
+			// 8 columns × 2 rows; step buttons 1–16 map 1:1 to cells
+			const gridX  = 56;
+			const colW   = 25;
+			const rowH   = 20;
+			const rowGap =  4;
+			const row0Y  = cY + 1;
+			const row1Y  = row0Y + rowH + rowGap;
+
+			for (let i = 0; i < 16; i++) {
+				const col    = i % 8;
+				const row    = Math.floor(i / 8);
+				const x      = gridX + col * colW;
+				const y      = row === 0 ? row0Y : row1Y;
+				const inLoop = i < STCH_V2_LOOP_LEN;
+				const gate   = STCH_V2_LOOP_GATES[i];
+
+				if (!inLoop) continue;
+
+				if (gate) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(x + 1, y + 1, colW - 2, rowH - 2);
+				} else {
+					// Rest: dim outline only — step is in loop but silent
+					c.setColorValue(Color.Low);
+					c.rect(x + 1, y + 1, colW - 2, rowH - 2);
+				}
+			}
+		}
+
+		fwDrawFooter(c, STCH_V2_TABS, tab);
+	}
+
+	function ledsStochasticV2(): LedState {
+		const s = defaultLeds();
+		s.play     = 'green';
+		s.track[3] = 'green';
+		s.fkey[0]  = 'green';
+		for (let i = 0; i < 7; i++) {
+			s.step[i] = i === STCH_V2_PLAY   ? 'amber'
+			          : i === STCH_V2_CURSOR  ? 'amber'
+			          : STCH_V2_NPROB[i] > 0  ? 'green'
+			          :                          'off';
+		}
+		return s;
+	}
+
+	// ── Arp Track — TRUNK (firmware port) ─────────────────────────────────────
+	// 12 steps at 16px each, centered: x = i*16 + 32, leaving 32px margins each side.
+	// GATE tab shows note name below box (Short1). Sidebar at x=224 shows arp engine params.
+
+	const ARP_TRUNK_TABS   = ['GATE', 'RETRIG', 'LEN', 'NOTE', 'COND'] as const;
+	const ARP_TRUNK_CURSOR = 2;
+	const ARP_TRUNK_PLAY   = 5;
+	const ARP_TRUNK_NSTEPS = 12;
+	const ARP_TRUNK_SW     = 16;
+	const ARP_TRUNK_XOFF   = ((16 - 12) / 2) * 16;  // = 32
+
+	const ARP_TRUNK_GATES  = [1,0,1,1,0,1,0,1,0,1,1,0];
+	const ARP_TRUNK_RETRIG = [0,0,0,1,0,0,0,0,0,2,0,0];  // retrigger count 0–7
+	const ARP_TRUNK_LEN    = [8,0,6,4,0,10,0,8,0,6,12,0]; // length 0–15
+	const ARP_TRUNK_NOTES  = [0,0,4,7,0,12,0,4,0,7,0,0];  // scale degree indices
+
+	const ARP_TRUNK_DIV   = '1/16';
+	const ARP_TRUNK_MODE  = 'UP';
+	const ARP_TRUNK_OCT   = '2';
+	const ARP_TRUNK_SCALE = 'CHROM';
+	const ARP_TRUNK_ROOT  = 'C';
+
+	function drawArpTrunk(c: Canvas, tab = 0): void {
+		c.setFont(Font.Tiny);
+
+		const SW   = ARP_TRUNK_SW;
+		const XOFF = ARP_TRUNK_XOFF;
+		const y    = 20;
+
+		fwDrawHeader(c, ARP_TRUNK_TABS[tab]);
+
+		for (let i = 0; i < ARP_TRUNK_NSTEPS; i++) {
+			const x        = i * SW + XOFF;
+			const on       = Boolean(ARP_TRUNK_GATES[i]);
+			const isCursor = i === ARP_TRUNK_CURSOR;
+			const isPlay   = i === ARP_TRUNK_PLAY;
+
+			// Step number
+			const numStr = String(i + 1);
+			c.setColorValue(isCursor ? Color.Bright : Color.Medium);
+			c.drawText(x + (SW - c.textWidth(numStr) + 1) / 2, y - 2, numStr);
+
+			// Gate box 12×12
+			c.setColorValue(isPlay ? Color.Bright : Color.Medium);
+			c.rect(x + 2, y + 2, SW - 4, SW - 4);
+			if (on) {
+				c.setColorValue(Color.Bright);
+				c.fillRect(x + 4, y + 4, SW - 8, SW - 8);
+			}
+
+			switch (tab) {
+			case 0: {  // GATE — note name (Short1) at y+27
+				if (on) {
+					const letter = NOTE_NAMES_12[((ARP_TRUNK_NOTES[i] % 12) + 12) % 12];
+					c.setColorValue(Color.Bright);
+					c.drawText(x + (SW - c.textWidth(letter) + 1) / 2, y + 27, letter);
+				}
+				break;
+			}
+			case 1:  // RETRIG — retrigger pulse marks
+				fwDrawRetrigger(c, x, y + 18, SW, 2, ARP_TRUNK_RETRIG[i] + 1, 8);
+				break;
+			case 2:  // LEN — gate-length bracket
+				if (on) fwDrawLength(c, x + 2, y + 18, SW - 4, 6, ARP_TRUNK_LEN[i] + 1, 16);
+				break;
+			case 3: {  // NOTE — two-line: letter + octave
+				if (on) {
+					const deg    = ARP_TRUNK_NOTES[i];
+					const letter = NOTE_NAMES_12[((deg % 12) + 12) % 12];
+					const oct    = String(Math.floor(deg / 12) + 4);
+					c.setColorValue(Color.Bright);
+					c.drawText(x + (SW - c.textWidth(letter) + 1) / 2, y + 20, letter);
+					c.drawText(x + (SW - c.textWidth(oct) + 1) / 2,    y + 27, oct);
+				}
+				break;
+			}
+			case 4: {  // COND — placeholder dash
+				if (on) {
+					c.setColorValue(Color.Bright);
+					c.drawText(x + (SW - c.textWidth('—') + 1) / 2, y + 20, '—');
+				}
+				break;
+			}
+			}
+		}
+
+		// Arp engine sidebar at x = 12*SW + XOFF = 224
+		const sx = 12 * SW + XOFF;
+		c.setColorValue(Color.Bright);
+		c.drawText(sx + 2, y - 2,      ARP_TRUNK_DIV);
+		c.drawText(sx + 2, y - 2 + 8,  ARP_TRUNK_MODE);
+		c.drawText(sx + 2, y - 2 + 16, ARP_TRUNK_OCT);
+		c.drawText(sx + 2, y - 2 + 24, ARP_TRUNK_SCALE);
+		c.drawText(sx + 2, y - 2 + 32, ARP_TRUNK_ROOT);
+
+		fwDrawFooter(c, [...ARP_TRUNK_TABS], tab);
+	}
+
+	function ledsArpTrunk(): LedState {
+		const s = defaultLeds();
+		s.play = 'green';
+		s.track[4] = 'green';
+		for (let i = 0; i < ARP_TRUNK_NSTEPS; i++) {
+			s.step[i] = i === ARP_TRUNK_CURSOR ? 'amber' : (ARP_TRUNK_GATES[i] ? 'green' : 'off');
+		}
+		s.fkey[0] = 'green';
+		return s;
+	}
+
+	// ── Arp Track — V2 (note pool + euclidean rhythm + accent) ───────────────
+
+	function euclideanRhythm(n: number, k: number, r: number): boolean[] {
+		if (k <= 0) return new Array(n).fill(false);
+		if (k >= n) return new Array(n).fill(true);
+		const out: boolean[] = [];
+		let bucket = 0;
+		for (let i = 0; i < n; i++) {
+			bucket += k;
+			if (bucket >= n) { bucket -= n; out.push(true); }
+			else { out.push(false); }
+		}
+		const rot = ((r % n) + n) % n;
+		return [...out.slice(rot), ...out.slice(0, rot)];
+	}
+
+	const ARP_V2_TABS = ['NOTE', 'RHYTHM', 'MOD', 'ARP'] as const;
+
+	// NOTE tab — scale degrees 1–7, on/off (no note names — just numbered 1–7)
+	const ARP_V2_DEGREES  = [true, false, true, false, true, true, false];
+	const ARP_V2_PLAY_DEG = 0;  // degree 1 currently playing
+
+	// RHYTHM tab — euclidean parameters
+	// Step buttons 1–4: hold + encoder to edit STEPS / GATES / ROTATE / GATE LEN
+	const ARP_V2_N           = 16;  // STEPS: total euclidean length
+	const ARP_V2_K           = 5;   // GATES: number of hits
+	const ARP_V2_R           = 0;   // ROTATE: rotation offset
+	const ARP_V2_GATE_LEN_PCT = 40; // GATE LEN: percentage (5–100, step 5)
+	const ARP_V2_PARAM       = 1;   // 0=STEPS, 1=GATES, 2=ROTATE, 3=GATE LEN (currently editing)
+	const ARP_V2_RPLAY       = 3;   // current play position in pattern
+
+	// MOD tab — secondary independent euclidean with a mode that shapes its interaction
+	// Step buttons 1–4: hold + encoder to edit STEPS / PULSES / ROTATE / MODE
+	// Modes: 0=OFF, 1=ACCENT, 2=MASK, 3=COMBINE, 4=RATCHET, 5=HOLD
+	const ARP_V2_MOD_N          = 12;  // STEPS: mod pattern length (independent from rhythm)
+	const ARP_V2_MOD_K          = 3;   // PULSES: mod hits within its own N steps
+	const ARP_V2_MOD_R          = 0;   // ROTATE: mod rotation offset
+	const ARP_V2_MOD_MODE_NAMES = ['OFF', 'ACCENT', 'MASK', 'COMBINE', 'RATCHET', 'HOLD'];
+	const ARP_V2_MOD_MODE       = 1;   // ACCENT by default
+	const ARP_V2_MOD_PARAM      = 3;   // 0=STEPS, 1=PULSES, 2=ROTATE, 3=MODE (currently editing)
+
+	// ARP tab — play order + octave span + arp reset length
+	// Step buttons 1–3: hold + encoder to edit ORDER / OCTAVES / LENGTH
+	// Page+Step9=ORDER, Page+Step10=OCTAVES, Page+Step11=LENGTH, Page+Step12=DIVISOR (quick access)
+	const ARP_V2_ORDER_NAMES = ['UP', 'DOWN', 'UPDN', 'DNUP', 'CONV', 'DIV', 'RAND'];
+	const ARP_V2_ORDER       = 0;   // index into ARP_V2_ORDER_NAMES
+	const ARP_V2_OCTAVES     = 2;   // 1–4
+	const ARP_V2_LENGTH      = 16;  // arp reset length: after N steps, note pool + euclid hard-reset
+	const ARP_V2_ARP_PARAM   = 0;   // 0=ORDER, 1=OCTAVES, 2=LENGTH (currently editing)
+
+	function drawArpV2(c: Canvas, tab = 0): void {
+		c.setFont(Font.Tiny);
+
+		// ── shared 2-row euclidean display ──────────────────────────────────────
+		// Row 1 (rhythm): fill state + optional border encode the mode effect.
+		//   Border = "mod pattern affects this step."
+		//   Empty interior = "step is silenced."  Fill = "step fires."
+		// Row 2 (mod): plain fill only — informational, no borders.
+		// Play cursor tick below row 2.
+		function drawCombinedEuclidean(playStep: number, mode: number): void {
+			const rhythmPat = euclideanRhythm(ARP_V2_N, ARP_V2_K, ARP_V2_R);
+			const modPat    = euclideanRhythm(ARP_V2_MOD_N, ARP_V2_MOD_K, ARP_V2_MOD_R);
+			const cw = 16;
+			const rh = 13;  // row height
+			const r1 = 8;   // row 1 y (rhythm)
+			const r2 = 23;  // row 2 y (mod)
+
+			// Dim separator between rows
+			c.setColorValue(Color.Low);
+			c.hline(0, r2 - 1, 256);
+
+			for (let i = 0; i < 16; i++) {
+				const x       = i * cw;
+				const hit     = rhythmPat[i % ARP_V2_N];
+				const mod     = modPat[i % ARP_V2_MOD_N];
+				const overlap = hit && mod;
+
+				// Row 2: mod pattern — plain fill, no decoration
+				if (mod) {
+					c.setColorValue(Color.Low);
+					c.fillRect(x + 2, r2, 12, rh);
+				}
+
+				// Row 1: rhythm with mode-encoded border/fill
+				if (!hit) continue;
+
+				let border  = false;
+				let fires   = true;
+				let ratchet = false;
+
+				switch (mode) {
+				case 0: // OFF — normal, no border
+					break;
+				case 1: // ACCENT — overlap fires with longer gate: border + fill
+					border = overlap; break;
+				case 2: // MASK — overlap muted: border + empty
+					border = overlap; fires = !overlap; break;
+				case 3: // COMBINE — rhythm-only muted: border+empty; overlap plays normally
+					border = !overlap; fires = overlap; break;
+				case 4: // RATCHET — overlap fires twice: border + double-bar
+					border = overlap; ratchet = overlap; break;
+				case 5: // HOLD — overlap legato: border + fill
+					border = overlap; break;
+				}
+
+				c.setColorValue(Color.MediumBright);
+				if (border) {
+					c.rect(x + 2, r1, 12, rh);   // border same color as fill
+				}
+				if (fires) {
+					if (ratchet) {
+						// Two trigger bars with 1px border + 1px gap inset (2px total)
+						c.fillRect(x + 4, r1 + 2, 3, rh - 4);   // left trigger bar
+						c.fillRect(x + 9, r1 + 2, 3, rh - 4);   // right trigger bar
+					} else if (border) {
+						c.fillRect(x + 4, r1 + 2, 8, rh - 4);   // inner fill (1px border + 1px gap)
+					} else {
+						c.fillRect(x + 2, r1, 12, rh);           // full fill, no border
+					}
+				}
+				// !fires + border = outline only (muted step)
+			}
+
+			// Play cursor: bright tick below row 2
+			if (playStep >= 0) {
+				const px = playStep * cw;
+				c.setColorValue(Color.Bright);
+				c.fillRect(px + 5, r2 + rh + 1, cw - 10, 2);
+			}
+		}
+
+		// ── shared param-bar helper ──────────────────────────────────────────────
+		// Draws a row of equal-width cells at y=38..53. Each cell: label + value.
+		// Selected cell (selIdx) = bright fill, inverted text. Others = dim text.
+		function drawParamBar(cells: { label: string; value: string }[], selIdx: number): void {
+			const barY = 38;
+			const barH = 16;
+			const cellW = Math.floor(256 / cells.length);
+			c.setColorValue(Color.Low);
+			c.hline(0, barY - 1, 256);   // separator above bar
+			for (let p = 0; p < cells.length; p++) {
+				const bx  = p * cellW;
+				const sel = p === selIdx;
+				// Cell background
+				if (sel) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(bx, barY, cellW, barH);
+				}
+				// Left divider (skip first)
+				if (p > 0) {
+					c.setColorValue(sel ? Color.Bright : Color.Low);
+					c.vline(bx, barY, barH);
+				}
+				// Label (top line of cell, y=42)
+				const lbl = cells[p].label;
+				c.setColorValue(sel ? Color.None : Color.Low);
+				c.drawText(bx + Math.floor((cellW - c.textWidth(lbl)) / 2), barY + 5, lbl);
+				// Value (bottom line of cell, y=50)
+				const val = cells[p].value;
+				c.setColorValue(sel ? Color.None : Color.Bright);
+				c.drawText(bx + Math.floor((cellW - c.textWidth(val)) / 2), barY + 13, val);
+			}
+		}
+
+		if (tab === 0) {
+			// ── NOTE: 7 on/off degree boxes ────────────────────────────────────
+			const SW   = 36;
+			const XOFF = 2;
+			const boxS = 22;   // square size
+			const boxY = 14;   // top of box, centered vertically in available space
+			const boxX = (SW - boxS) / 2;  // horizontal offset within column (7px)
+
+			for (let i = 0; i < 7; i++) {
+				const x    = XOFF + i * SW;
+				const on   = ARP_V2_DEGREES[i];
+				const play = i === ARP_V2_PLAY_DEG;
+				const bx   = x + boxX;
+
+				// Square box: filled = active, outline = inactive
+				if (on) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(bx, boxY, boxS, boxS);
+				} else {
+					c.setColorValue(Color.Low);
+					c.rect(bx, boxY, boxS, boxS);
+				}
+
+				// Play indicator: small bright tick below box
+				if (play) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(x + Math.floor(SW / 2) - 2, boxY + boxS + 3, 4, 2);
+				}
+
+				// Degree label 1–7
+				const lbl = String(i + 1);
+				c.setColorValue(Color.MediumLow);
+				c.drawText(x + Math.floor((SW - c.textWidth(lbl)) / 2), 53, lbl);
+			}
+
+		} else if (tab === 1) {
+			// ── RHYTHM: 3-row combined view + 4-cell param bar ─────────────────
+			drawCombinedEuclidean(ARP_V2_RPLAY, ARP_V2_MOD_MODE);
+			drawParamBar([
+				{ label: 'STEPS',    value: String(ARP_V2_N) },
+				{ label: 'GATES',    value: String(ARP_V2_K) },
+				{ label: 'ROTATE',   value: String(ARP_V2_R) },
+				{ label: 'GATE LEN', value: `${ARP_V2_GATE_LEN_PCT}%` },
+			], ARP_V2_PARAM);
+
+		} else if (tab === 2) {
+			// ── MOD: 3-row combined view + 4-cell param bar (mode as last cell) ─
+			drawCombinedEuclidean(ARP_V2_RPLAY, ARP_V2_MOD_MODE);
+			drawParamBar([
+				{ label: 'STEPS',  value: String(ARP_V2_MOD_N) },
+				{ label: 'PULSES', value: String(ARP_V2_MOD_K) },
+				{ label: 'ROTATE', value: String(ARP_V2_MOD_R) },
+				{ label: 'MODE',   value: ARP_V2_MOD_MODE_NAMES[ARP_V2_MOD_MODE] ?? 'OFF' },
+			], ARP_V2_MOD_PARAM);
+
+		} else if (tab === 3) {
+			// ── ARP: ORDER | OCTAVES | LENGTH — 3 columns, no redundant param bar
+			const modeName = ARP_V2_ORDER_NAMES[ARP_V2_ORDER] ?? 'UP';
+			const colW = Math.floor(256 / 3);  // 85px
+
+			// Column dividers
+			c.setColorValue(Color.Low);
+			c.vline(colW,     8, 46);
+			c.vline(colW * 2, 8, 46);
+
+			// ── Column 0: PLAY ORDER ─────────────────────────────────────────────
+			{
+				const cx = Math.floor(colW / 2);
+				const sel = ARP_V2_ARP_PARAM === 0;
+				c.setFont(Font.Tiny);
+				c.setColorValue(Color.Low);
+				c.drawText(cx - Math.floor(c.textWidth('PLAY ORDER') / 2), 16, 'PLAY ORDER');
+				c.setFont(Font.Normal);
+				c.setColorValue(sel ? Color.Bright : Color.Medium);
+				c.drawText(cx - Math.floor(c.textWidth(modeName) / 2), 36, modeName);
+				c.setFont(Font.Tiny);
+			}
+
+			// ── Column 1: OCTAVES ────────────────────────────────────────────────
+			{
+				const cx = colW + Math.floor(colW / 2);
+				const sel = ARP_V2_ARP_PARAM === 1;
+				c.setFont(Font.Tiny);
+				c.setColorValue(Color.Low);
+				c.drawText(cx - Math.floor(c.textWidth('OCTAVES') / 2), 16, 'OCTAVES');
+				// 4-segment bar
+				const segW = 10;
+				const segH = 10;
+				const totalW = 4 * segW + 3 * 2;
+				const sx = cx - Math.floor(totalW / 2);
+				for (let o = 0; o < 4; o++) {
+					c.setColorValue(o < ARP_V2_OCTAVES
+						? (sel ? Color.Bright : Color.MediumBright)
+						: Color.Low);
+					c.fillRect(sx + o * (segW + 2), 22, segW, segH);
+				}
+				const octLbl = `${ARP_V2_OCTAVES} oct`;
+				c.setColorValue(sel ? Color.Bright : Color.Medium);
+				c.drawText(cx - Math.floor(c.textWidth(octLbl) / 2), 40, octLbl);
+			}
+
+			// ── Column 2: LENGTH ─────────────────────────────────────────────────
+			{
+				const cx = colW * 2 + Math.floor(colW / 2);
+				const sel = ARP_V2_ARP_PARAM === 2;
+				c.setFont(Font.Tiny);
+				c.setColorValue(Color.Low);
+				c.drawText(cx - Math.floor(c.textWidth('LENGTH') / 2), 16, 'LENGTH');
+				c.setFont(Font.Normal);
+				c.setColorValue(sel ? Color.Bright : Color.Medium);
+				c.drawText(cx - Math.floor(c.textWidth(String(ARP_V2_LENGTH)) / 2), 36, String(ARP_V2_LENGTH));
+			}
+		}
+
+		fwDrawFooter(c, [...ARP_V2_TABS], tab);
+	}
+
+	function ledsArpV2(): LedState {
+		const s = defaultLeds();
+		s.play = 'green';
+		s.track[4] = 'green';
+		// Step buttons 1–4 lit green = hold-and-edit affordance for RHYTHM tab params
+		s.step[0] = 'green';  // STEPS
+		s.step[1] = 'amber';  // GATES (currently selected)
+		s.step[2] = 'green';  // ROTATE
+		s.step[3] = 'green';  // GATE LEN
+		// Euclidean rhythm shown on remaining step LEDs 5–16
+		const rhythm = euclideanRhythm(ARP_V2_N, ARP_V2_K, ARP_V2_R);
+		for (let i = 4; i < 16; i++) {
+			s.step[i] = i === ARP_V2_RPLAY ? 'amber'
+			           : (i < ARP_V2_N && rhythm[i]) ? 'green'
+			           : 'off';
+		}
+		s.fkey[1] = 'green';   // RHYTHM tab
+		return s;
+	}
+
+	// ── Quantizer Track — TRUNK (firmware port) ─────────────────────────────────
+	// Faithful port of QuantizerSequenceEditPage.cpp:
+	// single GATE layer, no F-key tabs in firmware.
+
+	const QUANT_TRUNK_FIRST  = 0;
+	const QUANT_TRUNK_LAST   = 15;
+	const QUANT_TRUNK_CURSOR = 3;
+	const QUANT_TRUNK_PLAY   = 7;
+	const QUANT_TRUNK_GATES  = [1,0,1,1,0,1,0,1,0,1,0,0,1,0,0,1];
+
+	function drawQuantizerTrunk(c: Canvas): void {
+		c.setFont(Font.Tiny);
+		fwDrawHeader(c, 'GATE');
+
+		const SW    = 16;
+		const loopY = 16;
+		const y     = 20;
+
+		c.setColorValue(Color.Bright);
+		const lsx = QUANT_TRUNK_FIRST * SW + 1;
+		c.vline(lsx, loopY - 1, 3);
+		c.point(lsx + 1, loopY);
+		const lex = QUANT_TRUNK_LAST * SW + SW - 2;
+		c.vline(lex, loopY - 1, 3);
+		c.point(lex - 1, loopY);
+		for (let i = 1; i <= QUANT_TRUNK_LAST; i++) c.point(i * SW, loopY);
+
+		for (let i = 0; i < 16; i++) {
+			const x        = i * SW;
+			const on       = Boolean(QUANT_TRUNK_GATES[i]);
+			const isCursor = i === QUANT_TRUNK_CURSOR;
+			const isPlay   = i === QUANT_TRUNK_PLAY;
+
+			const numStr = String(i + 1);
+			c.setColorValue(isCursor ? Color.Bright : Color.Medium);
+			c.drawText(x + Math.floor((SW - c.textWidth(numStr) + 1) / 2), y - 2, numStr);
+
+			c.setColorValue(isPlay ? Color.Bright : Color.Medium);
+			c.rect(x + 2, y + 2, 12, 12);
+			if (on) {
+				c.setColorValue(Color.Bright);
+				c.fillRect(x + 4, y + 4, 8, 8);
+			}
+		}
+
+		fwDrawFooter(c, ['', '', '', '', ''], 0);
+	}
+
+	function ledsQuantizerTrunk(): LedState {
+		const s = defaultLeds();
+		s.play = 'green';
+		s.track[3] = 'green';
+		QUANT_TRUNK_GATES.forEach((on, i) => {
+			s.step[i] = i === QUANT_TRUNK_CURSOR ? 'amber' : (on ? 'green' : 'off');
+		});
+		return s;
+	}
+
+	// ── Quantizer Track — V1 (GATE | SRCE | TRIG | SCLE) ─────────────────────────
+	// Only one step layer (Gate). Tabs F1–F4 surface the most-changed config
+	// as in-place selectors rather than sending the user to Track Config.
+	// GATE tab: gate pattern + live CV output readout.
+	// SRCE tab: input source selector (CV1–CV4).
+	// TRIG tab: trigger mode (FREE / INT / EXT) + trigger track when EXT.
+	// SCLE tab: scale + root note (two-column scrollable list).
+
+	const QUANT_V1_TABS        = ['GATE', 'SRCE', 'TRIG', 'TUNE', ''] as const;
+	const QUANT_V1_GATES       = [1,0,1,1,0,1,0,1,0,1,0,0,1,0,0,1];
+	const QUANT_V1_CURSOR      = 3;
+	const QUANT_V1_PLAY        = 7;
+	const QUANT_V1_FIRST       = 0;
+	const QUANT_V1_LAST        = 15;
+	const QUANT_V1_SOURCE      = 6;   // 0–3=CvIn1–4, 4–11=Track1–8 (Track3 = index 6 selected)
+	const QUANT_V1_TRIG: number = 2;  // 0=FREE, 1=INT, 2=EXT
+	const QUANT_V1_TRIG_TRK    = 1;   // trigger track index when INT (T2)
+	const QUANT_V1_TRIG_CV     = 0;   // trigger CV input index when EXT (CV1)
+	const QUANT_V1_OCTAVE      = 0;   // -10..+10
+	const QUANT_V1_TRANSPOSE   = 7;   // -100..+100 (non-zero to show bar in demo)
+	const QUANT_V1_TUNE_PARAM: number = 1;  // 0=OCTAVE, 1=TRANSPOSE
+
+	const QUANT_TRIG_NAMES = ['FREE', 'INT', 'EXT'];
+
+	function drawQuantizerV1(c: Canvas, tab = 0): void {
+		c.setFont(Font.Tiny);
+		fwDrawHeader(c, QUANT_V1_TABS[tab]);
+
+		const SW    = 16;
+		const loopY = 16;
+		const y     = 20;
+
+		if (tab === 0) {
+			// ── GATE: step grid + live CV output readout ──────────────────────────
+			c.setColorValue(Color.Bright);
+			const lsx = QUANT_V1_FIRST * SW + 1;
+			c.vline(lsx, loopY - 1, 3);
+			c.point(lsx + 1, loopY);
+			const lex = QUANT_V1_LAST * SW + SW - 2;
+			c.vline(lex, loopY - 1, 3);
+			c.point(lex - 1, loopY);
+			for (let i = 1; i <= QUANT_V1_LAST; i++) {
+				c.setColorValue(Color.Low);
+				c.point(i * SW, loopY);
+			}
+
+			for (let i = 0; i < 16; i++) {
+				const x        = i * SW;
+				const on       = Boolean(QUANT_V1_GATES[i]);
+				const isCursor = i === QUANT_V1_CURSOR;
+				const isPlay   = i === QUANT_V1_PLAY;
+
+				const numStr = String(i + 1);
+				c.setColorValue(isCursor ? Color.Bright : Color.Low);
+				c.drawText(x + Math.floor((SW - c.textWidth(numStr) + 1) / 2), y - 2, numStr);
+
+				c.setColorValue(isPlay ? Color.Bright : Color.Low);
+				c.rect(x + 2, y + 2, 12, 12);
+				if (on) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(x + 4, y + 4, 8, 8);
+				}
+			}
+
+			// Live output readout (lower-right)
+			c.setFont(Font.Tiny);
+			c.setColorValue(Color.Low);
+			c.drawText(188, 48, 'OUT');
+			c.setFont(Font.Normal);
+			c.setColorValue(Color.Bright);
+			c.drawText(210, 51, 'F4');
+			c.setFont(Font.Tiny);
+
+		} else if (tab === 1) {
+			// ── SRCE: 12 sources — CV IN row (top) + TRACK row (bottom) ──────────
+
+			// CV IN section label
+			c.setColorValue(Color.Low);
+			c.drawText(4, 16, 'CV IN');
+
+			// Top row: CvIn1–4 (indices 0–3), 4 boxes of 64px each
+			const cvW = 64;
+			const cvLabels = ['CV 1', 'CV 2', 'CV 3', 'CV 4'];
+			for (let i = 0; i < 4; i++) {
+				const bx  = i * cvW + 6;
+				const bw  = cvW - 12;
+				const sel = QUANT_V1_SOURCE === i;
+				if (sel) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(bx, 19, bw, 16);
+					c.setColorValue(Color.None);
+				} else {
+					c.setColorValue(Color.Low);
+					c.rect(bx, 19, bw, 16);
+					c.setColorValue(Color.Medium);
+				}
+				c.setFont(Font.Normal);
+				c.drawText(i * cvW + Math.floor((cvW - c.textWidth(cvLabels[i])) / 2), 29, cvLabels[i]);
+				c.setFont(Font.Tiny);
+			}
+
+			// TRACK section label
+			c.setColorValue(Color.Low);
+			c.drawText(4, 41, 'TRACK');
+
+			// Bottom row: Track1–8 (indices 4–11), 8 boxes centered
+			const trkW  = 28;
+			const trkGap = 2;
+			const trkX0 = Math.floor((256 - (8 * trkW + 7 * trkGap)) / 2);
+			for (let t = 0; t < 8; t++) {
+				const tx  = trkX0 + t * (trkW + trkGap);
+				const sel = QUANT_V1_SOURCE === t + 4;
+				const lbl = `T${t + 1}`;
+				const ltx = tx + Math.floor((trkW - c.textWidth(lbl)) / 2);
+				if (sel) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(tx, 43, trkW, 10);
+					c.setColorValue(Color.None);
+					c.drawText(ltx, 50, lbl);
+				} else {
+					c.setColorValue(Color.Low);
+					c.rect(tx, 43, trkW, 10);
+					c.setColorValue(Color.Medium);
+					c.drawText(ltx, 50, lbl);
+				}
+			}
+
+		} else if (tab === 2) {
+			// ── TRIG: trigger mode + conditional sub-selector ─────────────────────
+			c.setColorValue(Color.Low);
+			c.drawText(Math.floor((256 - c.textWidth('TRIGGER MODE')) / 2), 15, 'TRIGGER MODE');
+
+			const modeW = Math.floor(256 / 3);
+			for (let i = 0; i < 3; i++) {
+				const bx  = i * modeW + 4;
+				const bw  = modeW - 8;
+				const sel = i === QUANT_V1_TRIG;
+				if (sel) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(bx, 19, bw, 14);
+					c.setColorValue(Color.None);
+				} else {
+					c.setColorValue(Color.Low);
+					c.rect(bx, 19, bw, 14);
+					c.setColorValue(Color.Medium);
+				}
+				c.drawText(i * modeW + Math.floor((modeW - c.textWidth(QUANT_TRIG_NAMES[i])) / 2), 29, QUANT_TRIG_NAMES[i]);
+			}
+
+			if (QUANT_V1_TRIG === 1) {
+				// INT: show track selector
+				c.setColorValue(Color.Low);
+				c.drawText(4, 40, 'TRIGGER TRACK');
+				const trkW  = 28;
+				const trkGap = 2;
+				const trkX0 = Math.floor((256 - (8 * trkW + 7 * trkGap)) / 2);
+				for (let t = 0; t < 8; t++) {
+					const tx  = trkX0 + t * (trkW + trkGap);
+					const sel = t === QUANT_V1_TRIG_TRK;
+					const lbl = `T${t + 1}`;
+					const ltx = tx + Math.floor((trkW - c.textWidth(lbl)) / 2);
+					if (sel) {
+						c.setColorValue(Color.Bright);
+						c.fillRect(tx, 43, trkW, 10);
+						c.setColorValue(Color.None);
+						c.drawText(ltx, 50, lbl);
+					} else {
+						c.setColorValue(Color.Low);
+						c.rect(tx, 43, trkW, 10);
+						c.setColorValue(Color.Medium);
+						c.drawText(ltx, 50, lbl);
+					}
+				}
+			} else if (QUANT_V1_TRIG === 2) {
+				// EXT: show CV input selector
+				c.setColorValue(Color.Low);
+				c.drawText(4, 40, 'TRIGGER CV IN');
+				const cvW = 64;
+				const cvLabels = ['CV 1', 'CV 2', 'CV 3', 'CV 4'];
+				for (let i = 0; i < 4; i++) {
+					const bx  = i * cvW + 6;
+					const bw  = cvW - 12;
+					const sel = i === QUANT_V1_TRIG_CV;
+					if (sel) {
+						c.setColorValue(Color.Bright);
+						c.fillRect(bx, 43, bw, 10);
+						c.setColorValue(Color.None);
+					} else {
+						c.setColorValue(Color.Low);
+						c.rect(bx, 43, bw, 10);
+						c.setColorValue(Color.Medium);
+					}
+					c.drawText(i * cvW + Math.floor((cvW - c.textWidth(cvLabels[i])) / 2), 50, cvLabels[i]);
+				}
+			}
+
+		} else if (tab === 3) {
+			// ── TUNE: OCTAVE + TRANSPOSE, bipolar bar + value ─────────────────────
+			// Follows the Arp V2 ARP-tab column pattern: dim label → bar → value
+
+			c.setColorValue(Color.Low);
+			c.vline(128, 10, 43);
+
+			function drawTuneColumn(
+				cx: number, label: string,
+				value: number, maxVal: number, sel: boolean
+			): void {
+				const barW   = 80;
+				const barH   = 5;
+				const barY   = 26;
+				const barX   = cx - Math.floor(barW / 2);
+				const midX   = cx;
+
+				// Label
+				c.setFont(Font.Tiny);
+				c.setColorValue(Color.Low);
+				c.drawText(cx - Math.floor(c.textWidth(label) / 2), 16, label);
+
+				// Bar background
+				c.setColorValue(Color.Low);
+				c.fillRect(barX, barY, barW, barH);
+
+				// Filled section from center toward value
+				const halfW = Math.floor(barW / 2);
+				const fillPx = Math.round(halfW * Math.abs(value) / maxVal);
+				if (fillPx > 0) {
+					c.setColorValue(sel ? Color.Bright : Color.Medium);
+					if (value >= 0) {
+						c.fillRect(midX, barY, fillPx, barH);
+					} else {
+						c.fillRect(midX - fillPx, barY, fillPx, barH);
+					}
+				}
+
+				// Zero notch: dark tick at center to make 0 legible
+				c.setColorValue(Color.None);
+				c.vline(midX, barY, barH);
+
+				// Numeric value
+				const valStr = value > 0 ? `+${value}` : String(value);
+				c.setFont(Font.Normal);
+				c.setColorValue(sel ? Color.Bright : Color.Medium);
+				c.drawText(cx - Math.floor(c.textWidth(valStr) / 2), 44, valStr);
+				c.setFont(Font.Tiny);
+			}
+
+			drawTuneColumn(64,  'OCTAVE',    QUANT_V1_OCTAVE,    10,  QUANT_V1_TUNE_PARAM === 0);
+			drawTuneColumn(192, 'TRANSPOSE', QUANT_V1_TRANSPOSE, 100, QUANT_V1_TUNE_PARAM === 1);
+		}
+
+		fwDrawFooter(c, [...QUANT_V1_TABS], tab);
+	}
+
+	function ledsQuantizerV1(): LedState {
+		const s = defaultLeds();
+		s.play = 'green';
+		s.track[3] = 'green';
+		QUANT_V1_GATES.forEach((on, i) => {
+			s.step[i] = i === QUANT_V1_CURSOR ? 'amber' : (on ? 'green' : 'off');
+		});
+		s.fkey[0] = 'green';
+		return s;
+	}
+
 	// ── routing ───────────────────────────────────────────────────────────────
 
 	type PageId =
-		| 'dashboard' | 'perform' | 'trackedit' | 'curvetrack' | 'stochastic' | 'trackconfig'
-		| 'song' | 'settings' | 'tempo' | 'quickedit';
+		| 'dashboard' | 'perform' | 'trackedit' | 'curvetrack' | 'stochastic' | 'arp' | 'quantizer'
+		| 'trackconfig' | 'song' | 'settings' | 'tempo' | 'quickedit';
 
 	interface Variation {
 		label: string;
@@ -2820,6 +3744,15 @@
 		stochastic: [
 			{ label: '★ TRUNK — current firmware UI (GATE|RETRIG|LEN|NOTE|COND)', draw: drawStochasticTrunk, tabs: STCH_TRUNK_TABS, leds: ledsStochasticTrunk },
 			{ label: 'V1 — probability fill cells (GATE|LEN|NOTE|PROB)', draw: drawStochastic, tabs: STOCH_TABS, leds: ledsStochastic },
+			{ label: 'V2 — SIG-inspired: 12 note sliders + piano keyboard (NOTE|OCT|LEN|ART|LOOP)', draw: drawStochasticV2, tabs: STCH_V2_TABS, leds: ledsStochasticV2 },
+		],
+		arp: [
+			{ label: '★ TRUNK — current firmware UI (GATE|RETRIG|LEN|NOTE|COND)', draw: drawArpTrunk, tabs: [...ARP_TRUNK_TABS], leds: ledsArpTrunk },
+			{ label: 'V2 — note pool + euclidean rhythm + accent (NOTE|RHYTHM|ACCENT|ARP)', draw: drawArpV2, tabs: [...ARP_V2_TABS], leds: ledsArpV2 },
+		],
+		quantizer: [
+			{ label: '★ TRUNK — current firmware UI (GATE only, no tabs)', draw: drawQuantizerTrunk, leds: ledsQuantizerTrunk },
+			{ label: 'V1 — gate grid + config tabs (GATE|SRCE|TRIG|SCLE)', draw: drawQuantizerV1, tabs: [...QUANT_V1_TABS], leds: ledsQuantizerV1 },
 		],
 		trackconfig: [
 			{ label: 'Option 1 — flat list',             draw: drawCfg_A },
@@ -2850,7 +3783,8 @@
 
 	const PAGE_NAMES: Record<PageId, string> = {
 		dashboard: 'Dashboard', perform: 'Perform', trackedit: 'Note Track Edit',
-		curvetrack: 'Curve Track Edit', stochastic: 'Stochastic Track Edit',
+		curvetrack: 'Curve Track Edit', stochastic: 'Stochastic Track Edit', arp: 'Arp Track Edit',
+		quantizer: 'Quantizer Track Edit',
 		trackconfig: 'Track Config', song: 'Song', settings: 'Settings',
 		tempo: 'Tempo', quickedit: 'Quick Edit',
 	};
@@ -2861,8 +3795,10 @@
 		{ label: 'PG+STP0',   target: 'trackedit' },
 		{ label: 'PG+STP1',   target: 'curvetrack' },
 		{ label: 'PG+STP2',   target: 'stochastic' },
-		{ label: 'PG+STP3',   target: 'trackconfig' },
-		{ label: 'PG+STP4',   target: 'song' },
+		{ label: 'PG+STP3',   target: 'arp' },
+		{ label: 'PG+STP4',   target: 'quantizer' },
+		{ label: 'PG+STP5',   target: 'trackconfig' },
+		{ label: 'PG+STP6',   target: 'song' },
 		{ label: 'PG+TRK0',   target: 'settings' },
 		{ label: 'TEMPO',     target: 'tempo' },
 		{ label: 'PG+STP8',   target: 'quickedit' },

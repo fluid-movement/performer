@@ -156,10 +156,12 @@ void ClipBoard::pasteStochasticSequence(StochasticSequence &sequence) const {
     }
 }
 
-void ClipBoard::pasteStochasticSequenceSteps(StochasticSequence &sequence, const SelectedSteps &selectedSteps) const {
+void ClipBoard::pasteStochasticSequenceSteps(StochasticSequence &sequence, const SelectedSteps & /*selectedSteps*/) const {
     if (canPasteStochasticSequenceSteps()) {
-        const auto &stochasticSequenceSteps = _container.as<StochasticSequenceSteps>();
-        ModelUtils::copySteps(stochasticSequenceSteps.sequence.steps(), stochasticSequenceSteps.selected, sequence.steps(), selectedSteps);
+        const auto &src = _container.as<StochasticSequenceSteps>().sequence;
+        for (int i = 0; i < 7; i++) sequence.setDegreeProb(i, src.degreeProb(i));
+        for (int i = 0; i < 5; i++) sequence.setOctaveProb(i, src.octaveProb(i));
+        for (int i = 0; i < 6; i++) sequence.setDurationProb(i, src.durationProb(i));
     }
 }
 
@@ -170,10 +172,11 @@ void ClipBoard::pasteArpSequence(ArpSequence &sequence) const {
     }
 }
 
-void ClipBoard::pasteArpSequenceSteps(ArpSequence &sequence, const SelectedSteps &selectedSteps) const {
+void ClipBoard::pasteArpSequenceSteps(ArpSequence &sequence, const SelectedSteps & /*selectedSteps*/) const {
     if (canPasteArpSequenceSteps()) {
-        const auto &arpSequenceSteps = _container.as<ArpSequenceSteps>();
-        ModelUtils::copySteps(arpSequenceSteps.sequence.steps(), arpSequenceSteps.selected, sequence.steps(), selectedSteps);
+        Model::WriteLock lock;
+        // Arp V2 has no per-step array; copy the whole sequence (degreeMask + params)
+        sequence = _container.as<ArpSequenceSteps>().sequence;
     }
 }
 

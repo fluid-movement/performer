@@ -10,6 +10,28 @@ For a full map of all pages, button combos, and held-button overlays, see [`agen
 
 ---
 
+## 2026-06-04 — Arp Track V2: euclidean + note-pool model (Version46)
+
+Full redesign of the Arp track. Old `Arpeggiator.h/cpp` per-step grid replaced by a degree-mask + dual-euclidean model. See [`agent-docs/features/arp-track.md`](features/arp-track.md) for full details.
+
+**Model changes (`ArpSequence`, Version46):**
+- `degreeMask` (7-bit) — selects active scale degrees; replaces per-step note grid
+- `rhythmN/K/R` + `rhythmGateLen` — euclidean rhythm generator drives gate on/off
+- `modN/K/R` + `modMode` — secondary euclidean pattern with 6 mod modes: Off / Accent / Mask / Combine / Ratchet / Hold
+- `arpOrder` (0–4 implemented: UP / DOWN / UP-DN / DN-UP / RAND), `arpOctaves`, `arpLength`
+
+**Engine (`ArpTrackEngine`):**
+- Bresenham euclidean precomputed into `_rhythmPat`/`_modPat`; lazy-recomputed on param change
+- Note pool rebuilt from `degreeMask` each rhythm hit
+- `nextNoteCv()` cycles `_arpPhase` through pool × octaves; bounce modes use period `2*(n-1)` with no repeated endpoints
+- No MIDI input — note pool is degree-mask only
+
+**UI:** 4-tab `ArpSequenceEditPage`: NOTE / RHYTHM / MOD / ARP
+
+**Files changed:** `ArpSequence.h/cpp`, `ArpTrackEngine.h/cpp`, `ArpSequenceEditPage.h/cpp`, `ArpSequencePage.cpp`, `ArpSequenceListModel.h`, `LaunchpadController.h/cpp`, `ClipBoard.cpp`, `ProjectVersion.h`, `python/project.cpp`.
+
+---
+
 ## 2026-05-14 — Fix: Arp & Stochastic tracks now use scale degrees
 
 Arp and Stochastic tracks were stuck displaying and rendering as C Major regardless of the project scale. Two root causes:

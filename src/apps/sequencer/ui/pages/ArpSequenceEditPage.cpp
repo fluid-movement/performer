@@ -3,24 +3,19 @@
 #include "Pages.h"
 
 #include "model/ArpSequence.h"
+#include "engine/ArpTrackEngine.h"
 #include "ui/LedPainter.h"
-#include "ui/painters/SequencePainter.h"
 #include "ui/painters/WindowPainter.h"
-
-#include "model/Scale.h"
+#include "ui/MatrixMap.h"
 
 #include "os/os.h"
 
 #include "core/utils/StringBuilder.h"
-#include <cstddef>
-#include <iostream>
 
 enum class ContextAction {
     Init,
     Copy,
     Paste,
-    Duplicate, 
-    Generate,
     Last
 };
 
@@ -28,19 +23,9 @@ static const ContextMenuModel::Item contextMenuItems[] = {
     { "INIT" },
     { "COPY" },
     { "PASTE" },
-    { "DUPL" },
-    { "GEN" },
 };
 
-enum class Function {
-    Gate        = 0,
-    Retrigger   = 1,
-    Length      = 2,
-    Note        = 3,
-    Condition     = 4,
-};
-
-static const char *functionNames[] = { "GATE", "RETRIG", "LENGTH", "NOTE", "COND" };
+static const char *functionNames[] = { "NOTE", "RHYTHM", "MOD", "ARP", nullptr };
 
 static const ArpSequenceListModel::Item quickEditItems[8] = {
     ArpSequenceListModel::Item::Last,
@@ -53,310 +38,380 @@ static const ArpSequenceListModel::Item quickEditItems[8] = {
     ArpSequenceListModel::Item::Last
 };
 
-static const ArpTrackListModel::Item quickEditTrackItems[4] {
-    ArpTrackListModel::ArpeggiatorDivisor,
-    ArpTrackListModel::ArpeggiatorMode,
-    ArpTrackListModel::ArpeggiatorOctaves,
-    ArpTrackListModel::Item::Last
-};
-
 ArpSequenceEditPage::ArpSequenceEditPage(PageManager &manager, PageContext &context) :
     BasePage(manager, context)
-{
-    _stepSelection.setStepCompare([this] (int a, int b) {
-        auto layer = _project.selectedArpSequenceLayer();
-        const auto &sequence = _project.selectedArpSequence();
-        return sequence.step(a).layerValue(layer) == sequence.step(b).layerValue(layer);
-    });
-}
+{}
 
 void ArpSequenceEditPage::enter() {
-    updateMonitorStep();
-    _showDetail = false;
-    _section = 0;
+    _activeTab = 0;
+    _cursor = 0;
+    _heldSteps = 0;
 }
 
 void ArpSequenceEditPage::exit() {
-    _engine.selectedTrackEngine().as<ArpTrackEngine>().setMonitorStep(-1);
+}
+
+int ArpSequenceEditPage::maxForTab() const {
+    switch (_activeTab) {
+    case 0: return 7;   // NOTE: 7 degrees
+    case 1: return 4;   // RHYTHM: N/K/R/GATELEN
+    case 2: return 4;   // MOD: N/K/R/MODE
+    case 3: return 3;   // ARP: ORDER/OCTAVES/LENGTH
+    default: return 0;
+    }
 }
 
 void ArpSequenceEditPage::draw(Canvas &canvas) {
     WindowPainter::clear(canvas);
-
-    /* Prepare flags shown before mode name (top right header) */
     auto &sequence = _project.selectedArpSequence();
-    auto &track = _project.selectedTrack().arpTrack();
 
-    const char *mode_flags = NULL;
-    if (track.midiKeyboard()) {
-        const char *st_flag = "K";
-        mode_flags = st_flag;
-    }
-
-    WindowPainter::drawHeader(canvas, _model, _engine, "STEPS", mode_flags);
-
-    WindowPainter::drawActiveFunction(canvas, ArpSequence::layerName(layer()));
+    WindowPainter::drawHeader(canvas, _model, _engine, "STEPS", nullptr);
+    WindowPainter::drawActiveFunction(canvas, functionNames[_activeTab]);
     WindowPainter::drawFooter(canvas, functionNames, pageKeyState(), activeFunctionKey());
 
+    switch (_activeTab) {
+    case 0: drawNoteTab(canvas, sequence);   break;
+    case 1: drawRhythmTab(canvas, sequence); break;
+    case 2: drawModTab(canvas, sequence);    break;
+    case 3: drawArpTab(canvas, sequence);    break;
+    }
+}
+
+// Draw 7 degree boxes centered on screen
+void ArpSequenceEditPage::drawNoteTab(Canvas &canvas, const ArpSequence &sequence) {
     const auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
-    const auto &scale = _project.selectedScale();
-    int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
-    int currentRecordStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentRecordStep() : -1;
+    int currentDegree = trackEngine.isActiveSequence(sequence) ? trackEngine.currentDegree() : -1;
 
-    const int stepWidth = Width / StepCount;
-    const int stepOffset = this->stepOffset();
+    const int boxW   = 22;
+    const int boxH   = 22;
+    const int colW   = 36;
+    const int xOff   = 2;
+    const int boxY   = 14;
+    const int labelY = boxY + boxH + 9;
 
-    int stepsToDraw = 12;
+    canvas.setFont(Font::Tiny);
 
-    // Track Pattern Section on the UI
-    if (_sectionTracking && _engine.state().running()) {
-        bool section_change = bool((currentStep) % StepCount == 0); // StepCount is relative to screen
-        int section_no = int((currentStep) / StepCount);
-        if (section_change && section_no != _section) {
-            _section = section_no;
+    for (int i = 0; i < 7; i++) {
+        int x  = xOff + i * colW;
+        int bx = x + (colW - boxW) / 2;
+
+        bool active  = sequence.isDegreeActive(i);
+        bool held    = (_heldSteps >> i) & 1;
+        bool playing = (i == currentDegree);
+
+        canvas.setBlendMode(BlendMode::Set);
+
+        if (active) {
+            canvas.setColor(held ? Color::Bright : Color::Medium);
+            canvas.fillRect(bx, boxY, boxW, boxH);
+        } else {
+            canvas.setColor(Color::Low);
+            canvas.drawRect(bx, boxY, boxW, boxH);
         }
+
+        // Play indicator: small tick below box
+        if (playing) {
+            canvas.setColor(Color::Bright);
+            canvas.fillRect(x + colW / 2 - 2, boxY + boxH + 3, 4, 2);
+        }
+
+        // Degree label
+        canvas.setColor(Color::MediumLow);
+        FixedStringBuilder<4> str("%d", i + 1);
+        canvas.drawText(x + (colW - canvas.textWidth(str)) / 2, labelY, str);
     }
+}
 
-    for (int i = 0; i < stepsToDraw; ++i) {
-        int stepIndex = stepOffset + i;
-        auto &step = sequence.step(stepIndex);
+// Draw both euclidean patterns, one above the other
+void ArpSequenceEditPage::drawCombinedEuclidean(Canvas &canvas, const ArpSequence &sequence, int playStep) {
+    const int cw   = 16;   // cell width, matches sandbox
+    const int rh   = 13;   // row height
+    const int r1   = 8;    // rhythm row Y
+    const int r2   = 23;   // mod row Y
 
-        int x = (i * stepWidth) + ((16 - stepsToDraw)*stepWidth)/2 ;
-        int y = 20;
+    // Generate euclidean pattern with auto-rotation so first hit is at index 0
+    auto buildPat = [](bool *out, int n, int k, int r) {
+        n = std::max(n, 1);
+        k = std::min(k, n);
+        bool raw[16] = {};
+        int bucket = 0;
+        for (int i = 0; i < n; i++) {
+            bucket += k;
+            if (bucket >= n) { bucket -= n; raw[i] = true; }
+        }
+        int firstHit = 0;
+        if (k > 0) {
+            for (int i = 0; i < n; i++) { if (raw[i]) { firstHit = i; break; } }
+        }
+        for (int i = 0; i < n; i++)
+            out[i] = raw[((i + firstHit - r) % n + n) % n];
+    };
 
-        // step index
-        {
-            canvas.setColor(_stepSelection[stepIndex] ? Color::Bright : Color::Medium);
-            FixedStringBuilder<8> str("%d", stepIndex + 1);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y - 2, str);
+    int rn = std::max(sequence.rhythmN(), 1);
+    int mn = std::max(sequence.modN(), 1);
+
+    bool rhythmPat[16] = {};
+    bool modPat[16]    = {};
+    buildPat(rhythmPat, rn, sequence.rhythmK(), sequence.rhythmR());
+    buildPat(modPat,    mn, sequence.modK(),    sequence.modR());
+
+    int modMode = sequence.modMode();
+
+    canvas.setBlendMode(BlendMode::Set);
+
+    // Dim separator between rows
+    canvas.setColor(Color::Low);
+    canvas.hline(0, r2 - 1, 256);
+
+    for (int i = 0; i < 16; i++) {
+        int x       = i * cw;
+        bool hit    = rhythmPat[i % rn];
+        bool mod    = modPat[i % mn];
+        bool overlap = hit && mod;
+
+        // Row 2: mod pattern — plain fill
+        if (mod) {
+            canvas.setColor(Color::Low);
+            canvas.fillRect(x + 2, r2, 12, rh);
         }
 
-        // step gate
-        canvas.setColor(stepIndex == currentStep ? Color::Bright : Color::Medium);
-        canvas.drawRect(x + 2, y + 2, stepWidth - 4, stepWidth - 4);
-        if (step.gate()) {
-            canvas.setColor(_context.model.settings().userSettings().get<DimSequenceSetting>(SettingDimSequence)->getValue() ? Color::Low : Color::Bright);
-            canvas.fillRect(x + 4, y + 4, stepWidth - 8, stepWidth - 8);
+        if (!hit) continue;
+
+        bool border  = false;
+        bool fires   = true;
+        bool ratchet = false;
+
+        switch (modMode) {
+        case 0: break;                                           // OFF
+        case 1: border = overlap; break;                         // ACCENT
+        case 2: border = overlap; fires = !overlap; break;       // MASK
+        case 3: border = !overlap; fires = overlap; break;       // COMBINE
+        case 4: border = overlap; ratchet = overlap; break;      // RATCHET
+        case 5: border = overlap; break;                         // HOLD
+        default: break;
         }
 
-        // record step
-        if (stepIndex == currentRecordStep) {
-            // draw circle
-            canvas.setColor(step.gate() ? Color::None : Color::Bright);
-            canvas.fillRect(x + 6, y + 6, stepWidth - 12, stepWidth - 12);
-            canvas.setColor(Color::Medium);
-            canvas.hline(x + 7, y + 5, 2);
-            canvas.hline(x + 7, y + 10, 2);
-            canvas.vline(x + 5, y + 7, 2);
-            canvas.vline(x + 10, y + 7, 2);
-        }
-
-        switch (layer()) {
-        case Layer::Gate: {
-                int rootNote = _project.rootNote();
-                canvas.setColor(Color::Bright);
-                FixedStringBuilder<8> str;
-                scale.noteName(str, step.note(), rootNote, Scale::Short1);
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
+        canvas.setColor(Color::MediumBright);
+        if (border)
+            canvas.drawRect(x + 2, r1, 12, rh);
+        if (fires) {
+            if (ratchet) {
+                canvas.fillRect(x + 4, r1 + 2, 3, rh - 4);
+                canvas.fillRect(x + 9, r1 + 2, 3, rh - 4);
+            } else if (border) {
+                canvas.fillRect(x + 4, r1 + 2, 8, rh - 4);
+            } else {
+                canvas.fillRect(x + 2, r1, 12, rh);
             }
-            break;
-        case Layer::GateProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.gateProbability() + 1, ArpSequence::GateProbability::Range
-            );
-            break;
-        case Layer::GateOffset:
-            SequencePainter::drawOffset(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.gateOffset(), ArpSequence::GateOffset::Min - 1, ArpSequence::GateOffset::Max + 1
-            );
-            break;
-        case Layer::Retrigger:
-            SequencePainter::drawRetrigger(
-                canvas,
-                x, y + 18, stepWidth, 2,
-                step.retrigger() + 1, ArpSequence::Retrigger::Range
-            );
-            break;
-        case Layer::RetriggerProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.retriggerProbability() + 1, ArpSequence::RetriggerProbability::Range
-            );
-            break;
-        case Layer::Length:
-            SequencePainter::drawLength(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 6,
-                step.length() + 1, ArpSequence::Length::Range
-            );
-            break;
-        case Layer::LengthVariationRange:
-            SequencePainter::drawLengthRange(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 6,
-                step.length() + 1, step.lengthVariationRange(), ArpSequence::Length::Range
-            );
-            break;
-        case Layer::LengthVariationProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.lengthVariationProbability() + 1, ArpSequence::LengthVariationProbability::Range
-            );
-            break;
-        case Layer::NoteOctave: {
-            int rootNote = _project.rootNote();
-            canvas.setColor(Color::Bright);
-            FixedStringBuilder<8> str;
-            scale.noteName(str, step.note(), rootNote, Scale::Short1);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-            str.reset();
-            str("%+d", step.noteOctave());
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-            break;
-        }
-        case Layer::NoteOctaveProbability: {
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.noteOctaveProbability() + 1, ArpSequence::NoteOctaveProbability::Range
-            );
-            int rootNote = _project.rootNote();
-            canvas.setColor(Color::Bright);
-            FixedStringBuilder<8> str;
-            scale.noteName(str, step.note(), rootNote, Scale::Short1);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-            break;
-        }
-        case Layer::Note: {
-            int rootNote = _project.rootNote();
-            canvas.setColor(Color::Bright);
-            FixedStringBuilder<8> str;
-            scale.noteName(str, step.note(), rootNote, Scale::Short1);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-            str.reset();
-            scale.noteName(str, step.note(), rootNote, Scale::Short2);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-            break;
-        }
-        case Layer::NoteVariationRange: {
-            canvas.setColor(Color::Bright);
-            FixedStringBuilder<8> str("%d", step.noteVariationRange());
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-            break;
-        }
-        case Layer::NoteVariationProbability: {
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.noteVariationProbability() + 1, ArpSequence::NoteVariationProbability::Range
-            );
-            int rootNote = _project.rootNote();
-            canvas.setColor(Color::Bright);
-            FixedStringBuilder<8> str;
-            scale.noteName(str, step.note(), rootNote, Scale::Short1);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-            break;
-        }
-        case Layer::Slide:
-            SequencePainter::drawSlide(
-                canvas,
-                x + 4, y + 18, stepWidth - 8, 4,
-                step.slide()
-            );
-            break;
-        case Layer::Condition: {
-            canvas.setColor(Color::Bright);
-            FixedStringBuilder<8> str;
-            Types::printCondition(str, step.condition(), Types::ConditionFormat::Short1);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-            str.reset();
-            Types::printCondition(str, step.condition(), Types::ConditionFormat::Short2);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-            break;
-        }
-        case Layer::Last:
-            break;
         }
     }
 
-    // display arp detail
+    // Play cursor: bright tick below row 2
+    if (playStep >= 0) {
+        int px = playStep * cw;
+        canvas.setColor(Color::Bright);
+        canvas.fillRect(px + 5, r2 + rh + 1, cw - 10, 2);
+    }
+}
 
-    int x = (12 * stepWidth) + ((16 - stepsToDraw)*stepWidth)/2 ;
-    int y = 20;
-    FixedStringBuilder<8> str;
-    canvas.setColor(Color::Bright);
-    track.arpeggiator().printDivisorAbbr(str);
-    canvas.drawText(x + 2,  y -2, str);
-    str.reset();
-    track.arpeggiator().printModeAbbr(str);
-    canvas.drawText(x + 2,  y -2 + 8, str);
-    str.reset();
-    track.arpeggiator().printOctavesAbbr(str);
-    canvas.drawText(x + 2,  y -2 + 16, str);
-    str.reset();
-    str(Scale::name(_project.scale()));
-    canvas.drawText(x + 2,  y -2 + 24, str);
-    str.reset();
-    _project.printRootNote(str);
-    canvas.drawText(x + 2,  y -2 + 32, str);
+// Draw parameter bar: equal-width columns with label and value
+void ArpSequenceEditPage::drawParamBar(Canvas &canvas, const char *labels[], const char *values[], int count, int selIdx) {
+    const int barY  = 38;
+    const int barH  = 16;
+    const int cellW = 256 / count;
 
+    canvas.setFont(Font::Tiny);
+    canvas.setBlendMode(BlendMode::Set);
 
-    // handle detail display
+    // Separator line above bar
+    canvas.setColor(Color::Low);
+    canvas.hline(0, barY - 1, 256);
 
-    if (_showDetail) {
-        if (layer() == Layer::Gate || layer() == Layer::Slide || _stepSelection.none()) {
-            _showDetail = false;
+    for (int i = 0; i < count; i++) {
+        int x   = i * cellW;
+        bool sel = (i == selIdx) || ((_heldSteps >> i) & 1);
+
+        if (sel) {
+            canvas.setColor(Color::Bright);
+            canvas.fillRect(x, barY, cellW, barH);
         }
-        if (_stepSelection.isPersisted() && os::ticks() > _showDetailTicks + os::time::ms(500)) {
-            _showDetail = false;
+
+        // Left divider (skip first cell)
+        if (i > 0) {
+            canvas.setColor(sel ? Color::Bright : Color::Low);
+            canvas.vline(x, barY, barH);
         }
+
+        // Label — use Sub blend when selected so text knocks out of the bright fill
+        canvas.setBlendMode(sel ? BlendMode::Sub : BlendMode::Set);
+        canvas.setColor(Color::Low);
+        canvas.drawText(x + (cellW - canvas.textWidth(labels[i])) / 2, barY + 5, labels[i]);
+        // Value
+        canvas.setColor(Color::Bright);
+        canvas.drawText(x + (cellW - canvas.textWidth(values[i])) / 2, barY + 13, values[i]);
+        canvas.setBlendMode(BlendMode::Set);
+    }
+}
+
+void ArpSequenceEditPage::drawRhythmTab(Canvas &canvas, const ArpSequence &sequence) {
+    const auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
+    int playStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+
+    drawCombinedEuclidean(canvas, sequence, playStep);
+
+    static const char *labels[] = { "STEPS", "GATES", "ROTATE", "GATELEN" };
+    FixedStringBuilder<8> v0, v1, v2, v3;
+    sequence.printRhythmN(v0);
+    sequence.printRhythmK(v1);
+    sequence.printRhythmR(v2);
+    sequence.printRhythmGateLen(v3);
+    const char *values[] = { v0, v1, v2, v3 };
+
+    int selIdx = -1;
+    for (int i = 0; i < 4; i++) {
+        if ((_heldSteps >> i) & 1) { selIdx = i; break; }
     }
 
-    if (_showDetail) {
-        drawDetail(canvas, sequence.step(_stepSelection.first()));
+    drawParamBar(canvas, labels, values, 4, selIdx);
+}
+
+void ArpSequenceEditPage::drawModTab(Canvas &canvas, const ArpSequence &sequence) {
+    const auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
+    int playStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+
+    drawCombinedEuclidean(canvas, sequence, playStep);
+
+    static const char *labels[] = { "STEPS", "PULSES", "ROTATE", "MODE" };
+    FixedStringBuilder<8> v0, v1, v2, v3;
+    sequence.printModN(v0);
+    sequence.printModK(v1);
+    sequence.printModR(v2);
+    sequence.printModMode(v3);
+    const char *values[] = { v0, v1, v2, v3 };
+
+    int selIdx = -1;
+    for (int i = 0; i < 4; i++) {
+        if ((_heldSteps >> i) & 1) { selIdx = i; break; }
     }
 
+    drawParamBar(canvas, labels, values, 4, selIdx);
+}
 
+void ArpSequenceEditPage::drawArpTab(Canvas &canvas, const ArpSequence &sequence) {
+    const int colW = 256 / 3;  // 85px per column
 
+    bool sel0 = (_heldSteps >> 0) & 1;
+    bool sel1 = (_heldSteps >> 1) & 1;
+    bool sel2 = (_heldSteps >> 2) & 1;
+
+    canvas.setBlendMode(BlendMode::Set);
+
+    // Column dividers
+    canvas.setColor(Color::Low);
+    canvas.vline(colW,     8, 46);
+    canvas.vline(colW * 2, 8, 46);
+
+    // ── Column 0: PLAY ORDER ──────────────────────────────────────────────
+    {
+        int cx = colW / 2;
+        canvas.setFont(Font::Tiny);
+        canvas.setColor(Color::Low);
+        canvas.drawText(cx - canvas.textWidth("PLAY ORDER") / 2, 16, "PLAY ORDER");
+        FixedStringBuilder<8> orderStr;
+        sequence.printArpOrder(orderStr);
+        canvas.setFont(Font::Small);
+        canvas.setColor(sel0 ? Color::Bright : Color::Medium);
+        canvas.drawText(cx - canvas.textWidth(orderStr) / 2, 36, orderStr);
+        canvas.setFont(Font::Tiny);
+    }
+
+    // ── Column 1: OCTAVES ─────────────────────────────────────────────────
+    {
+        int cx    = colW + colW / 2;
+        int octs  = sequence.arpOctaves();
+        canvas.setFont(Font::Tiny);
+        canvas.setColor(Color::Low);
+        canvas.drawText(cx - canvas.textWidth("OCTAVES") / 2, 16, "OCTAVES");
+
+        // 4-segment bar: each segment 10×10 with 2px gap
+        const int segW = 10, segH = 10, gap = 2;
+        int totalW = 4 * segW + 3 * gap;
+        int sx = cx - totalW / 2;
+        for (int o = 0; o < 4; o++) {
+            canvas.setColor(o < octs
+                ? (sel1 ? Color::Bright : Color::MediumBright)
+                : Color::Low);
+            canvas.fillRect(sx + o * (segW + gap), 22, segW, segH);
+        }
+
+        FixedStringBuilder<8> octStr("%d oct", octs);
+        canvas.setColor(sel1 ? Color::Bright : Color::Medium);
+        canvas.drawText(cx - canvas.textWidth(octStr) / 2, 40, octStr);
+    }
+
+    // ── Column 2: LENGTH ──────────────────────────────────────────────────
+    {
+        int cx = colW * 2 + colW / 2;
+        canvas.setFont(Font::Tiny);
+        canvas.setColor(Color::Low);
+        canvas.drawText(cx - canvas.textWidth("LENGTH") / 2, 16, "LENGTH");
+        FixedStringBuilder<8> lenStr;
+        sequence.printArpLength(lenStr);
+        canvas.setFont(Font::Small);
+        canvas.setColor(sel2 ? Color::Bright : Color::Medium);
+        canvas.drawText(cx - canvas.textWidth(lenStr) / 2, 36, lenStr);
+        canvas.setFont(Font::Tiny);
+    }
 }
 
 void ArpSequenceEditPage::updateLeds(Leds &leds) {
     const auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
     const auto &sequence = _project.selectedArpSequence();
-    int currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
+    int currentDegree = trackEngine.isActiveSequence(sequence) ? trackEngine.currentDegree() : -1;
 
-    for (int i = 0; i < 16; ++i) {
-        int stepIndex = stepOffset() + i;
-        bool red = (stepIndex == currentStep) || _stepSelection[stepIndex];
-        bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection[stepIndex]);
+    for (int i = 0; i < 16; i++) {
+        bool red   = false;
+        bool green = false;
+
+        switch (_activeTab) {
+        case 0: // NOTE: degrees
+            if (i < 7) {
+                bool held = (_heldSteps >> i) & 1;
+                red   = (i == currentDegree) || held;
+                green = !red && sequence.isDegreeActive(i);
+            }
+            break;
+        case 1: // RHYTHM: 4 params
+        case 2: // MOD: 4 params
+            if (i < 4) {
+                bool held = (_heldSteps >> i) & 1;
+                red   = held;
+                green = !held;
+            }
+            break;
+        case 3: // ARP: 3 params
+            if (i < 3) {
+                bool held = (_heldSteps >> i) & 1;
+                red   = held;
+                green = !held;
+            }
+            break;
+        }
+
         leds.set(MatrixMap::fromStep(i), red, green);
     }
 
-    LedPainter::drawSelectedSequenceSection(leds, _section);
+    // F-key LEDs
+    for (int i = 0; i < 4; i++) {
+        // function keys are handled by drawFooter; nothing extra needed
+    }
 
-    // show quick edit keys
+    // quick edit keys
     if (globalKeyState()[Key::Page] && !globalKeyState()[Key::Shift]) {
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < 8; i++) {
             int index = MatrixMap::fromStep(i + 8);
             leds.unmask(index);
-            if (i >=0 && i<=2) {
-                leds.set(index, false, quickEditTrackItems[i] != ArpTrackListModel::Item::Last);
-            } else {
-                leds.set(index, false, quickEditItems[i] != ArpSequenceListModel::Item::Last);
-            }
-            leds.mask(index);
-        }
-
-        for (int i : {15}) {
-            int index = MatrixMap::fromStep(i);
-            leds.unmask(index);
-            leds.set(index, false, true);
+            leds.set(index, false, quickEditItems[i] != ArpSequenceListModel::Item::Last);
             leds.mask(index);
         }
     }
@@ -364,51 +419,30 @@ void ArpSequenceEditPage::updateLeds(Leds &leds) {
 
 void ArpSequenceEditPage::keyDown(KeyEvent &event) {
     const auto &key = event.key();
-    if (key.is(Key::Step15) || key.is(Key::Step14)|| key.is(Key::Step13) || key.is(Key::Step12)) {
-        return;
-    }
-    _stepSelection.keyDown(event, stepOffset());
-    updateMonitorStep();
-    auto &track = _project.selectedTrack().arpTrack();
-    bool shift = globalKeyState()[Key::Shift];
-    bool page =  globalKeyState()[Key::Page];
-    if (track.midiKeyboard() && _engine.state().running() && (key.isStep() && !page && !shift)) {
-        auto i = MatrixMap::toStep(key.code());
-        auto &sequence = _project.selectedArpSequence();
-        auto &arpEngine = _engine.trackEngine(_project.selectedTrackIndex()).as<ArpTrackEngine>();
-        arpEngine.addNote(i, i, ArpTrackEngine::Type::MIDI, sequence.step(i).noteOctave());
-        arpEngine.setKeyPressed(i, true);
-
+    if (key.isStep()) {
+        int stepIndex = key.step();
+        int max = maxForTab();
+        if (max > 0 && stepIndex < max) {
+            _heldSteps |= (1 << stepIndex);
+            _cursor = clamp(stepIndex, 0, max - 1);
+        }
     }
 }
 
 void ArpSequenceEditPage::keyUp(KeyEvent &event) {
     const auto &key = event.key();
-    if (key.is(Key::Step15) || key.is(Key::Step14)|| key.is(Key::Step13) || key.is(Key::Step12)) {
-        return;
-    }
-    _stepSelection.keyUp(event, stepOffset());
-    updateMonitorStep();
-    auto &track = _project.selectedTrack().arpTrack();
-    bool shift = globalKeyState()[Key::Shift];
-    bool page =  globalKeyState()[Key::Page];
-    if (track.midiKeyboard() && _engine.state().running() && key.isStep() && (key.isStep() && !page &&! shift)) {
-        auto i = MatrixMap::toStep(key.code());
-        auto &arpEngine = _engine.trackEngine(_project.selectedTrackIndex()).as<ArpTrackEngine>();
-        auto &sequence = _project.selectedArpSequence();
-        if (!sequence.step(i).gate()) {
-            arpEngine.removeNote(i);
+    if (key.isStep()) {
+        int stepIndex = key.step();
+        int max = maxForTab();
+        if (stepIndex < max) {
+            _heldSteps &= ~(1 << stepIndex);
         }
-        arpEngine.setKeyPressed(i, false);
     }
-
 }
 
 void ArpSequenceEditPage::keyPress(KeyPressEvent &event) {
     const auto &key = event.key();
     auto &sequence = _project.selectedArpSequence();
-    auto &track = _project.selectedTrack().arpTrack();
-
 
     if (key.isContextMenu()) {
         contextShow();
@@ -423,11 +457,9 @@ void ArpSequenceEditPage::keyPress(KeyPressEvent &event) {
     }
 
     if (key.isQuickEdit()) {
-        if (key.is(Key::Step15)) {
-            track.toggleMidiKeybaord();
-            track.arpeggiator().setHold(false);
-        } else {
-            quickEdit(key.quickEdit());
+        _listModel.setSequence(&sequence);
+        if (quickEditItems[key.quickEdit()] != ArpSequenceListModel::Item::Last) {
+            _manager.pages().quickEdit.show(_listModel, int(quickEditItems[key.quickEdit()]));
         }
         event.consume();
         return;
@@ -437,496 +469,72 @@ void ArpSequenceEditPage::keyPress(KeyPressEvent &event) {
         return;
     }
 
-    if (key.is(Key::Step15) || key.is(Key::Step14)|| key.is(Key::Step13) || key.is(Key::Step12)) {
-        return;
-    }
-
-    _stepSelection.keyPress(event, stepOffset());
-    updateMonitorStep();
-
-    if (!key.shiftModifier() && key.isStep()) {
-        int stepIndex = stepOffset() + key.step();
-        switch (layer()) {
-        case Layer::Gate:{            
-            auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
-            
-            if (!track.midiKeyboard()) {
-                if (sequence.step(stepIndex).gate()) {
-                    trackEngine.removeNote(sequence.step(stepIndex).note());
-                } else {
-                    trackEngine.addNote(sequence.step(stepIndex).note(), stepIndex, ArpTrackEngine::Type::Sequencer, sequence.step(stepIndex).noteOctave());
-                }
-                sequence.step(stepIndex).toggleGate();
-            } 
+    if (key.isStep()) {
+        int stepIndex = key.step();
+        if (_activeTab == 0 && stepIndex < 7) {
+            // NOTE tab: toggle degree
+            sequence.toggleDegree(stepIndex);
             event.consume();
         }
-            break;
-        default:
-            break;
-        }
-    }
-
-    KeyPressEvent keyPressEvent =_keyPressEventTracker.process(key);
-
-    if (!key.shiftModifier() && key.isStep() && keyPressEvent.count() == 2) {
-        int stepIndex = stepOffset() + key.step();
-        if (layer() != Layer::Gate) {
-            auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
-            if (!track.midiKeyboard()) {
-                 if (sequence.step(stepIndex).gate()) {
-                    trackEngine.removeNote(sequence.step(stepIndex).note());
-                } else {
-                    trackEngine.addNote(sequence.step(stepIndex).note(), stepIndex, ArpTrackEngine::Type::Sequencer, sequence.step(stepIndex).noteOctave());
-                }
-                sequence.step(stepIndex).toggleGate();
-            } 
-            event.consume();
-        }
+        // For other tabs, hold-and-turn is handled via keyDown/encoder
     }
 
     if (key.isFunction()) {
-        switchLayer(key.function(), key.shiftModifier());
+        switchTab(key.function());
         event.consume();
-    }
-
-    if (key.isEncoder()) {
-        if (!_showDetail && _stepSelection.any() && allSelectedStepsActive()) {
-            setSelectedStepsGate(false);
-        } else {
-            setSelectedStepsGate(true);
-        }
     }
 }
 
 void ArpSequenceEditPage::encoder(EncoderEvent &event) {
     auto &sequence = _project.selectedArpSequence();
-    const auto &scale = _project.selectedScale();
 
-    if (!_stepSelection.any())
-    {
-        switch (layer())
-        {
-        case Layer::Gate:
-            setLayer(event.value() > 0 ? Layer::GateOffset : Layer::GateProbability);
-            break;
-        case Layer::GateOffset:
-            setLayer(event.value() > 0 ? Layer::GateProbability : Layer::Gate);
-            break;
-        case Layer::GateProbability:
-            setLayer(event.value() > 0 ? Layer::Gate : Layer::GateOffset);
-            break;
-        case Layer::Retrigger:
-            setLayer(event.value() > 0 ? Layer::RetriggerProbability : Layer::Retrigger);
-            break;
-        case Layer::RetriggerProbability:
-            setLayer(event.value() > 0 ? Layer::RetriggerProbability : Layer::Retrigger);
-            break;
-        case Layer::Length:
-            setLayer(event.value() > 0 ? Layer::LengthVariationRange : Layer::LengthVariationProbability);
-            break;
-        case Layer::LengthVariationRange:
-            setLayer(event.value() > 0 ? Layer::LengthVariationProbability : Layer::Length);
-            break;
-        case Layer::LengthVariationProbability:
-            setLayer(event.value() > 0 ? Layer::Length : Layer::LengthVariationRange);
-            break;
-        case Layer::Note:
-            setLayer(event.value() > 0 ? Layer::NoteVariationRange : Layer::Slide);
-            break;
-        case Layer::NoteVariationRange:
-            setLayer(event.value() > 0 ? Layer::NoteVariationProbability : Layer::Note);
-            break;
-        case Layer::NoteVariationProbability:
-            setLayer(event.value() > 0 ? Layer::NoteOctave : Layer::NoteVariationRange);
-            break;
-        case Layer::NoteOctave:
-            setLayer(event.value() > 0 ? Layer::NoteOctaveProbability : Layer::NoteVariationProbability);
-            break;
-        case Layer::NoteOctaveProbability:
-            setLayer(event.value() > 0 ? Layer::Slide : Layer::NoteOctave);
-            break;
-        case Layer::Slide:
-            setLayer(event.value() > 0 ? Layer::Note : Layer::NoteOctaveProbability);
-            break;
-        default:
-            break;
-        }
+    if (_activeTab == 0) {
+        // NOTE tab: no encoder action
         return;
     }
-    else
-    {
-        _showDetail = true;
-        _showDetailTicks = os::ticks();
-    }
 
-    for (size_t stepIndex = 0; stepIndex < sequence.steps().size(); ++stepIndex) {
-        if (_stepSelection[stepIndex]) {
-            auto &step = sequence.step(stepIndex);
-            bool shift = globalKeyState()[Key::Shift];
-            switch (layer()) {
-            case Layer::Gate:
-                step.setGate(event.value() > 0);
-                break;
-            case Layer::GateProbability:
-                step.setGateProbability(step.gateProbability() + event.value());
-                break;
-            case Layer::GateOffset:
-                step.setGateOffset(step.gateOffset() + event.value());
-                break;
-            case Layer::Retrigger:
-                step.setRetrigger(step.retrigger() + event.value());
-                break;
-            case Layer::RetriggerProbability:
-                step.setRetriggerProbability(step.retriggerProbability() + event.value());
-                break;
-            case Layer::Length:
-                step.setLength(step.length() + event.value());
-                break;
-            case Layer::LengthVariationRange:
-                step.setLengthVariationRange(step.lengthVariationRange() + event.value());
-                break;
-            case Layer::LengthVariationProbability:
-                step.setLengthVariationProbability(step.lengthVariationProbability() + event.value());
-                break;
-            case Layer::NoteOctave:
-                step.setNoteOctave(step.noteOctave() + event.value());
-                updateMonitorStep();
-                break;
-            case Layer::NoteOctaveProbability:
-                step.setNoteOctaveProbability(step.noteOctaveProbability() + event.value());
-                break;
-            case Layer::Note:
-                step.setNote(step.note() + event.value() * (shift ? scale.notesPerOctave() : 1));
-                updateMonitorStep();
-                break;
-            case Layer::NoteVariationRange:
-                step.setNoteVariationRange(step.noteVariationRange() + event.value() * (shift ? scale.notesPerOctave() : 1));
-                updateMonitorStep();
-                break;
-            case Layer::NoteVariationProbability:
-                step.setNoteVariationProbability(step.noteVariationProbability() + event.value());
-                updateMonitorStep();
-                break;
-            case Layer::Slide:
-                step.setSlide(event.value() > 0);
-                break;
-            case Layer::Condition:
-                step.setCondition(ModelUtils::adjustedEnum(step.condition(), event.value()));
-                break;
-            case Layer::Last:
-                break;
-            }
+    if (_heldSteps == 0) return;
+
+    int max = maxForTab();
+    bool shift = globalKeyState()[Key::Shift];
+
+    for (int i = 0; i < max; i++) {
+        if (!(_heldSteps & (1 << i))) continue;
+        switch (_activeTab) {
+        case 1: // RHYTHM
+            if (i == 0) sequence.editRhythmN(event.value(), shift);
+            if (i == 1) sequence.editRhythmK(event.value(), shift);
+            if (i == 2) sequence.editRhythmR(event.value(), shift);
+            if (i == 3) sequence.editRhythmGateLen(event.value(), shift);
+            break;
+        case 2: // MOD
+            if (i == 0) sequence.editModN(event.value(), shift);
+            if (i == 1) sequence.editModK(event.value(), shift);
+            if (i == 2) sequence.editModR(event.value(), shift);
+            if (i == 3) sequence.editModMode(event.value(), shift);
+            break;
+        case 3: // ARP
+            if (i == 0) sequence.editArpOrder(event.value(), shift);
+            if (i == 1) sequence.editArpOctaves(event.value(), shift);
+            if (i == 2) sequence.editArpLength(event.value(), shift);
+            break;
         }
     }
-
     event.consume();
 }
 
-void ArpSequenceEditPage::midi(MidiEvent &event) {
-    if (!_engine.recording() && layer() == Layer::NoteVariationProbability && _stepSelection.any()) {
-        auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
-        auto &sequence = _project.selectedArpSequence();
-        const auto &scale = _project.selectedScale();
-        const auto &message = event.message();
-
-        if (message.isNoteOn()) {
-            float volts = (message.note() - 60) * (1.f / 12.f);
-            int note = scale.noteFromVolts(volts);
-
-            for (size_t stepIndex = 0; stepIndex < sequence.steps().size(); ++stepIndex) {
-                if (_stepSelection[stepIndex]) {
-                    auto &step = sequence.step(stepIndex);
-                    step.setNote(note);
-                    step.setGate(true);
-                }
-            }
-
-            trackEngine.setMonitorStep(_stepSelection.first());
-            updateMonitorStep();
-        }
-    }
+void ArpSequenceEditPage::midi(MidiEvent &/*event*/) {
+    // No MIDI step recording in Arp V2
 }
 
-void ArpSequenceEditPage::switchLayer(int functionKey, bool shift) {
-
-    if (shift) {
-        switch (Function(functionKey)) {
-        case Function::Gate:
-            setLayer(Layer::GateProbability);
-            break;
-        case Function::Retrigger:
-            break;
-        case Function::Length:
-            break;
-        case Function::Note:
-            setLayer(Layer::Note);
-            break;
-        case Function::Condition:
-            setLayer(Layer::Condition);
-            break;
-        }
-        return;
-    }
-
-    switch (Function(functionKey)) {
-    case Function::Gate:
-        switch (layer()) {
-        case Layer::Gate:
-            setLayer(Layer::GateOffset);
-            break;
-        case Layer::GateOffset:
-            setLayer(Layer::GateProbability);
-            break;
-        default:
-            setLayer(Layer::Gate);
-            break;
-        }
-        break;
-    case Function::Retrigger:
-        switch (layer()) {
-        case Layer::Retrigger:
-            setLayer(Layer::RetriggerProbability);
-            break;
-        default:
-            setLayer(Layer::Retrigger);
-            break;
-        }
-        break;
-    case Function::Length:
-        switch (layer()) {
-        case Layer::Length:
-            setLayer(Layer::LengthVariationRange);
-            break;
-        case Layer::LengthVariationRange:
-            setLayer(Layer::LengthVariationProbability);
-            break;
-        default:
-            setLayer(Layer::Length);
-            break;
-        }
-        break;
-    case Function::Note:
-        switch (layer()) {
-        case Layer::Note:
-            setLayer(Layer::NoteVariationRange);
-            break;
-        case Layer::NoteVariationRange:
-            setLayer(Layer::NoteVariationProbability);
-            break;
-        case Layer::NoteVariationProbability:
-            setLayer(Layer::NoteOctave);
-            break;
-        case Layer::NoteOctave:
-            setLayer(Layer::NoteOctaveProbability);
-            break;
-        case Layer::NoteOctaveProbability:
-            setLayer(Layer::Slide);
-            break;
-        case Layer::Slide:
-            setLayer(Layer::NoteVariationProbability);
-        default:
-            setLayer(Layer::Note);
-            break;
-        }
-        break;
-    case Function::Condition:
-        setLayer(Layer::Condition);
-        break;
-    }
+void ArpSequenceEditPage::switchTab(int fKey) {
+    _activeTab = clamp(fKey, 0, 3);
+    _heldSteps = 0;
+    _cursor = 0;
 }
 
 int ArpSequenceEditPage::activeFunctionKey() {
-    switch (layer()) {
-    case Layer::Gate:
-    case Layer::GateProbability:
-    case Layer::GateOffset:
-        return 0;
-    case Layer::Retrigger:
-    case Layer::RetriggerProbability:
-        return 1;
-    case Layer::Length:
-    case Layer::LengthVariationRange:
-    case Layer::LengthVariationProbability:
-        return 2;
-    case Layer::NoteOctave:
-    case Layer::NoteVariationProbability:
-    case Layer::NoteOctaveProbability:
-    case Layer::Slide:
-    case Layer::Note:
-    case Layer::NoteVariationRange:
-        return 3;
-    case Layer::Condition:
-        return 4;
-    case Layer::Last:
-        break;
-    }
-
-    return -1;
-}
-
-void ArpSequenceEditPage::updateMonitorStep() {
-    auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
-
-    // TODO should we monitor an all layers not just note?
-    if (layer() == Layer::Note && !_stepSelection.isPersisted() && _stepSelection.any()) {
-        trackEngine.setMonitorStep(_stepSelection.first());
-    } else {
-        trackEngine.setMonitorStep(-1);
-    }
-}
-
-void ArpSequenceEditPage::drawDetail(Canvas &canvas, const ArpSequence::Step &step) {
-
-    const auto &sequence = _project.selectedArpSequence();
-    const auto &scale = _project.selectedScale();
-
-    FixedStringBuilder<16> str;
-
-    WindowPainter::drawFrame(canvas, 64, 16, 128, 32);
-
-    canvas.setBlendMode(BlendMode::Set);
-    canvas.setColor(Color::Bright);
-    canvas.vline(64 + 32, 16, 32);
-
-    canvas.setFont(Font::Small);
-    str("%d", _stepSelection.first() + 1);
-    if (_stepSelection.count() > 1) {
-        str("*");
-    }
-    canvas.drawTextCentered(64, 16, 32, 32, str);
-
-    canvas.setFont(Font::Tiny);
-
-    switch (layer()) {
-    case Layer::Gate:
-    case Layer::Slide:
-        break;
-    case Layer::GateProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.gateProbability() + 1, ArpSequence::GateProbability::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.gateProbability()) / (ArpSequence::GateProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::GateOffset:
-        SequencePainter::drawOffset(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.gateOffset(), ArpSequence::GateOffset::Min - 1, ArpSequence::GateOffset::Max + 1
-        );
-        str.reset();
-        str("%.1f%%", 100.f * step.gateOffset() / float(ArpSequence::GateOffset::Max + 1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Retrigger:
-        SequencePainter::drawRetrigger(
-            canvas,
-            64+ 32 + 8, 32 - 4, 64 - 16, 8,
-            step.retrigger() + 1, ArpSequence::Retrigger::Range
-        );
-        str.reset();
-        str("%d", step.retrigger() + 1);
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::RetriggerProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.retriggerProbability() + 1, ArpSequence::RetriggerProbability::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.retriggerProbability()) / (ArpSequence::RetriggerProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Length:
-        SequencePainter::drawLength(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.length() + 1, ArpSequence::Length::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.length() + 1.f) / ArpSequence::Length::Range);
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::LengthVariationRange:
-        SequencePainter::drawLengthRange(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.length() + 1, step.lengthVariationRange(), ArpSequence::Length::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.lengthVariationRange()) / (ArpSequence::Length::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::LengthVariationProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.lengthVariationProbability() + 1, ArpSequence::LengthVariationProbability::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.lengthVariationProbability()) / (ArpSequence::LengthVariationProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Note:
-        str.reset();
-        scale.noteName(str, step.note(), _project.rootNote(), Scale::Long);
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-        break;
-    case Layer::NoteVariationRange:
-        str.reset();
-        str("%d", step.noteVariationRange());
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-        break;
-    case Layer::NoteOctave:
-        str.reset();
-        str("%d", step.noteOctave());
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-        break;
-    case Layer::NoteOctaveProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.noteOctaveProbability() + 1, ArpSequence::NoteOctaveProbability::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.noteOctaveProbability()) / (ArpSequence::NoteOctaveProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::NoteVariationProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.noteVariationProbability() + 1, ArpSequence::NoteVariationProbability::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.noteVariationProbability()) / (ArpSequence::NoteVariationProbability::Range -1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Condition:
-        str.reset();
-        Types::printCondition(str, step.condition(), Types::ConditionFormat::Long);
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 96, 32, str);
-        break;
-    case Layer::Last:
-        break;
-    }
+    return _activeTab;
 }
 
 void ArpSequenceEditPage::contextShow(bool doubleClick) {
@@ -949,12 +557,6 @@ void ArpSequenceEditPage::contextAction(int index) {
     case ContextAction::Paste:
         pasteSequence();
         break;
-    case ContextAction::Duplicate:
-        duplicateSequence();
-        break;
-    case ContextAction::Generate:
-        generateSequence();
-        break;
     case ContextAction::Last:
         break;
     }
@@ -970,73 +572,16 @@ bool ArpSequenceEditPage::contextActionEnabled(int index) const {
 }
 
 void ArpSequenceEditPage::initSequence() {
-    _project.selectedArpSequence().clearSteps();
-    showMessage("STEPS INITIALIZED");
+    _project.selectedArpSequence().clear();
+    showMessage("SEQUENCE INITIALIZED");
 }
 
 void ArpSequenceEditPage::copySequence() {
-    _model.clipBoard().copyArpSequenceSteps(_project.selectedArpSequence(), _stepSelection.selected());
-    showMessage("STEPS COPIED");
+    _model.clipBoard().copyArpSequenceSteps(_project.selectedArpSequence(), {});
+    showMessage("SEQUENCE COPIED");
 }
 
 void ArpSequenceEditPage::pasteSequence() {
-    _model.clipBoard().pasteArpSequenceSteps(_project.selectedArpSequence(), _stepSelection.selected());
-    showMessage("STEPS PASTED");
-}
-
-void ArpSequenceEditPage::duplicateSequence() {
-    _project.selectedArpSequence().duplicateSteps();
-    showMessage("STEPS DUPLICATED");
-}
-
-void ArpSequenceEditPage::generateSequence() {
-    _manager.pages().generatorSelect.show([this] (bool success, Generator::Mode mode) {
-        if (success) {
-            auto builder = _builderContainer.create<ArpSequenceBuilder>(_project.selectedArpSequence(), layer());
-
-            if (_stepSelection.none()) {
-                _stepSelection.selectAll();
-            }
-
-            auto generator = Generator::execute(mode, *builder, _stepSelection.selected());
-            if (generator) {
-                _manager.pages().generator.show(generator, &_stepSelection);
-            }
-        }
-    });
-}
-
-
-
-void ArpSequenceEditPage::quickEdit(int index) {
-
-    if (index >= 0 && index <= 2) {
-        _trackListModel.setTrack(_project.selectedTrack().arpTrack());
-        _manager.pages().quickEdit.show(_trackListModel, int(quickEditTrackItems[index]));
-
-    } else {    
-        _listModel.setSequence(&_project.selectedArpSequence());
-        if (quickEditItems[index] != ArpSequenceListModel::Item::Last) {
-            _manager.pages().quickEdit.show(_listModel, int(quickEditItems[index]));
-        }
-    }
-}
-
-bool ArpSequenceEditPage::allSelectedStepsActive() const {
-    const auto &sequence = _project.selectedArpSequence();
-    for (size_t stepIndex = 0; stepIndex < _stepSelection.size(); ++stepIndex) {
-        if (_stepSelection[stepIndex] && !sequence.step(stepIndex).gate()) {
-            return false;
-        }
-    }
-    return true;
-}
-
-void ArpSequenceEditPage::setSelectedStepsGate(bool gate) {
-    auto &sequence = _project.selectedArpSequence();
-    for (size_t stepIndex = 0; stepIndex < _stepSelection.size(); ++stepIndex) {
-        if (_stepSelection[stepIndex]) {
-            sequence.step(stepIndex).setGate(gate);
-        }
-    }
+    _model.clipBoard().pasteArpSequenceSteps(_project.selectedArpSequence(), {});
+    showMessage("SEQUENCE PASTED");
 }

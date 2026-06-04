@@ -184,7 +184,7 @@ bool ArpSequencePage::contextActionEnabled(int index) const {
 void ArpSequencePage::initSequence() {
     _project.selectedArpSequence().clear();
     auto &arpEngine = _engine.trackEngine(_project.selectedTrackIndex()).as<ArpTrackEngine>();
-    arpEngine.clearNotes();
+    (void)arpEngine;
     showMessage("SEQUENCE INITIALIZED");
 }
 

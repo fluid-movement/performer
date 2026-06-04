@@ -183,7 +183,7 @@ public:
 
     int gateProbabilityBias() const { return _gateProbabilityBias.get(isRouted(Routing::Target::GateProbabilityBias)); }
     void setGateProbabilityBias(int gateProbabilityBias, bool routed = false) {
-        _gateProbabilityBias.set(clamp(gateProbabilityBias, -ArpSequence::GateProbability::Range, ArpSequence::GateProbability::Range), routed);
+        _gateProbabilityBias.set(clamp(gateProbabilityBias, -16, 16), routed);
     }
 
     void editGateProbabilityBias(int value, bool shift) {
@@ -201,7 +201,7 @@ public:
 
     int retriggerProbabilityBias() const { return _retriggerProbabilityBias.get(isRouted(Routing::Target::RetriggerProbabilityBias)); }
     void setRetriggerProbabilityBias(int retriggerProbabilityBias, bool routed = false) {
-        _retriggerProbabilityBias.set(clamp(retriggerProbabilityBias, -ArpSequence::RetriggerProbability::Range, ArpSequence::RetriggerProbability::Range), routed);
+        _retriggerProbabilityBias.set(clamp(retriggerProbabilityBias, -16, 16), routed);
     }
 
     void editRetriggerProbabilityBias(int value, bool shift) {
@@ -219,7 +219,7 @@ public:
 
     int lengthBias() const { return _lengthBias.get(isRouted(Routing::Target::LengthBias)); }
     void setLengthBias(int lengthBias, bool routed = false) {
-        _lengthBias.set(clamp(lengthBias, -ArpSequence::Length::Range, ArpSequence::Length::Range), routed);
+        _lengthBias.set(clamp(lengthBias, -16, 16), routed);
     }
 
     void editLengthBias(int value, bool shift) {
@@ -237,7 +237,7 @@ public:
 
     int noteProbabilityBias() const { return _noteProbabilityBias.get(isRouted(Routing::Target::NoteProbabilityBias)); }
     void setNoteProbabilityBias(int noteProbabilityBias, bool routed = false) {
-        _noteProbabilityBias.set(clamp(noteProbabilityBias, -ArpSequence::NoteVariationProbability::Range, ArpSequence::NoteVariationProbability::Range), routed);
+        _noteProbabilityBias.set(clamp(noteProbabilityBias, -16, 16), routed);
     }
 
     void editNoteProbabilityBias(int value, bool shift) {

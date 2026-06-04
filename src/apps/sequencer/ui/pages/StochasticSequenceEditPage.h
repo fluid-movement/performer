@@ -2,11 +2,7 @@
 
 #include "BasePage.h"
 
-#include "ui/StepSelection.h"
 #include "ui/model/StochasticSequenceListModel.h"
-
-#include "engine/generators/SequenceBuilder.h"
-#include "ui/KeyPressEventTracker.h"
 
 #include "core/utils/Container.h"
 
@@ -27,17 +23,13 @@ public:
     virtual void midi(MidiEvent &event) override;
 
 private:
-    typedef StochasticSequence::Layer Layer;
-
-    static const int StepCount = 16;
-
-    int stepOffset() const { return _section * StepCount; }
-
-    void switchLayer(int functionKey, bool shift);
+    void switchTab(int functionKey);
     int activeFunctionKey();
 
-    void updateMonitorStep();
-    void drawDetail(Canvas &canvas, const StochasticSequence::Step &step);
+    void drawNoteTab(Canvas &canvas, const StochasticSequence &sequence);
+    void drawOctTab(Canvas &canvas, const StochasticSequence &sequence);
+    void drawLenTab(Canvas &canvas, const StochasticSequence &sequence);
+    void drawLoopTab(Canvas &canvas, const StochasticSequence &sequence);
 
     void contextShow(bool doubleClick = false);
     void contextAction(int index);
@@ -46,34 +38,21 @@ private:
     void initSequence();
     void copySequence();
     void pasteSequence();
-    void duplicateSequence();
-    void tieNotes();
-    void generateSequence();
-
-    void quickEdit(int index);
-
-    bool allSelectedStepsActive() const;
-    void setSelectedStepsGate(bool gate);
-
-    void setSectionTracking(bool track);
 
     void displayMessage(StochasticSequence &sequence);
 
-    StochasticSequence::Layer layer() const { return _project.selectedStochasticSequenceLayer(); };
-    void setLayer(StochasticSequence::Layer layer) { _project.setSelectedStochasticSequenceLayer(layer); }
+    int _activeTab = 0;
+    int _cursor = 0;
+    uint8_t _heldSteps = 0;
 
-    int _section = 0;
-    bool _sectionTracking = false;
-    bool _showDetail;
-    uint32_t _showDetailTicks;
-
-    KeyPressEventTracker _keyPressEventTracker;
-
+    int maxForTab() const {
+        switch (_activeTab) {
+        case 0: return 7;
+        case 1: return 5;
+        case 2: return 6;
+        default: return 0;
+        }
+    }
 
     StochasticSequenceListModel _listModel;
-
-    StepSelection<CONFIG_STEP_COUNT> _stepSelection;
-
-    Container<StochasticSequenceBuilder> _builderContainer;
-
 };

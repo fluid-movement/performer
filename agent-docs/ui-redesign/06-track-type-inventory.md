@@ -251,31 +251,34 @@ Note values are ignored — quantization handles pitch externally.
 
 | Parameter | Location |
 |---|---|
-| Input source | Track Config (CV In 1–4 or another track's CV) |
-| Trigger mode | Track Config (Free / Internal / External) |
-| Trigger track | Track Config (for External trigger mode) |
-| Scale, RootNote | Quick-edit (Page+Step13/14) |
+| Input source | SRCE tab (CvIn1–4 or Track1–8) |
+| Trigger mode | TRIG tab (Free / Internal / External) |
+| Trigger track | TRIG tab sub-selector (for Internal trigger mode) |
 | FirstStep, LastStep, RunMode, Divisor | Quick-edit |
-| Octave, Transpose | Track Config |
+| Octave, Transpose | TUNE tab (performance-oriented, routable) |
+| PatternFollow | Track Config |
+
+Note: Scale and RootNote are **global project parameters** — the Quantizer track has no per-track scale.
 
 ### Recommended F-key tabs
 
 | Tab | Label | Content |
 |---|---|---|
 | F0 | GATE | Gate (only per-step layer) |
-| F1 | SRCE | Input source selector — quick config in grid area |
-| F2 | TRIG | Trigger mode + trigger track — quick config |
-| F3 | SCLE | Scale + RootNote — quick config |
-| F4 | (action — TBD) | |
+| F1 | SRCE | Input source: CvIn1–4 (top row) + Track1–8 (bottom row) — hold Step 0 + encoder |
+| F2 | TRIG | Trigger mode chips (FREE/INT/EXT) + trigger track sub-selector when INT — hold Step 0/1 + encoder |
+| F3 | TUNE | Octave + Transpose (2-column bipolar bar + value) — hold Step 0/1 + encoder |
+| F4 | — | free |
 
-**Rationale:** Since there's only one step-layer (Gate), tabs F1–F3 surface the most important configuration as in-place editors rather than sending the user to Track Config. These aren't per-step layers but they're frequently adjusted alongside the gate pattern.
+**Rationale:** SRCE and TRIG are set-and-forget routing configuration. TUNE (Octave/Transpose) surfaces the most performance-oriented parameters since they're commonly adjusted live and are both routable via CV.
 
 ### Design notes
 
-- **Only one step-layer.** This is conceptually the simplest edit page — a gate pattern with three configuration tabs.
+- **Only one step-layer.** Conceptually the simplest edit page — gate pattern plus three config tabs.
 - The page should feel calm and spacious. Resist filling the extra space.
-- Display the current quantized output value somewhere — it's useful feedback for patching.
-- Trigger mode (Free vs Internal vs External) dramatically changes how the track behaves — make it prominent in the TRIG tab.
+- SRCE two-row layout communicates the distinction between hardware CV inputs and internal track sources at a glance.
+- TRIG shows the trigger track sub-selector only when INT mode is active — avoids showing irrelevant options.
+- TUNE tab follows the Arp V2 ARP-tab column pattern: dim label at top, bipolar bar in middle, numeric value below.
 
 ---
 

@@ -95,6 +95,9 @@ via `value * 17`.
 | Perform | Rough | 8 track columns, pattern grid 4×4, mute state |
 | Track Edit (Note) | Rough | 16-step grid, gate layer, step cursor |
 | Track Edit (Curve) | Rough | Same grid, bar-height = curve value |
+| Track Edit (Stochastic) | Designed | TRUNK + V1 + V2 (SIG-inspired bars); V2 = chosen, shipped in C++ |
+| Track Edit (Arp) | Designed | TRUNK + V2 (note pool + euclidean); V2 = chosen, shipped in C++ |
+| Track Edit (Quantizer) | Designed | TRUNK + V1 (GATE/SRCE/TRIG/TUNE); V1 = chosen, shipped in C++ |
 | Track Config | Rough | List of per-track settings, encoder-selected |
 | Song | Rough | Slot rows × 8 track pattern assignments + repeat count |
 | Settings | Rough | Two-panel: section list left + detail right |

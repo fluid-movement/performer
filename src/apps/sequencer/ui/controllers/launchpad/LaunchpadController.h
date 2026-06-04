@@ -131,8 +131,8 @@ private:
     void manageStochasticCircuitKeyboard(const Button &button);
     void manageArpCircuitKeyboard(const Button &button);
     void drawRunningKeyboardCircuit(int row, int col, const NoteSequence::Step &step, const Scale &scale, int rootNote);
-    void drawRunningStochasticKeyboardCircuit(int row, int col, const StochasticSequence::Step &step, const Scale &scale, int rootNote);
-    void drawRunningArpKeyboardCircuit(int row, int col, const ArpSequence::Step &step, const Scale &scale, int rootNote);
+    void drawRunningStochasticKeyboardCircuit(int row, int col, const Scale &scale, int rootNote);
+    void drawRunningArpKeyboardCircuit(int row, int col, const Scale &scale, int rootNote);
 
 
     // Pattern mode
@@ -171,15 +171,11 @@ private:
     void drawCurveSequenceBars(const CurveSequence &sequence, CurveSequence::Layer layer, int currentStep);
     void drawCurveSequenceDots(const CurveSequence &sequence, CurveSequence::Layer layer, int currentStep);
 
-    void drawStochasticSequenceBits(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep);
-    void drawStochasticSequenceBars(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep);
-    void drawStochasticSequenceNotes(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep);
-    void drawStochasticSequenceDots(const StochasticSequence &sequence, StochasticSequence::Layer layer, int currentStep);
-
     void drawArpSequenceBits(const ArpSequence &sequence, ArpSequence::Layer layer, int currentStep);
     void drawArpSequenceBars(const ArpSequence &sequence, ArpSequence::Layer layer, int currentStep);
     void drawArpSequenceNotes(const ArpSequence &sequence, ArpSequence::Layer layer, int currentStep);
     void drawArpSequenceDots(const ArpSequence &sequence, ArpSequence::Layer layer, int currentStep);
+
 
 
     void drawBar(int row, int amount) {

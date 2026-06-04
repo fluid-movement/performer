@@ -123,6 +123,18 @@ enum ProjectVersion {
     // curve track V1: add _segmentCount to CurveSequence
     Version42 = 42,
 
+    // stochastic track: add loopChance parameter
+    Version43 = 43,
+
+    // stochastic track V2: degree/octave/duration probability arrays
+    Version44 = 44,
+
+    // stochastic track: explicit loopLength parameter (decoupled from firstStep/lastStep)
+    Version45 = 45,
+
+    // arp track: euclidean+note-pool model replaces per-step grid
+    Version46 = 46,
+
     // automatically derive latest version
     Last,
     Latest = Last - 1,

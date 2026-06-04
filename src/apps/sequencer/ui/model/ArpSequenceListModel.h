@@ -8,21 +8,15 @@
 
 class ArpSequenceListModel : public RoutableListModel {
 public:
-    // Config-page-visible items come first (rows() returns ConfigPageRows).
-    // Items after ConfigPageRows are quick-edit only.
     enum Item {
-        Name            = 0,
-        RestProbability2 = 1,
-        RestProbability4 = 2,
-        RestProbability8 = 3,
-        LowOctaveRange  = 4,
-        HighOctaveRange = 5,
-        LengthModifier  = 6,
-        ConfigPageRows  = 7,  // config page shows rows 0-6
-        // quick-edit only:
-        Divisor         = 7,
-        ResetMeasure    = 8,
-        Last            = 9,
+        Name           = 0,
+        Divisor        = 1,
+        ResetMeasure   = 2,
+        ArpOrder       = 3,
+        ArpOctaves     = 4,
+        ArpLength      = 5,
+        ConfigPageRows = 6,
+        Last           = 6,
     };
 
     ArpSequenceListModel() {}
@@ -89,18 +83,6 @@ public:
 
     virtual Routing::Target routingTarget(int row) const override {
         switch (Item(row)) {
-        case RestProbability2:
-            return Routing::Target::RestProbability2;
-        case RestProbability4:
-            return Routing::Target::RestProbability4;
-        case RestProbability8:
-            return Routing::Target::RestProbability8;
-        case LowOctaveRange:
-            return Routing::Target::LowOctaveRange;
-        case HighOctaveRange:
-            return Routing::Target::HighOctaveRange;
-        case LengthModifier:
-            return Routing::Target::LengthModifier;
         case Divisor:
             return Routing::Target::Divisor;
         default:
@@ -108,21 +90,18 @@ public:
         }
     }
 
-    void setSelectedScale(int defaultScale, bool force = false) override {}
+    void setSelectedScale(int /*defaultScale*/, bool /*force*/ = false) override {}
 
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case Name:              return "Name";
-        case RestProbability2:  return "Rest Prob. 2";
-        case RestProbability4:  return "Rest Prob. 4";
-        case RestProbability8:  return "Rest Prob. 8";
-        case LowOctaveRange:    return "L Oct Range";
-        case HighOctaveRange:   return "H Oct Range";
-        case LengthModifier:    return "Length Mod";
-        case Divisor:           return "Divisor";
-        case ResetMeasure:      return "Reset Measure";
-        case Last:              break;
+        case Name:         return "Name";
+        case Divisor:      return "Divisor";
+        case ResetMeasure: return "Reset Measure";
+        case ArpOrder:     return "Arp Order";
+        case ArpOctaves:   return "Arp Octaves";
+        case ArpLength:    return "Arp Length";
+        case Last:         break;
         }
         return nullptr;
     }
@@ -136,29 +115,20 @@ private:
         case Name:
             str(_sequence->name());
             break;
-        case RestProbability2:
-            _sequence->printRestProbability2(str);
-            break;
-        case RestProbability4:
-            _sequence->printRestProbability4(str);
-            break;
-        case RestProbability8:
-            _sequence->printRestProbability8(str);
-            break;
-        case LowOctaveRange:
-            _sequence->printLowOctaveRange(str);
-            break;
-        case HighOctaveRange:
-            _sequence->printHighOctaveRange(str);
-            break;
-        case LengthModifier:
-            _sequence->printLengthModifier(str);
-            break;
         case Divisor:
             _sequence->printDivisor(str);
             break;
         case ResetMeasure:
             _sequence->printResetMeasure(str);
+            break;
+        case ArpOrder:
+            _sequence->printArpOrder(str);
+            break;
+        case ArpOctaves:
+            _sequence->printArpOctaves(str);
+            break;
+        case ArpLength:
+            _sequence->printArpLength(str);
             break;
         case Last:
             break;
@@ -169,29 +139,20 @@ private:
         switch (item) {
         case Name:
             break;
-        case RestProbability2:
-            _sequence->editRestProbability2(value, shift);
-            break;
-        case RestProbability4:
-            _sequence->editRestProbability4(value, shift);
-            break;
-        case RestProbability8:
-            _sequence->editRestProbability8(value, shift);
-            break;
-        case LowOctaveRange:
-            _sequence->editLowOctaveRange(value, shift);
-            break;
-        case HighOctaveRange:
-            _sequence->editHighOctaveRange(value, shift);
-            break;
-        case LengthModifier:
-            _sequence->editLengthModifier(value, shift);
-            break;
         case Divisor:
             _sequence->editDivisor(value, shift);
             break;
         case ResetMeasure:
             _sequence->editResetMeasure(value, shift);
+            break;
+        case ArpOrder:
+            _sequence->editArpOrder(value, shift);
+            break;
+        case ArpOctaves:
+            _sequence->editArpOctaves(value, shift);
+            break;
+        case ArpLength:
+            _sequence->editArpLength(value, shift);
             break;
         case Last:
             break;

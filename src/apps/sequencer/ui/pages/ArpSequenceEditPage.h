@@ -2,14 +2,7 @@
 
 #include "BasePage.h"
 
-#include "ui/StepSelection.h"
 #include "ui/model/ArpSequenceListModel.h"
-#include "ui/model/ArpTrackListModel.h"
-
-#include "engine/generators/SequenceBuilder.h"
-#include "ui/KeyPressEventTracker.h"
-
-#include "core/utils/Container.h"
 
 class ArpSequenceEditPage : public BasePage {
 public:
@@ -28,17 +21,17 @@ public:
     virtual void midi(MidiEvent &event) override;
 
 private:
-    typedef ArpSequence::Layer Layer;
+    int maxForTab() const;
 
-    static const int StepCount = 16;
+    void drawNoteTab(Canvas &canvas, const ArpSequence &sequence);
+    void drawRhythmTab(Canvas &canvas, const ArpSequence &sequence);
+    void drawModTab(Canvas &canvas, const ArpSequence &sequence);
+    void drawArpTab(Canvas &canvas, const ArpSequence &sequence);
+    void drawCombinedEuclidean(Canvas &canvas, const ArpSequence &sequence, int playStep);
+    void drawParamBar(Canvas &canvas, const char *labels[], const char *values[], int count, int selIdx);
 
-    int stepOffset() const { return _section * StepCount; }
-
-    void switchLayer(int functionKey, bool shift);
+    void switchTab(int fKey);
     int activeFunctionKey();
-
-    void updateMonitorStep();
-    void drawDetail(Canvas &canvas, const ArpSequence::Step &step);
 
     void contextShow(bool doubleClick = false);
     void contextAction(int index);
@@ -47,33 +40,10 @@ private:
     void initSequence();
     void copySequence();
     void pasteSequence();
-    void duplicateSequence();
-    void tieNotes();
-    void generateSequence();
 
-    void quickEdit(int index);
-
-    bool allSelectedStepsActive() const;
-    void setSelectedStepsGate(bool gate);
-
-    void setSectionTracking(bool track);
-
-    ArpSequence::Layer layer() const { return _project.selectedArpSequenceLayer(); };
-    void setLayer(ArpSequence::Layer layer) { _project.setSelectedArpSequenceLayer(layer); }
-
-    int _section = 0;
-    bool _sectionTracking = false;
-    bool _showDetail;
-    uint32_t _showDetailTicks;
-
-    KeyPressEventTracker _keyPressEventTracker;
-
+    int _activeTab  = 0;
+    uint8_t _heldSteps = 0;
+    int _cursor     = 0;
 
     ArpSequenceListModel _listModel;
-    ArpTrackListModel _trackListModel;
-
-    StepSelection<CONFIG_STEP_COUNT> _stepSelection;
-
-    Container<ArpSequenceBuilder> _builderContainer;
-
 };

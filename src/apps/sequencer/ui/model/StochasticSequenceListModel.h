@@ -8,23 +8,16 @@
 
 class StochasticSequenceListModel : public RoutableListModel {
 public:
-    // Config-page-visible items come first (rows() returns ConfigPageRows).
-    // Items after ConfigPageRows are quick-edit only.
     enum Item {
-        RestProbability2  = 0,
-        RestProbability4  = 1,
-        RestProbability8  = 2,
-        LowOctaveRange    = 3,
-        HighOctaveRange   = 4,
-        LengthModifier    = 5,
-        ConfigPageRows    = 6,  // config page shows rows 0-5
+        // No config-page visible items in V2 — all prob editing is on the STEPS page
+        ConfigPageRows    = 0,
         // quick-edit only:
-        RunMode           = 6,
-        Divisor           = 7,
-        ResetMeasure      = 8,
-        SequenceFirstStep = 9,
-        SequenceLastStep  = 10,
-        Last              = 11,
+        RunMode           = 0,
+        Divisor           = 1,
+        ResetMeasure      = 2,
+        SequenceFirstStep = 3,
+        SequenceLastStep  = 4,
+        Last              = 5,
     };
 
     StochasticSequenceListModel() {}
@@ -34,7 +27,7 @@ public:
     }
 
     virtual int rows() const override {
-        return _sequence ? ConfigPageRows : 0;
+        return 0;  // no config-page rows in V2
     }
 
     virtual int columns() const override {
@@ -74,9 +67,9 @@ public:
     virtual int indexed(int row) const override {
         switch (Item(row)) {
         case SequenceFirstStep:
-            return _sequence->firstStep();
+            return _sequence->sequenceFirstStep();
         case SequenceLastStep:
-            return _sequence->lastStep();
+            return _sequence->sequenceLastStep();
         case RunMode:
             return int(_sequence->runMode());
         case Divisor:
@@ -92,9 +85,9 @@ public:
     virtual void setIndexed(int row, int index) override {
         switch (Item(row)) {
         case SequenceFirstStep:
-            return _sequence->setFirstStep(index);
+            return _sequence->setSequenceFirstStep(index);
         case SequenceLastStep:
-            return _sequence->setLastStep(index);
+            return _sequence->setSequenceLastStep(index);
         case RunMode:
             return _sequence->setRunMode(Types::RunMode(index));
         case Divisor:
@@ -108,18 +101,6 @@ public:
 
     virtual Routing::Target routingTarget(int row) const override {
         switch (Item(row)) {
-        case RestProbability2:
-            return Routing::Target::RestProbability2;
-        case RestProbability4:
-            return Routing::Target::RestProbability4;
-        case RestProbability8:
-            return Routing::Target::RestProbability8;
-        case LowOctaveRange:
-            return Routing::Target::LowOctaveRange;
-        case HighOctaveRange:
-            return Routing::Target::HighOctaveRange;
-        case LengthModifier:
-            return Routing::Target::LengthModifier;
         case RunMode:
             return Routing::Target::RunMode;
         case Divisor:
@@ -134,12 +115,6 @@ public:
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case RestProbability2:  return "Rest Prob. 2";
-        case RestProbability4:  return "Rest Prob. 4";
-        case RestProbability8:  return "Rest Prob. 8";
-        case LowOctaveRange:    return "L Oct Range";
-        case HighOctaveRange:   return "H Oct Range";
-        case LengthModifier:    return "Length Mod";
         case RunMode:           return "Run Mode";
         case Divisor:           return "Divisor";
         case ResetMeasure:      return "Reset Measure";
@@ -156,24 +131,6 @@ private:
 
     void formatValue(Item item, StringBuilder &str) const {
         switch (item) {
-        case RestProbability2:
-            _sequence->printRestProbability2(str);
-            break;
-        case RestProbability4:
-            _sequence->printRestProbability4(str);
-            break;
-        case RestProbability8:
-            _sequence->printRestProbability8(str);
-            break;
-        case LowOctaveRange:
-            _sequence->printLowOctaveRange(str);
-            break;
-        case HighOctaveRange:
-            _sequence->printHighOctaveRange(str);
-            break;
-        case LengthModifier:
-            _sequence->printLengthModifier(str);
-            break;
         case RunMode:
             _sequence->printRunMode(str);
             break;
@@ -184,10 +141,10 @@ private:
             _sequence->printResetMeasure(str);
             break;
         case SequenceFirstStep:
-            _sequence->printFirstStep(str);
+            _sequence->printSequenceFirstStep(str);
             break;
         case SequenceLastStep:
-            _sequence->printLastStep(str);
+            _sequence->printSequenceLastStep(str);
             break;
         case Last:
             break;
@@ -196,24 +153,6 @@ private:
 
     void editValue(Item item, int value, bool shift) {
         switch (item) {
-        case RestProbability2:
-            _sequence->editRestProbability2(value, shift);
-            break;
-        case RestProbability4:
-            _sequence->editRestProbability4(value, shift);
-            break;
-        case RestProbability8:
-            _sequence->editRestProbability8(value, shift);
-            break;
-        case LowOctaveRange:
-            _sequence->editLowOctaveRange(value, shift);
-            break;
-        case HighOctaveRange:
-            _sequence->editHighOctaveRange(value, shift);
-            break;
-        case LengthModifier:
-            _sequence->editLengthModifier(value, shift);
-            break;
         case RunMode:
             _sequence->editRunMode(value, shift);
             break;
@@ -224,10 +163,10 @@ private:
             _sequence->editResetMeasure(value, shift);
             break;
         case SequenceFirstStep:
-            _sequence->editFirstStep(value, shift);
+            _sequence->editSequenceFirstStep(value, shift);
             break;
         case SequenceLastStep:
-            _sequence->editLastStep(value, shift);
+            _sequence->editSequenceLastStep(value, shift);
             break;
         case Last:
             break;

@@ -549,43 +549,30 @@ void register_project(py::module &m) {
     ;
 
     // ------------------------------------------------------------------------
-    // ArpSequence
+    // ArpSequence (V2: euclidean + note pool)
     // ------------------------------------------------------------------------
 
     py::class_<ArpSequence> arpSequence(m, "ArpSequence");
     arpSequence
         .def_property("divisor", &ArpSequence::divisor, [](ArpSequence &s, int v){ s.setDivisor(v); })
         .def_property("resetMeasure", &ArpSequence::resetMeasure, &ArpSequence::setResetMeasure)
-        .def_property("firstStep", &ArpSequence::firstStep, [](ArpSequence &s, int v){ s.setFirstStep(v); })
-        .def_property("lastStep", &ArpSequence::lastStep, [](ArpSequence &s, int v){ s.setLastStep(v); })
-        .def_property_readonly("steps", [] (ArpSequence &seq) {
-            py::list result;
-            for (int i = 0; i < CONFIG_STEP_COUNT; ++i) {
-                result.append(&seq.step(i));
-            }
-            return result;
-        })
+        .def_property("degreeMask",
+            [](const ArpSequence &s) { return int(s.degreeMask()); },
+            [](ArpSequence &s, int v){ s.setDegreeMask(uint8_t(v)); })
+        .def_property("rhythmN",  &ArpSequence::rhythmN,  [](ArpSequence &s, int v){ s.setRhythmN(v); })
+        .def_property("rhythmK",  &ArpSequence::rhythmK,  [](ArpSequence &s, int v){ s.setRhythmK(v); })
+        .def_property("rhythmR",  &ArpSequence::rhythmR,  [](ArpSequence &s, int v){ s.setRhythmR(v); })
+        .def_property("rhythmGateLen", &ArpSequence::rhythmGateLen, [](ArpSequence &s, int v){ s.setRhythmGateLen(v); })
+        .def_property("modN",     &ArpSequence::modN,     [](ArpSequence &s, int v){ s.setModN(v); })
+        .def_property("modK",     &ArpSequence::modK,     [](ArpSequence &s, int v){ s.setModK(v); })
+        .def_property("modR",     &ArpSequence::modR,     [](ArpSequence &s, int v){ s.setModR(v); })
+        .def_property("modMode",  &ArpSequence::modMode,  [](ArpSequence &s, int v){ s.setModMode(v); })
+        .def_property("arpOrder", &ArpSequence::arpOrder, [](ArpSequence &s, int v){ s.setArpOrder(v); })
+        .def_property("arpOctaves", &ArpSequence::arpOctaves, [](ArpSequence &s, int v){ s.setArpOctaves(v); })
+        .def_property("arpLength", &ArpSequence::arpLength, [](ArpSequence &s, int v){ s.setArpLength(v); })
+        .def("isDegreeActive", &ArpSequence::isDegreeActive)
+        .def("toggleDegree",   &ArpSequence::toggleDegree)
         .def("clear", &ArpSequence::clear)
-        .def("clearSteps", &ArpSequence::clearSteps)
-        .def("duplicateSteps", &ArpSequence::duplicateSteps)
-    ;
-
-    py::class_<ArpSequence::Step> arpSequenceStep(arpSequence, "Step");
-    arpSequenceStep
-        .def_property("gate", &ArpSequence::Step::gate, &ArpSequence::Step::setGate)
-        .def_property("gateProbability", &ArpSequence::Step::gateProbability, &ArpSequence::Step::setGateProbability)
-        .def_property("gateOffset", &ArpSequence::Step::gateOffset, &ArpSequence::Step::setGateOffset)
-        .def_property("slide", &ArpSequence::Step::slide, &ArpSequence::Step::setSlide)
-        .def_property("retrigger", &ArpSequence::Step::retrigger, &ArpSequence::Step::setRetrigger)
-        .def_property("retriggerProbability", &ArpSequence::Step::retriggerProbability, &ArpSequence::Step::setRetriggerProbability)
-        .def_property("length", &ArpSequence::Step::length, &ArpSequence::Step::setLength)
-        .def_property("note", &ArpSequence::Step::note, &ArpSequence::Step::setNote)
-        .def_property("noteVariationRange", &ArpSequence::Step::noteVariationRange, &ArpSequence::Step::setNoteVariationRange)
-        .def_property("noteVariationProbability", &ArpSequence::Step::noteVariationProbability, &ArpSequence::Step::setNoteVariationProbability)
-        .def_property("noteOctave", (int (ArpSequence::Step::*)() const)&ArpSequence::Step::noteOctave, &ArpSequence::Step::setNoteOctave)
-        .def_property("noteOctaveProbability", &ArpSequence::Step::noteOctaveProbability, &ArpSequence::Step::setNoteOctaveProbability)
-        .def_property("condition", &ArpSequence::Step::condition, &ArpSequence::Step::setCondition)
-        .def("clear", &ArpSequence::Step::clear)
     ;
 
     // ------------------------------------------------------------------------
@@ -694,6 +681,30 @@ void register_project(py::module &m) {
         .def_property("offsetNorm", &CurveSequence::Step::offsetNorm, &CurveSequence::Step::setOffsetNorm)
         .def_property("length",     &CurveSequence::Step::length,     &CurveSequence::Step::setLength)
         .def("clear", &CurveSequence::Step::clear)
+    ;
+
+    // ------------------------------------------------------------------------
+    // StochasticSequence
+    // ------------------------------------------------------------------------
+
+    py::class_<StochasticSequence> stochasticSequence(m, "StochasticSequence");
+    stochasticSequence
+        .def_property("divisor", &StochasticSequence::divisor, [](StochasticSequence &s, int v){ s.setDivisor(v); })
+        .def_property("resetMeasure", &StochasticSequence::resetMeasure, &StochasticSequence::setResetMeasure)
+        .def_property("runMode", &StochasticSequence::runMode, &StochasticSequence::setRunMode)
+        .def_property("sequenceFirstStep", &StochasticSequence::sequenceFirstStep, [](StochasticSequence &s, int v){ s.setSequenceFirstStep(v); })
+        .def_property("sequenceLastStep", &StochasticSequence::sequenceLastStep, [](StochasticSequence &s, int v){ s.setSequenceLastStep(v); })
+        .def_property("loopChance", &StochasticSequence::loopChance, &StochasticSequence::setLoopChance)
+        .def_property("useLoop",
+            static_cast<const bool (StochasticSequence::*)() const>(&StochasticSequence::useLoop),
+            static_cast<void (StochasticSequence::*)(bool)>(&StochasticSequence::setUseLoop))
+        .def("degreeProb", &StochasticSequence::degreeProb, "i"_a)
+        .def("setDegreeProb", &StochasticSequence::setDegreeProb, "i"_a, "v"_a)
+        .def("octaveProb", &StochasticSequence::octaveProb, "i"_a)
+        .def("setOctaveProb", &StochasticSequence::setOctaveProb, "i"_a, "v"_a)
+        .def("durationProb", &StochasticSequence::durationProb, "i"_a)
+        .def("setDurationProb", &StochasticSequence::setDurationProb, "i"_a, "v"_a)
+        .def("clear", &StochasticSequence::clear)
     ;
 
     // ------------------------------------------------------------------------

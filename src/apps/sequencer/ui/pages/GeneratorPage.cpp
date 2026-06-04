@@ -119,10 +119,9 @@ void GeneratorPage::updateLeds(Leds &leds) {
                 const auto &trackEngine = _engine.selectedTrackEngine().as<StochasticEngine>();
                 const auto &sequence = _project.selectedStochasticSequence();
                 currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
-                for (int i = 0; i < 12; ++i) {
-                    int stepIndex = stepOffset() + i;
-                    bool red = (stepIndex == currentStep) || _stepSelection->at(stepIndex);
-                    bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection->at(stepIndex));
+                for (int i = 0; i < 7; i++) {
+                    bool red = (i == currentStep);
+                    bool green = !red && (sequence.degreeProb(i) > 0);
                     leds.set(MatrixMap::fromStep(i), red, green);
                 }
             }
@@ -131,10 +130,9 @@ void GeneratorPage::updateLeds(Leds &leds) {
                 const auto &trackEngine = _engine.selectedTrackEngine().as<ArpTrackEngine>();
                 const auto &sequence = _project.selectedArpSequence();
                 currentStep = trackEngine.isActiveSequence(sequence) ? trackEngine.currentStep() : -1;
-                for (int i = 0; i < 12; ++i) {
-                    int stepIndex = stepOffset() + i;
-                    bool red = (stepIndex == currentStep) || _stepSelection->at(stepIndex);
-                    bool green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection->at(stepIndex));
+                for (int i = 0; i < 16; ++i) {
+                    bool red   = (i < 7) && (i == currentStep);
+                    bool green = (i < 7) && !red && sequence.isDegreeActive(i);
                     leds.set(MatrixMap::fromStep(i), red, green);
                 }
             }
