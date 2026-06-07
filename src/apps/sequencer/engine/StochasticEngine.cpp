@@ -1,6 +1,7 @@
 #include "StochasticEngine.h"
 
 #include "Engine.h"
+#include "TrackEngineHelpers.h"
 #include "Groove.h"
 #include "SequenceState.h"
 #include "Slide.h"
@@ -117,11 +118,10 @@ TrackEngine::TickResult StochasticEngine::tick(uint32_t tick) {
             triggerStep(tick, linkData->divisor);
         }
     } else {
-        uint32_t divisor = sequence.divisor() * (CONFIG_PPQN / CONFIG_SEQUENCE_PPQN);
-        uint32_t resetDivisor = sequence.resetMeasure() * _engine.measureDivisor();
-        uint32_t relativeTick = resetDivisor == 0 ? tick : tick % resetDivisor;
+        uint32_t divisor, relativeTick;
+        computeClockParams(sequence, tick, _engine.measureDivisor(), divisor, relativeTick);
 
-        if (int(_model.project().stepsToStop()) != 0 && int(relativeTick / divisor) == int(_model.project().stepsToStop())) {
+        if (pastStepsToStop(int(_model.project().stepsToStop()), relativeTick, divisor)) {
             _engine.clockStop();
         }
 
@@ -151,6 +151,8 @@ TrackEngine::TickResult StochasticEngine::tick(uint32_t tick) {
         }
             break;
         case Types::PlayMode::Free:
+            // Not yet implemented. When added: advance _freeRelativeTick per tick,
+            // call triggerStep() on division boundaries (mirror NoteTrackEngine::Free path).
             break;
         case Types::PlayMode::Last:
             break;
@@ -163,28 +165,12 @@ TrackEngine::TickResult StochasticEngine::tick(uint32_t tick) {
 
     TickResult result = TickResult::NoUpdate;
 
-    while (!_gateQueue.empty() && tick >= _gateQueue.front().tick) {
-        if (!_monitorOverrideActive) {
-            result |= TickResult::GateUpdate;
-            _activity = _gateQueue.front().gate;
-            _gateOutput = (!mute() || fill()) && _activity;
-            midiOutputEngine.sendGate(_track.trackIndex(), _gateOutput);
-        }
-        _gateQueue.pop();
-    }
-
-    while (!_cvQueue.empty() && tick >= _cvQueue.front().tick) {
-        if (!mute() || _stochasticTrack.cvUpdateMode() == StochasticTrack::CvUpdateMode::Always) {
-            if (!_monitorOverrideActive) {
-                result |= TickResult::CvUpdate;
-                _cvOutputTarget = _cvQueue.front().cv;
-                _slideActive = _cvQueue.front().slide;
-                midiOutputEngine.sendCv(_track.trackIndex(), _cvOutputTarget);
-                midiOutputEngine.sendSlide(_track.trackIndex(), _slideActive);
-            }
-        }
-        _cvQueue.pop();
-    }
+    drainGateQueue(tick, _gateQueue, _activity, _gateOutput,
+        _monitorOverrideActive, mute(), fill(), midiOutputEngine, _track.trackIndex(), result);
+    drainCvQueue(tick, _cvQueue, _cvOutputTarget, _slideActive,
+        _monitorOverrideActive, mute(),
+        _stochasticTrack.cvUpdateMode() == StochasticTrack::CvUpdateMode::Always,
+        midiOutputEngine, _track.trackIndex(), result);
 
     return result;
 }
@@ -229,11 +215,7 @@ void StochasticEngine::update(float dt) {
         clearOverride();
     }
 
-    if (_slideActive && _stochasticTrack.slideTime() > 0) {
-        _cvOutput = Slide::applySlide(_cvOutput, _cvOutputTarget, _stochasticTrack.slideTime(), dt);
-    } else {
-        _cvOutput = _cvOutputTarget;
-    }
+    applySlideUpdate(_cvOutput, _cvOutputTarget, _slideActive, _stochasticTrack.slideTime(), dt);
 }
 
 void StochasticEngine::changePattern() {

@@ -1,6 +1,7 @@
 #include "QuantizerTrackEngine.h"
 
 #include "Engine.h"
+#include "TrackEngineHelpers.h"
 #include "SequenceUtils.h"
 
 #include "core/utils/Random.h"
@@ -139,9 +140,8 @@ TrackEngine::TickResult QuantizerTrackEngine::tick(uint32_t tick) {
     // Having the clock always run means the GATE tab playhead is always visible
     // and this track can always serve as a trigger source for other tracks.
     const auto &sequence = *_sequence;
-    const uint32_t divisor      = sequence.divisor() * (CONFIG_PPQN / CONFIG_SEQUENCE_PPQN);
-    const uint32_t resetDivisor = sequence.resetMeasure() * _engine.measureDivisor();
-    const uint32_t relativeTick = resetDivisor == 0 ? tick : tick % resetDivisor;
+    uint32_t divisor, relativeTick;
+    computeClockParams(sequence, tick, _engine.measureDivisor(), divisor, relativeTick);
 
     if (relativeTick == 0) {
         _sequenceState.reset();

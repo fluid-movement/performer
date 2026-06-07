@@ -1,6 +1,7 @@
 #include "NoteTrackEngine.h"
 
 #include "Engine.h"
+#include "TrackEngineHelpers.h"
 #include "Groove.h"
 #include "Slide.h"
 #include "SequenceUtils.h"
@@ -144,11 +145,10 @@ TrackEngine::TickResult NoteTrackEngine::tick(uint32_t tick) {
             triggerStep(tick, linkData->divisor);
         }
     } else {
-        uint32_t divisor = sequence.divisor() * (CONFIG_PPQN / CONFIG_SEQUENCE_PPQN);
-        uint32_t resetDivisor = sequence.resetMeasure() * _engine.measureDivisor();
-        uint32_t relativeTick = resetDivisor == 0 ? tick : tick % resetDivisor;
+        uint32_t divisor, relativeTick;
+        computeClockParams(sequence, tick, _engine.measureDivisor(), divisor, relativeTick);
 
-        if (int(_model.project().stepsToStop()) != 0 && int(relativeTick / divisor) == int(_model.project().stepsToStop())) {
+        if (pastStepsToStop(int(_model.project().stepsToStop()), relativeTick, divisor)) {
             _engine.clockStop();
         }
 
@@ -200,7 +200,7 @@ TrackEngine::TickResult NoteTrackEngine::tick(uint32_t tick) {
 
                 recordStep(tick, divisor);
                 const auto &step = sequence.step(_sequenceState.step());
-                bool isLastStageStep = ((int) (step.stageRepeats()+1) - (int) _currentStageRepeat) <= 0;
+                bool isLastStageStep = (static_cast<int>(step.stageRepeats()+1) - static_cast<int>(_currentStageRepeat)) <= 0;
 
                 if (step.gateOffset() >= 0) {
                     triggerStep(tick, divisor);
@@ -234,29 +234,12 @@ TrackEngine::TickResult NoteTrackEngine::tick(uint32_t tick) {
 
     TickResult result = TickResult::NoUpdate;
 
-    while (!_gateQueue.empty() && tick >= _gateQueue.front().tick) {
-        if (!_monitorOverrideActive) {
-            result |= TickResult::GateUpdate;
-            _activity = _gateQueue.front().gate;
-            _gateOutput = (!mute() || fill()) && _activity;
-            midiOutputEngine.sendGate(_track.trackIndex(), _gateOutput);
-        }
-        _gateQueue.pop();
-
-    }
-
-    while (!_cvQueue.empty() && tick >= _cvQueue.front().tick) {
-        if (!mute() || _noteTrack.cvUpdateMode() == NoteTrack::CvUpdateMode::Always) {
-            if (!_monitorOverrideActive) {
-                result |= TickResult::CvUpdate;
-                _cvOutputTarget = _cvQueue.front().cv;
-                _slideActive = _cvQueue.front().slide;
-                midiOutputEngine.sendCv(_track.trackIndex(), _cvOutputTarget);
-                midiOutputEngine.sendSlide(_track.trackIndex(), _slideActive);
-            }
-        }
-        _cvQueue.pop();
-    }
+    drainGateQueue(tick, _gateQueue, _activity, _gateOutput,
+        _monitorOverrideActive, mute(), fill(), midiOutputEngine, _track.trackIndex(), result);
+    drainCvQueue(tick, _cvQueue, _cvOutputTarget, _slideActive,
+        _monitorOverrideActive, mute(),
+        _noteTrack.cvUpdateMode() == NoteTrack::CvUpdateMode::Always,
+        midiOutputEngine, _track.trackIndex(), result);
 
     return result;
 }
@@ -329,11 +312,7 @@ void NoteTrackEngine::update(float dt) {
         clearOverride();
     }
 
-    if (_slideActive && _noteTrack.slideTime() > 0) {
-        _cvOutput = Slide::applySlide(_cvOutput, _cvOutputTarget, _noteTrack.slideTime(), dt);
-    } else {
-        _cvOutput = _cvOutputTarget;
-    }
+    applySlideUpdate(_cvOutput, _cvOutputTarget, _slideActive, _noteTrack.slideTime(), dt);
 }
 
 void NoteTrackEngine::changePattern() {
@@ -394,8 +373,8 @@ void NoteTrackEngine::triggerStep(uint32_t tick, uint32_t divisor, bool forNextS
 
     const auto &step = evalSequence.step(stepIndex);
 
-    int gateOffset = ((int) divisor * step.gateOffset()) / (NoteSequence::GateOffset::Max + 1);
-    uint32_t stepTick = (int) tick + gateOffset;
+    int gateOffset = (static_cast<int>(divisor) * step.gateOffset()) / (NoteSequence::GateOffset::Max + 1);
+    uint32_t stepTick = static_cast<uint32_t>(static_cast<int>(tick) + gateOffset);
 
     bool stepGate = evalStepGate(step, _noteTrack.gateProbabilityBias()) || useFillGates;
     if (stepGate) {

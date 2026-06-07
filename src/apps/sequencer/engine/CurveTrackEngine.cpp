@@ -1,6 +1,7 @@
 #include "CurveTrackEngine.h"
 
 #include "Engine.h"
+#include "TrackEngineHelpers.h"
 #include "Groove.h"
 #include "Slide.h"
 #include "SequenceUtils.h"
@@ -53,11 +54,10 @@ TrackEngine::TickResult CurveTrackEngine::tick(uint32_t tick) {
 
         updateOutput(linkData->relativeTick, linkData->divisor);
     } else {
-        uint32_t divisor = sequence.divisor() * (CONFIG_PPQN / CONFIG_SEQUENCE_PPQN);
-        uint32_t resetDivisor = sequence.resetMeasure() * _engine.measureDivisor();
-        uint32_t relativeTick = resetDivisor == 0 ? tick : tick % resetDivisor;
+        uint32_t divisor, relativeTick;
+        computeClockParams(sequence, tick, _engine.measureDivisor(), divisor, relativeTick);
 
-        if (int(_model.project().stepsToStop()) != 0 && int(relativeTick / divisor) == int(_model.project().stepsToStop())) {
+        if (pastStepsToStop(int(_model.project().stepsToStop()), relativeTick, divisor)) {
             _engine.clockStop();
         }
 
