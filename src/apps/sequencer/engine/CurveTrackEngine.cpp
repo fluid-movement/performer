@@ -74,9 +74,7 @@ TrackEngine::TickResult CurveTrackEngine::tick(uint32_t tick) {
 
         updateOutput(relativeTick, divisor);
 
-        _linkData.divisor = divisor;
-        _linkData.relativeTick = relativeTick;
-        _linkData.sequenceState = &_sequenceState;
+        updateLinkData(divisor, relativeTick, &_sequenceState);
     }
 
     TickResult result = TickResult::NoUpdate;

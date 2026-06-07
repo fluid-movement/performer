@@ -30,8 +30,6 @@ public:
     virtual void monitorMidi(uint32_t tick, const MidiMessage &message) override;
     virtual void clearMidiMonitoring() override;
 
-    virtual const TrackLinkData *linkData() const override { return &_linkData; }
-
     virtual bool activity() const override { return _activity; }
     virtual bool gateOutput(int index) const override { return _gateOutput; }
     virtual float cvOutput(int index) const override { return _cvOutput; }
@@ -61,8 +59,6 @@ private:
 
     ArpTrack &_arpTrack;
     const Model &_model;
-
-    TrackLinkData _linkData;
 
     ArpSequence *_sequence = nullptr;
 

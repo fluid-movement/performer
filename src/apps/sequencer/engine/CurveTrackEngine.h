@@ -25,8 +25,6 @@ public:
 
     virtual void changePattern() override;
 
-    virtual const TrackLinkData *linkData() const override { return &_linkData; }
-
     virtual bool activity() const override { return _activity; }
     virtual bool gateOutput(int index) const override { return _gateOutput; }
     virtual float cvOutput(int index) const override { return _cvOutput; }
@@ -47,8 +45,6 @@ private:
     void updateOutput(uint32_t relativeTick, uint32_t divisor);
 
     CurveTrack &_curveTrack;
-
-    TrackLinkData _linkData;
 
     float _recordValue = 0.f;
     CurveRecorder _recorder;

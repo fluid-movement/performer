@@ -78,7 +78,7 @@ public:
     virtual void monitorMidi(uint32_t tick, const MidiMessage &message) {}
     virtual void clearMidiMonitoring() {}
 
-    virtual const TrackLinkData *linkData() const { return nullptr; }
+    virtual const TrackLinkData *linkData() const { return &_linkData; }
 
     // track output
 
@@ -100,11 +100,19 @@ public:
     int fillAmount() const { return _trackState.fillAmount(); }
 
 protected:
+    void updateLinkData(uint32_t divisor, uint32_t relativeTick, SequenceState *state) {
+        _linkData.divisor = divisor;
+        _linkData.relativeTick = relativeTick;
+        _linkData.sequenceState = state;
+    }
+
     Engine &_engine;
     Model &_model;
     Track &_track;
     const PlayState::TrackState &_trackState;
     const TrackEngine *_linkedTrackEngine;
+
+    TrackLinkData _linkData;
 };
 
 ENUM_CLASS_OPERATORS(TrackEngine::TickResult)

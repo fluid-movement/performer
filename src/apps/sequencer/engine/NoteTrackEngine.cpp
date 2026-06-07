@@ -227,9 +227,7 @@ TrackEngine::TickResult NoteTrackEngine::tick(uint32_t tick) {
             break;
         }
 
-        _linkData.divisor = divisor;
-        _linkData.relativeTick = relativeTick;
-        _linkData.sequenceState = &_sequenceState;
+        updateLinkData(divisor, relativeTick, &_sequenceState);
     }
 
     auto &midiOutputEngine = _engine.midiOutputEngine();

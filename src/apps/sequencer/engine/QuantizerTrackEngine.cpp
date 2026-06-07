@@ -35,6 +35,24 @@ float QuantizerTrackEngine::readInput() const {
     return _filteredInput;
 }
 
+void QuantizerTrackEngine::setLoopMode(LoopMode mode) {
+    if (mode == LoopMode::Rec) {
+        _loopFillCount = 0;
+        _loopIndex = 0;
+    } else if (mode == LoopMode::Loop) {
+        _loopIndex = 0;
+    }
+    _loopMode = mode;
+}
+
+int QuantizerTrackEngine::loopPlaySlot() const {
+    if (_loopMode != LoopMode::Loop) return -1;
+    const int loopLen = std::max(1, _quantizerTrack.loopLength());
+    // _loopIndex has already been advanced past the last-played slot, so step back one.
+    const int lastIdx = (_loopIndex + loopLen - 1) % loopLen;
+    return (_quantizerTrack.loopStart() + lastIdx) % LoopBufferSize;
+}
+
 void QuantizerTrackEngine::reset() {
     _sequenceState.reset();
     _currentStep = -1;
@@ -43,6 +61,7 @@ void QuantizerTrackEngine::reset() {
     _lastTransposition = INT32_MIN;
     _lastSourceGate = false;
     _lastTriggerTrack = -1;
+    _lastCvChannel    = -1;
     _filterInit = false;
     _filteredInput = 0.f;
     _samplePending = false;
@@ -52,6 +71,9 @@ void QuantizerTrackEngine::reset() {
         _cvOutput = 0.f;
     }
     _pulseTick = 0;
+    _loopMode = LoopMode::Play;
+    _loopFillCount = 0;
+    _loopIndex = 0;
 
     changePattern();
 }
@@ -73,87 +95,141 @@ TrackEngine::TickResult QuantizerTrackEngine::tick(uint32_t tick) {
 
     int transposition = evalTransposition(scale, _quantizerTrack.octave(), _quantizerTrack.transpose());
 
-    // Helper: commit a quantized note to CV/gate output
+    // Helper: commit a quantized note to CV/gate output.
+    // In Rec mode: capture into loop buffer and auto-switch to Loop when full.
+    // In Loop mode: replay from buffer, ignoring the live qNote.
     auto commit = [&](int qNote) {
         _lastQNote = qNote;
         _lastQVolts = scale.noteToVolts(qNote);  // un-transposed, used for hysteresis
         _lastTransposition = transposition;
-        _cvOutput = scale.noteToVolts(qNote + transposition);
+
+        if (_loopMode == LoopMode::Rec) {
+            if (_loopFillCount < LoopBufferSize) {
+                // Store un-transposed note index so octave/transpose edits apply during playback.
+                _loopBuffer[_loopFillCount++] = qNote;
+            }
+            if (_loopFillCount >= LoopBufferSize) {
+                _loopMode = LoopMode::Loop;
+                _loopIndex = 0;
+            }
+            _cvOutput = scale.noteToVolts(qNote + transposition);
+        } else if (_loopMode == LoopMode::Loop) {
+            const int loopLen = std::max(1, _quantizerTrack.loopLength());
+            const int slot    = (_quantizerTrack.loopStart() + _loopIndex) % LoopBufferSize;
+            _cvOutput  = scale.noteToVolts(_loopBuffer[slot] + transposition);
+            _loopIndex = (_loopIndex + 1) % loopLen;
+        } else {
+            _cvOutput = scale.noteToVolts(qNote + transposition);
+        }
+
         _gateOutput = true;
         _pulseTick = tick + PulseLengthTicks;
         result |= TickResult::GateUpdate | TickResult::CvUpdate;
     };
 
-    // Commit delayed sample before processing new triggers — prevents perpetual
-    // deferral when divisor <= SampleDelayTicks (new trigger would overwrite sampleTick
-    // before the commit check ran).
+    // Commit pending delayed sample first — prevents perpetual deferral when
+    // divisor <= SampleDelayTicks (new trigger would overwrite sampleTick).
     if (_samplePending && tick >= _sampleTick) {
         commit(scale.noteFromVolts(inputVolts));
         _samplePending = false;
     }
 
+    // ── Sequence clock (always runs regardless of trigger mode) ───────────────
+    // Advances step display, link data, and fires gate output on active steps.
+    // Having the clock always run means the GATE tab playhead is always visible
+    // and this track can always serve as a trigger source for other tracks.
+    const auto &sequence = *_sequence;
+    const uint32_t divisor      = sequence.divisor() * (CONFIG_PPQN / CONFIG_SEQUENCE_PPQN);
+    const uint32_t resetDivisor = sequence.resetMeasure() * _engine.measureDivisor();
+    const uint32_t relativeTick = resetDivisor == 0 ? tick : tick % resetDivisor;
+
+    if (relativeTick == 0) {
+        _sequenceState.reset();
+    }
+    if (relativeTick % divisor == 0) {
+        const int absoluteStep = int(relativeTick / divisor);
+        _sequenceState.advanceAligned(absoluteStep, sequence.runMode(), sequence.firstStep(), sequence.lastStep(), rng);
+        _currentStep = _sequenceState.step();
+        const auto &step = sequence.step(_currentStep);
+        // Schedule a sample on active steps; Loop mode bypasses the gate pattern.
+        // Gate fires via commit() so it is always atomic with the CV update.
+        // Free trigger mode drives its own commits via hysteresis — the clock must not
+        // add a second commit path or Rec mode would fill the buffer with duplicates.
+        // Exception: Free+Loop still needs the clock to advance the loop (hysteresis
+        // is disabled in Loop mode).
+        const bool clockShouldSample =
+            _quantizerTrack.triggerMode() != QuantizerTrack::TriggerMode::Free ||
+            _loopMode == LoopMode::Loop;
+        if (clockShouldSample && (step.gate() || _loopMode == LoopMode::Loop) && !_samplePending) {
+            _samplePending = true;
+            _sampleTick    = tick + SampleDelayTicks;
+        }
+    }
+    updateLinkData(divisor, relativeTick, &_sequenceState);
+
+    // ── Trigger mode: controls when the CV input is sampled ───────────────────
     switch (_quantizerTrack.triggerMode()) {
     case QuantizerTrack::TriggerMode::Free: {
-        // Hysteresis: only commit if input has moved far enough from current note
-        int candidate = scale.noteFromVolts(inputVolts);
-        bool changed = false;
-        if (_lastQNote == INT32_MIN) {
-            changed = true;
-        } else if (candidate != _lastQNote) {
-            changed = std::abs(inputVolts - _lastQVolts) >= HysteresisVolts;
-        } else if (transposition != _lastTransposition) {
-            changed = true;
-        } else if (std::abs(scale.noteToVolts(_lastQNote) - _lastQVolts) > 0.001f) {
-            // Scale changed under the current note — re-commit at new scale's pitch
-            changed = true;
-        }
-        if (changed) {
-            commit(candidate);
-        }
-        break;
-    }
-
-    case QuantizerTrack::TriggerMode::Internal: {
-        const auto &sequence = *_sequence;
-        uint32_t divisor = sequence.divisor() * (CONFIG_PPQN / CONFIG_SEQUENCE_PPQN);
-        uint32_t resetDivisor = sequence.resetMeasure() * _engine.measureDivisor();
-        uint32_t relativeTick = resetDivisor == 0 ? tick : tick % resetDivisor;
-
-        if (relativeTick == 0) {
-            _sequenceState.reset();
-        }
-
-        if (relativeTick % divisor == 0) {
-            int absoluteStep = int(relativeTick / divisor);
-            _sequenceState.advanceAligned(absoluteStep, sequence.runMode(), sequence.firstStep(), sequence.lastStep(), rng);
-            _currentStep = _sequenceState.step();
-            const auto &step = sequence.step(_currentStep);
-            if (step.gate()) {
-                // Schedule delayed sample to let the input CV settle
-                _samplePending = true;
-                _sampleTick = tick + SampleDelayTicks;
+        // In Loop mode skip hysteresis — loop advances via the sequence clock above.
+        if (_loopMode != LoopMode::Loop) {
+            int candidate = scale.noteFromVolts(inputVolts);
+            bool changed = false;
+            if (_lastQNote == INT32_MIN) {
+                changed = true;
+            } else if (candidate != _lastQNote) {
+                changed = std::abs(inputVolts - _lastQVolts) >= HysteresisVolts;
+            } else if (transposition != _lastTransposition) {
+                changed = true;
+            } else if (std::abs(scale.noteToVolts(_lastQNote) - _lastQVolts) > 0.001f) {
+                // Scale changed under the current note — re-commit at new scale's pitch
+                changed = true;
+            }
+            if (changed) {
+                commit(candidate);
             }
         }
-
-        _linkData.divisor = divisor;
-        _linkData.relativeTick = relativeTick;
-        _linkData.sequenceState = &_sequenceState;
         break;
     }
+
+    case QuantizerTrack::TriggerMode::Internal:
+        // Deprecated — step advancement now handled by the sequence clock above.
+        break;
 
     case QuantizerTrack::TriggerMode::External: {
         int triggerTrack = _quantizerTrack.triggerTrack();
         if (triggerTrack >= 0 && triggerTrack < CONFIG_TRACK_COUNT) {
             bool curGate = _engine.trackEngine(triggerTrack).gateOutput(0);
             if (triggerTrack != _lastTriggerTrack) {
-                // Trigger source changed — absorb current gate level to prevent
-                // spurious rising-edge on the first tick after the switch
-                _lastSourceGate = curGate;
+                // Source changed — absorb current level to prevent spurious rising edge.
+                _lastSourceGate   = curGate;
                 _lastTriggerTrack = triggerTrack;
             }
-            if (curGate && !_lastSourceGate) {
+            // In Loop mode the sequence clock drives advancement; skip external sampling.
+            if (_loopMode != LoopMode::Loop && curGate && !_lastSourceGate) {
                 _samplePending = true;
-                _sampleTick = tick + SampleDelayTicks;
+                _sampleTick    = tick + SampleDelayTicks;
+            }
+            _lastSourceGate = curGate;
+        }
+        break;
+    }
+
+    case QuantizerTrack::TriggerMode::CvGate: {
+        int cvCh = _quantizerTrack.triggerTrack();  // 0–3 = CV input index
+        if (cvCh >= 0 && cvCh < 4) {
+            float cvIn = _engine.cvInput().channel(cvCh);
+            // Schmitt-trigger hysteresis: rise above High, fall below Low
+            bool curGate = (cvIn > CvGateThresholdHigh) ||
+                           (_lastSourceGate && cvIn > CvGateThresholdLow);
+            if (cvCh != _lastCvChannel) {
+                // Channel changed (or first entry from another mode) — absorb current level.
+                _lastSourceGate = curGate;
+                _lastCvChannel  = cvCh;
+            }
+            // In Loop mode the sequence clock drives advancement; skip external sampling.
+            if (_loopMode != LoopMode::Loop && curGate && !_lastSourceGate) {
+                _samplePending = true;
+                _sampleTick    = tick + SampleDelayTicks;
             }
             _lastSourceGate = curGate;
         }

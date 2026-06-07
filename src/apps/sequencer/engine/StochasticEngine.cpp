@@ -12,10 +12,7 @@
 
 #include "model/StochasticSequence.h"
 #include "model/Scale.h"
-#include "ui/MatrixMap.h"
 #include <algorithm>
-#include <ctime>
-#include <vector>
 
 static Random rng;
 static Random mutationRng;
@@ -159,9 +156,7 @@ TrackEngine::TickResult StochasticEngine::tick(uint32_t tick) {
             break;
         }
 
-        _linkData.divisor = divisor;
-        _linkData.relativeTick = relativeTick;
-        _linkData.sequenceState = &_sequenceState;
+        updateLinkData(divisor, relativeTick, &_sequenceState);
     }
 
     auto &midiOutputEngine = _engine.midiOutputEngine();
