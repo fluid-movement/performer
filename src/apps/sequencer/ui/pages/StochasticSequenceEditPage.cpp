@@ -38,7 +38,7 @@ static const StochasticSequenceListModel::Item quickEditItems[8] = {
 };
 
 StochasticSequenceEditPage::StochasticSequenceEditPage(PageManager &manager, PageContext &context) :
-    BasePage(manager, context)
+    SequenceEditPageBase(manager, context)
 {}
 
 void StochasticSequenceEditPage::enter() {
@@ -319,20 +319,9 @@ void StochasticSequenceEditPage::keyUp(KeyEvent &event) {
 }
 
 void StochasticSequenceEditPage::keyPress(KeyPressEvent &event) {
+    if (handleCommonKeyPress(event)) return;
     const auto &key = event.key();
     auto &sequence = _project.selectedStochasticSequence();
-
-    if (key.isContextMenu()) {
-        contextShow();
-        event.consume();
-        return;
-    }
-
-    if (key.pageModifier() && event.count() == 2) {
-        contextShow(true);
-        event.consume();
-        return;
-    }
 
     if (key.isQuickEdit()) {
         _listModel.setSequence(&sequence);
@@ -411,17 +400,12 @@ void StochasticSequenceEditPage::switchTab(int functionKey) {
     _heldSteps = 0;
 }
 
-int StochasticSequenceEditPage::activeFunctionKey() {
-    return _activeTab;
+const ContextMenuModel::Item *StochasticSequenceEditPage::contextItems() const {
+    return contextMenuItems;
 }
 
-void StochasticSequenceEditPage::contextShow(bool doubleClick) {
-    showContextMenu(ContextMenu(
-        contextMenuItems,
-        int(ContextAction::Last),
-        [&] (int index) { contextAction(index); },
-        [&] (int index) { return contextActionEnabled(index); }, doubleClick
-    ));
+int StochasticSequenceEditPage::contextActionCount() const {
+    return int(ContextAction::Last);
 }
 
 void StochasticSequenceEditPage::contextAction(int index) {

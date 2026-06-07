@@ -76,6 +76,7 @@ set(sources
     # ui/pages
     ui/pages/AsteroidsPage.cpp
     ui/pages/BasePage.cpp
+    ui/pages/SequenceEditPageBase.cpp
     ui/pages/BusyPage.cpp
     ui/pages/ClockSetupPage.cpp
     ui/pages/ConfirmationPage.cpp

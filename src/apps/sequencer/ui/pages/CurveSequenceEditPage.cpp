@@ -50,7 +50,7 @@ static const CurveSequenceListModel::Item quickEditItems[8] = {
 
 
 CurveSequenceEditPage::CurveSequenceEditPage(PageManager &manager, PageContext &context) :
-    BasePage(manager, context)
+    SequenceEditPageBase(manager, context)
 {
     _stepSelection.setStepCompare([this] (int a, int b) {
         auto layer = _project.selectedCurveSequenceLayer();
@@ -274,20 +274,9 @@ void CurveSequenceEditPage::keyUp(KeyEvent &event) {
 }
 
 void CurveSequenceEditPage::keyPress(KeyPressEvent &event) {
+    if (handleCommonKeyPress(event)) return;
     const auto &key = event.key();
     auto &track = _project.selectedTrack().curveTrack();
-
-    if (key.isContextMenu()) {
-        contextShow();
-        event.consume();
-        return;
-    }
-
-    if (key.pageModifier() && event.count() == 2) {
-        contextShow(true);
-        event.consume();
-        return;
-    }
 
     if (key.isQuickEdit()) {
         if (key.is(Key::Step15)) {
@@ -407,14 +396,12 @@ int CurveSequenceEditPage::activeFunctionKey() {
     return -1;
 }
 
-void CurveSequenceEditPage::contextShow(bool doubleClick) {
-    showContextMenu(ContextMenu(
-        contextMenuItems,
-        int(ContextAction::Last),
-        [&] (int index) { contextAction(index); },
-        [&] (int index) { return contextActionEnabled(index); },
-        doubleClick
-    ));
+const ContextMenuModel::Item *CurveSequenceEditPage::contextItems() const {
+    return contextMenuItems;
+}
+
+int CurveSequenceEditPage::contextActionCount() const {
+    return int(ContextAction::Last);
 }
 
 void CurveSequenceEditPage::contextAction(int index) {

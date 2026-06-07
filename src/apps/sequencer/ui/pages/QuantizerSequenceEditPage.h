@@ -1,6 +1,6 @@
 #pragma once
 
-#include "BasePage.h"
+#include "SequenceEditPageBase.h"
 
 #include "ui/StepSelection.h"
 #include "ui/model/NoteSequenceListModel.h"
@@ -9,7 +9,7 @@
 
 #include "core/utils/Container.h"
 
-class QuantizerSequenceEditPage : public BasePage {
+class QuantizerSequenceEditPage : public SequenceEditPageBase {
 public:
     QuantizerSequenceEditPage(PageManager &manager, PageContext &context);
 
@@ -36,13 +36,14 @@ private:
     void drawSourceTab(Canvas &canvas, const QuantizerTrack &track);
     void drawTriggerTab(Canvas &canvas, const QuantizerTrack &track);
     void drawTuneTab(Canvas &canvas, const QuantizerTrack &track);
+    void drawLoopTab(Canvas &canvas, const QuantizerTrack &track);
 
     void switchTab(int fKey);
-    int activeFunctionKey();
 
-    void contextShow(bool doubleClick = false);
-    void contextAction(int index);
-    bool contextActionEnabled(int index) const;
+    const ContextMenuModel::Item *contextItems() const override;
+    int contextActionCount() const override;
+    void contextAction(int index) override;
+    bool contextActionEnabled(int index) const override;
 
     void initSequence();
     void copySequence();
@@ -57,13 +58,11 @@ private:
     KeyPressEventTracker _keyPressEventTracker;
 
     NoteSequenceListModel _listModel;
-    QuantizerTrackListModel _trackListModel;
 
     StepSelection<CONFIG_STEP_COUNT> _stepSelection;
 
     NoteSequence _inMemorySequence;
 
-    int     _activeTab  = 0;
     uint8_t _heldSteps  = 0;
     int     _cursor     = 0;
 };

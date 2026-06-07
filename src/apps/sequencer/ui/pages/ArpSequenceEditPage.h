@@ -1,10 +1,10 @@
 #pragma once
 
-#include "BasePage.h"
+#include "SequenceEditPageBase.h"
 
 #include "ui/model/ArpSequenceListModel.h"
 
-class ArpSequenceEditPage : public BasePage {
+class ArpSequenceEditPage : public SequenceEditPageBase {
 public:
     ArpSequenceEditPage(PageManager &manager, PageContext &context);
 
@@ -31,17 +31,16 @@ private:
     void drawParamBar(Canvas &canvas, const char *labels[], const char *values[], int count, int selIdx);
 
     void switchTab(int fKey);
-    int activeFunctionKey();
 
-    void contextShow(bool doubleClick = false);
-    void contextAction(int index);
-    bool contextActionEnabled(int index) const;
+    const ContextMenuModel::Item *contextItems() const override;
+    int contextActionCount() const override;
+    void contextAction(int index) override;
+    bool contextActionEnabled(int index) const override;
 
     void initSequence();
     void copySequence();
     void pasteSequence();
 
-    int _activeTab  = 0;
     uint8_t _heldSteps = 0;
     int _cursor     = 0;
 

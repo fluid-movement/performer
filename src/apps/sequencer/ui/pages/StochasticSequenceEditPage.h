@@ -1,12 +1,12 @@
 #pragma once
 
-#include "BasePage.h"
+#include "SequenceEditPageBase.h"
 
 #include "ui/model/StochasticSequenceListModel.h"
 
 #include "core/utils/Container.h"
 
-class StochasticSequenceEditPage : public BasePage {
+class StochasticSequenceEditPage : public SequenceEditPageBase {
 public:
     StochasticSequenceEditPage(PageManager &manager, PageContext &context);
 
@@ -24,16 +24,16 @@ public:
 
 private:
     void switchTab(int functionKey);
-    int activeFunctionKey();
 
     void drawNoteTab(Canvas &canvas, const StochasticSequence &sequence);
     void drawOctTab(Canvas &canvas, const StochasticSequence &sequence);
     void drawLenTab(Canvas &canvas, const StochasticSequence &sequence);
     void drawLoopTab(Canvas &canvas, const StochasticSequence &sequence);
 
-    void contextShow(bool doubleClick = false);
-    void contextAction(int index);
-    bool contextActionEnabled(int index) const;
+    const ContextMenuModel::Item *contextItems() const override;
+    int contextActionCount() const override;
+    void contextAction(int index) override;
+    bool contextActionEnabled(int index) const override;
 
     void initSequence();
     void copySequence();
@@ -41,7 +41,6 @@ private:
 
     void displayMessage(StochasticSequence &sequence);
 
-    int _activeTab = 0;
     int _cursor = 0;
     uint8_t _heldSteps = 0;
 

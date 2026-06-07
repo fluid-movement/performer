@@ -12,7 +12,7 @@
 
 #include "core/utils/StringBuilder.h"
 
-static const char *functionNames[] = { "GATE", "SRCE", "TRIG", "TUNE", nullptr };
+static const char *functionNames[] = { "GATE", "SRCE", "TRIG", "TUNE", "LOOP" };
 
 enum class QSeqContextAction {
     Init,
@@ -41,7 +41,7 @@ static const NoteSequenceListModel::Item quickEditItems[8] = {
 };
 
 QuantizerSequenceEditPage::QuantizerSequenceEditPage(PageManager &manager, PageContext &context) :
-    BasePage(manager, context)
+    SequenceEditPageBase(manager, context)
 {
     _stepSelection.setStepCompare([this] (int a, int b) {
         const auto &sequence = _project.selectedQuantizerSequence();
@@ -76,6 +76,7 @@ void QuantizerSequenceEditPage::draw(Canvas &canvas) {
     case 1: drawSourceTab(canvas, track);   break;
     case 2: drawTriggerTab(canvas, track);  break;
     case 3: drawTuneTab(canvas, track);     break;
+    case 4: drawLoopTab(canvas, track);     break;
     }
 }
 
@@ -132,23 +133,24 @@ void QuantizerSequenceEditPage::drawGateTab(Canvas &canvas, const NoteSequence &
 }
 
 void QuantizerSequenceEditPage::drawSourceTab(Canvas &canvas, const QuantizerTrack &track) {
-    canvas.setBlendMode(BlendMode::Set);
     const int src = int(track.inputSource());
 
     // CV IN section
+    canvas.setBlendMode(BlendMode::Set);
     canvas.setFont(Font::Tiny);
     canvas.setColor(Color::Low);
     canvas.drawText(4, 13, "CV IN");
 
     static const char *cvLabels[] = { "CV1", "CV2", "CV3", "CV4" };
     for (int i = 0; i < 4; ++i) {
-        const int bx = i * 64 + 4;
-        const int bw = 56;
+        const int bx  = i * 64 + 4;
+        const int bw  = 56;
         const bool sel = (src == i);
+        canvas.setBlendMode(BlendMode::Set);
         if (sel) {
             canvas.setColor(Color::Bright);
             canvas.fillRect(bx, 17, bw, 17);
-            canvas.setColor(Color::None);
+            canvas.setBlendMode(BlendMode::Sub);
         } else {
             canvas.setColor(Color::Low);
             canvas.drawRect(bx, 17, bw, 17);
@@ -156,10 +158,11 @@ void QuantizerSequenceEditPage::drawSourceTab(Canvas &canvas, const QuantizerTra
         }
         canvas.setFont(Font::Small);
         canvas.drawText(bx + (bw - canvas.textWidth(cvLabels[i])) / 2, 28, cvLabels[i]);
-        canvas.setFont(Font::Tiny);
     }
 
     // TRACK section
+    canvas.setBlendMode(BlendMode::Set);
+    canvas.setFont(Font::Tiny);
     canvas.setColor(Color::Low);
     canvas.drawText(4, 38, "TRACK");
 
@@ -168,10 +171,11 @@ void QuantizerSequenceEditPage::drawSourceTab(Canvas &canvas, const QuantizerTra
     for (int t = 0; t < 8; ++t) {
         const int bx  = trkX0 + t * (trkW + trkGap);
         const bool sel = (src == t + 4);
+        canvas.setBlendMode(BlendMode::Set);
         if (sel) {
             canvas.setColor(Color::Bright);
             canvas.fillRect(bx, 41, trkW, 11);
-            canvas.setColor(Color::None);
+            canvas.setBlendMode(BlendMode::Sub);
         } else {
             canvas.setColor(Color::Low);
             canvas.drawRect(bx, 41, trkW, 11);
@@ -180,56 +184,86 @@ void QuantizerSequenceEditPage::drawSourceTab(Canvas &canvas, const QuantizerTra
         FixedStringBuilder<4> lbl("T%d", t + 1);
         canvas.drawText(bx + (trkW - canvas.textWidth(lbl)) / 2, 49, lbl);
     }
+    canvas.setBlendMode(BlendMode::Set);
 }
 
 void QuantizerSequenceEditPage::drawTriggerTab(Canvas &canvas, const QuantizerTrack &track) {
-    canvas.setBlendMode(BlendMode::Set);
-    const int mode = int(track.triggerMode());
-    const int colW = 256 / 3;
+    const int srcIdx = track.triggerSourceIndex();
+    // 0=Free, 1–8=External(track), 9–12=CvGate(cv)
+    const int modeChip = (srcIdx == 0) ? 0 : (srcIdx <= 8) ? 1 : 2;
 
-    // "TRIGGER MODE" centered label
-    canvas.setFont(Font::Tiny);
-    canvas.setColor(Color::Low);
-    const char *modeHdr = "TRIGGER MODE";
-    canvas.drawText((256 - canvas.textWidth(modeHdr)) / 2, 13, modeHdr);
-
-    // 3 mode chips
+    // Row 1: 3 mode chips — FREE / INT / EXT
     static const char *modeNames[] = { "FREE", "INT", "EXT" };
+    const int colW = 256 / 3;
     for (int i = 0; i < 3; ++i) {
         const int bx  = i * colW + 4;
         const int bw  = colW - 8;
-        const bool sel = (mode == i);
-        if (sel) {
+        const int cx  = i * colW + colW / 2;
+        canvas.setBlendMode(BlendMode::Set);
+        if (i == modeChip) {
             canvas.setColor(Color::Bright);
             canvas.fillRect(bx, 17, bw, 14);
-            canvas.setColor(Color::None);
+            canvas.setBlendMode(BlendMode::Sub);
         } else {
             canvas.setColor(Color::Low);
             canvas.drawRect(bx, 17, bw, 14);
             canvas.setColor(Color::Medium);
         }
-        const int cx = i * colW + colW / 2;
+        canvas.setFont(Font::Tiny);
         canvas.drawText(cx - canvas.textWidth(modeNames[i]) / 2, 27, modeNames[i]);
     }
 
     // Separator
+    canvas.setBlendMode(BlendMode::Set);
     canvas.setColor(Color::Low);
     canvas.hline(0, 34, 256);
 
-    // Sub-selector: trigger track (INT only)
-    if (track.triggerMode() == QuantizerTrack::TriggerMode::Internal) {
-        canvas.setFont(Font::Tiny);
-        canvas.setColor(Color::Low);
-        canvas.drawText(4, 40, "TRIGGER TRACK");
+    // Row 2a: INT selected — 8 track chips T1–T8
+    if (modeChip == 1) {
+        const int selTrack = srcIdx - 1;  // 0–7
+        const int trkW = 28, trkGap = 2, trkX0 = 9;
+        for (int t = 0; t < 8; ++t) {
+            const int bx  = trkX0 + t * (trkW + trkGap);
+            const bool sel = (t == selTrack);
+            canvas.setBlendMode(BlendMode::Set);
+            if (sel) {
+                canvas.setColor(Color::Bright);
+                canvas.fillRect(bx, 38, trkW, 14);
+                canvas.setBlendMode(BlendMode::Sub);
+            } else {
+                canvas.setColor(Color::Low);
+                canvas.drawRect(bx, 38, trkW, 14);
+                canvas.setColor(Color::Medium);
+            }
+            canvas.setFont(Font::Tiny);
+            FixedStringBuilder<4> lbl("T%d", t + 1);
+            canvas.drawText(bx + (trkW - canvas.textWidth(lbl)) / 2, 48, lbl);
+        }
+        canvas.setBlendMode(BlendMode::Set);
+    }
 
-        FixedStringBuilder<16> trkStr;
-        track.printTriggerTrack(trkStr);
-
-        bool sel = (_heldSteps >> 1) & 1;
-        canvas.setFont(Font::Small);
-        canvas.setColor(sel ? Color::Bright : Color::Medium);
-        canvas.drawText((256 - canvas.textWidth(trkStr)) / 2, 51, trkStr);
-        canvas.setFont(Font::Tiny);
+    // Row 2b: EXT selected — 4 CV chips CV1–CV4
+    if (modeChip == 2) {
+        const int selCv = srcIdx - 9;  // 0–3
+        static const char *cvLabels[] = { "CV1", "CV2", "CV3", "CV4" };
+        for (int i = 0; i < 4; ++i) {
+            const int bx  = i * 64 + 4;
+            const int bw  = 56;
+            const bool sel = (i == selCv);
+            canvas.setBlendMode(BlendMode::Set);
+            if (sel) {
+                canvas.setColor(Color::Bright);
+                canvas.fillRect(bx, 38, bw, 14);
+                canvas.setBlendMode(BlendMode::Sub);
+            } else {
+                canvas.setColor(Color::Low);
+                canvas.drawRect(bx, 38, bw, 14);
+                canvas.setColor(Color::Medium);
+            }
+            canvas.setFont(Font::Tiny);
+            canvas.drawText(bx + (bw - canvas.textWidth(cvLabels[i])) / 2, 48, cvLabels[i]);
+        }
+        canvas.setBlendMode(BlendMode::Set);
     }
 }
 
@@ -305,6 +339,84 @@ void QuantizerSequenceEditPage::drawTuneTab(Canvas &canvas, const QuantizerTrack
     }
 }
 
+void QuantizerSequenceEditPage::drawLoopTab(Canvas &canvas, const QuantizerTrack &track) {
+    auto &trackEngine = _engine.selectedTrackEngine().as<QuantizerTrackEngine>();
+    const int fillCount  = trackEngine.loopFillCount();
+    const int playSlot   = trackEngine.loopPlaySlot();
+    const int loopStart  = track.loopStart();
+    const int loopLen    = track.loopLength();
+    const auto loopMode  = trackEngine.loopMode();
+
+    // Step cells: 16 buffer slots showing fill + active window + play cursor
+    canvas.setBlendMode(BlendMode::Set);
+    const int SW = Width / StepCount;   // 16px
+    const int cellY = 10, cellH = 12;
+
+    for (int i = 0; i < StepCount; ++i) {
+        const bool captured = i < fillCount;
+        const bool inRange  = ((i - loopStart + StepCount) % StepCount) < loopLen;
+        const bool isPlay = (i == playSlot);
+
+        if (isPlay) {
+            canvas.setColor(Color::Bright);
+            canvas.fillRect(i * SW + 1, cellY, SW - 2, cellH);
+        } else if (inRange && captured) {
+            canvas.setColor(Color::Low);
+            canvas.fillRect(i * SW + 1, cellY, SW - 2, cellH);
+        } else if (captured) {
+            canvas.setColor(Color::Low);
+            canvas.drawRect(i * SW + 1, cellY, SW - 2, cellH);
+        }
+    }
+
+    // Separator
+    canvas.setBlendMode(BlendMode::Set);
+    canvas.setColor(Color::Low);
+    canvas.hline(0, 26, Width);
+
+    // Transport + param buttons: [PLAY] [REC/LOOP] [LEN N] [START N]
+    const int BTN_W = 64, BTN_Y = 29, BTN_H = 23;
+
+    struct BtnSpec { const char *label; const char *sub; bool active; };
+    FixedStringBuilder<8> lenStr("%d", loopLen);
+    FixedStringBuilder<8> startStr("%d", loopStart + 1);
+
+    BtnSpec btns[4] = {
+        { "PLAY", nullptr, loopMode == QuantizerTrackEngine::LoopMode::Play },
+        { "REC",  nullptr, loopMode != QuantizerTrackEngine::LoopMode::Play },
+        { "LEN",   lenStr,   bool((_heldSteps >> 0) & 1) },
+        { "START", startStr, bool((_heldSteps >> 1) & 1) },
+    };
+
+    for (int i = 0; i < 4; ++i) {
+        const auto &btn = btns[i];
+        const int bx = i * BTN_W + 2;
+        const int bw = BTN_W - 4;
+        const int cx = i * BTN_W + BTN_W / 2;
+
+        canvas.setBlendMode(BlendMode::Set);
+        if (btn.active) {
+            canvas.setColor(Color::Bright);
+            canvas.fillRect(bx, BTN_Y, bw, BTN_H);
+            canvas.setBlendMode(BlendMode::Sub);
+            canvas.setColor(Color::Bright);
+        } else {
+            canvas.setColor(Color::Low);
+            canvas.drawRect(bx, BTN_Y, bw, BTN_H);
+        }
+        canvas.setFont(Font::Tiny);
+        if (btn.sub != nullptr) {
+            canvas.drawText(cx - canvas.textWidth(btn.label) / 2, BTN_Y + 7, btn.label);
+            canvas.setFont(Font::Small);
+            canvas.drawText(cx - canvas.textWidth(btn.sub) / 2, BTN_Y + 19, btn.sub);
+            canvas.setFont(Font::Tiny);
+        } else {
+            canvas.drawText(cx - canvas.textWidth(btn.label) / 2, BTN_Y + BTN_H / 2 + 2, btn.label);
+        }
+        canvas.setBlendMode(BlendMode::Set);
+    }
+}
+
 void QuantizerSequenceEditPage::updateLeds(Leds &leds) {
     const auto &trackEngine = _engine.selectedTrackEngine().as<QuantizerTrackEngine>();
     auto &sequence = _project.selectedQuantizerSequence();
@@ -320,12 +432,22 @@ void QuantizerSequenceEditPage::updateLeds(Leds &leds) {
             green = (stepIndex != currentStep) && (sequence.step(stepIndex).gate() || _stepSelection[stepIndex]);
             break;
         }
-        case 1: // SRCE: 1 param
-            if (i < 1) { bool h = (_heldSteps >> i) & 1; red = h; green = !h; }
+        case 1: // SRCE: free-scroll, no param buttons
             break;
-        case 2: // TRIG: 2 params
-        case 3: // TUNE: 2 params
+        case 2: // TRIG: free-scroll only, no param buttons
+            break;
+        case 3: // TUNE: 2 param buttons (octave, transpose)
             if (i < 2) { bool h = (_heldSteps >> i) & 1; red = h; green = !h; }
+            break;
+        case 4: // LOOP: 4 transport buttons (steps 0-3)
+            if (i < 4) {
+                using LM = QuantizerTrackEngine::LoopMode;
+                const auto mode = trackEngine.loopMode();
+                if (i == 0) { green = (mode == LM::Play); }
+                else if (i == 1) { green = (mode == LM::Loop); red = (mode == LM::Rec); }
+                else if (i == 2) { red = bool((_heldSteps >> 0) & 1); green = !red; }
+                else if (i == 3) { red = bool((_heldSteps >> 1) & 1); green = !red; }
+            }
             break;
         }
 
@@ -350,6 +472,12 @@ void QuantizerSequenceEditPage::keyDown(KeyEvent &event) {
     if (key.isStep()) {
         if (_activeTab == 0) {
             _stepSelection.keyDown(event, stepOffset());
+        } else if (_activeTab == 4) {
+            // Steps 2-3 → LEN/START param hold (bits 0-1 of _heldSteps)
+            int si = key.step();
+            if (si == 2 || si == 3) {
+                _heldSteps |= (1 << (si - 2));
+            }
         } else {
             int stepIndex = key.step();
             int max = maxForTab();
@@ -366,6 +494,11 @@ void QuantizerSequenceEditPage::keyUp(KeyEvent &event) {
     if (key.isStep()) {
         if (_activeTab == 0) {
             _stepSelection.keyUp(event, stepOffset());
+        } else if (_activeTab == 4) {
+            int si = key.step();
+            if (si == 2 || si == 3) {
+                _heldSteps &= ~(1 << (si - 2));
+            }
         } else {
             int stepIndex = key.step();
             if (stepIndex < maxForTab()) {
@@ -376,19 +509,9 @@ void QuantizerSequenceEditPage::keyUp(KeyEvent &event) {
 }
 
 void QuantizerSequenceEditPage::keyPress(KeyPressEvent &event) {
+    if (handleCommonKeyPress(event)) return;
     const auto &key = event.key();
     auto &sequence = _project.selectedQuantizerSequence();
-
-    if (key.isContextMenu()) {
-        contextShow();
-        event.consume();
-        return;
-    }
-    if (key.pageModifier() && event.count() == 2) {
-        contextShow(true);
-        event.consume();
-        return;
-    }
 
     if (key.isQuickEdit()) {
         _inMemorySequence = _project.selectedQuantizerSequence();
@@ -404,6 +527,20 @@ void QuantizerSequenceEditPage::keyPress(KeyPressEvent &event) {
     }
 
     if (key.pageModifier()) {
+        return;
+    }
+
+    if (key.isStep() && _activeTab == 4) {
+        auto &trackEngine = _engine.selectedTrackEngine().as<QuantizerTrackEngine>();
+        using LM = QuantizerTrackEngine::LoopMode;
+        const int si = key.step();
+        if (si == 0) {
+            trackEngine.setLoopMode(LM::Play);
+        } else if (si == 1) {
+            trackEngine.setLoopMode(LM::Rec);
+        }
+        // Steps 2-3 are hold-only params (LEN/START); all step presses consumed in LOOP tab.
+        event.consume();
         return;
     }
 
@@ -464,6 +601,9 @@ void QuantizerSequenceEditPage::keyPress(KeyPressEvent &event) {
 void QuantizerSequenceEditPage::encoder(EncoderEvent &event) {
     auto &sequence = _project.selectedQuantizerSequence();
 
+    bool shift = globalKeyState()[Key::Shift];
+    auto &track = _project.selectedTrack().quantizerTrack();
+
     if (_activeTab == 0) {
         if (!_stepSelection.any()) {
             return;
@@ -477,21 +617,42 @@ void QuantizerSequenceEditPage::encoder(EncoderEvent &event) {
         return;
     }
 
-    if (_heldSteps == 0) return;
+    // SRCE: free-scroll encoder
+    if (_activeTab == 1) {
+        track.editInputSource(event.value(), shift);
+        event.consume();
+        return;
+    }
 
-    bool shift = globalKeyState()[Key::Shift];
-    auto &track = _project.selectedTrack().quantizerTrack();
+    // TRIG: unified free-scroll through all 13 trigger source options
+    if (_activeTab == 2) {
+        track.editTriggerSource(event.value(), shift);
+        event.consume();
+        return;
+    }
+
+    // LOOP tab: hold step 2 (LEN) or step 3 (START) + encoder
+    if (_activeTab == 4) {
+        if (_heldSteps == 0) return;
+        if ((_heldSteps >> 0) & 1) track.editLoopLength(event.value(), shift);
+        if ((_heldSteps >> 1) & 1) {
+            track.editLoopStart(event.value(), shift);
+            // Reset play position so the loop restarts cleanly from the new window start.
+            auto &eng = _engine.selectedTrackEngine().as<QuantizerTrackEngine>();
+            if (eng.loopMode() == QuantizerTrackEngine::LoopMode::Loop) {
+                eng.setLoopMode(QuantizerTrackEngine::LoopMode::Loop);
+            }
+        }
+        event.consume();
+        return;
+    }
+
+    // TUNE and beyond: require hold-and-turn
+    if (_heldSteps == 0) return;
 
     for (int i = 0; i < maxForTab(); ++i) {
         if (!(_heldSteps & (1 << i))) continue;
         switch (_activeTab) {
-        case 1:
-            if (i == 0) track.editInputSource(event.value(), shift);
-            break;
-        case 2:
-            if (i == 0) track.editTriggerMode(event.value(), shift);
-            if (i == 1) track.editTriggerTrack(event.value(), shift);
-            break;
         case 3:
             if (i == 0) track.editOctave(event.value(), shift);
             if (i == 1) track.editTranspose(event.value(), shift);
@@ -502,33 +663,28 @@ void QuantizerSequenceEditPage::encoder(EncoderEvent &event) {
 }
 
 void QuantizerSequenceEditPage::switchTab(int fKey) {
-    _activeTab = clamp(fKey, 0, 3);
+    _activeTab = clamp(fKey, 0, 4);
     _heldSteps = 0;
     _cursor    = 0;
 }
 
-int QuantizerSequenceEditPage::activeFunctionKey() {
-    return _activeTab;
-}
-
 int QuantizerSequenceEditPage::maxForTab() const {
     switch (_activeTab) {
-    case 0: return 16;
-    case 1: return 1;
-    case 2: return 2;
-    case 3: return 2;
+    case 0: return 16;  // GATE: all 16 steps
+    case 1: return 0;   // SRCE: free-scroll encoder, no param buttons
+    case 2: return 0;   // TRIG: free-scroll only, no param buttons
+    case 3: return 2;   // TUNE: hold Step 0/1 for octave/transpose
+    case 4: return 0;   // LOOP: handled specially in keyDown/keyUp
     default: return 0;
     }
 }
 
-void QuantizerSequenceEditPage::contextShow(bool doubleClick) {
-    showContextMenu(ContextMenu(
-        qSeqContextMenuItems,
-        int(QSeqContextAction::Last),
-        [&] (int index) { contextAction(index); },
-        [&] (int index) { return contextActionEnabled(index); },
-        doubleClick
-    ));
+const ContextMenuModel::Item *QuantizerSequenceEditPage::contextItems() const {
+    return qSeqContextMenuItems;
+}
+
+int QuantizerSequenceEditPage::contextActionCount() const {
+    return int(QSeqContextAction::Last);
 }
 
 void QuantizerSequenceEditPage::contextAction(int index) {

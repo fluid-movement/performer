@@ -4,6 +4,7 @@
 
 #include "model/ArpSequence.h"
 #include "engine/ArpTrackEngine.h"
+#include "engine/EuclideanGenerator.h"
 #include "ui/LedPainter.h"
 #include "ui/painters/WindowPainter.h"
 #include "ui/MatrixMap.h"
@@ -39,7 +40,7 @@ static const ArpSequenceListModel::Item quickEditItems[8] = {
 };
 
 ArpSequenceEditPage::ArpSequenceEditPage(PageManager &manager, PageContext &context) :
-    BasePage(manager, context)
+    SequenceEditPageBase(manager, context)
 {}
 
 void ArpSequenceEditPage::enter() {
@@ -129,31 +130,13 @@ void ArpSequenceEditPage::drawCombinedEuclidean(Canvas &canvas, const ArpSequenc
     const int r1   = 8;    // rhythm row Y
     const int r2   = 23;   // mod row Y
 
-    // Generate euclidean pattern with auto-rotation so first hit is at index 0
-    auto buildPat = [](bool *out, int n, int k, int r) {
-        n = std::max(n, 1);
-        k = std::min(k, n);
-        bool raw[16] = {};
-        int bucket = 0;
-        for (int i = 0; i < n; i++) {
-            bucket += k;
-            if (bucket >= n) { bucket -= n; raw[i] = true; }
-        }
-        int firstHit = 0;
-        if (k > 0) {
-            for (int i = 0; i < n; i++) { if (raw[i]) { firstHit = i; break; } }
-        }
-        for (int i = 0; i < n; i++)
-            out[i] = raw[((i + firstHit - r) % n + n) % n];
-    };
-
     int rn = std::max(sequence.rhythmN(), 1);
     int mn = std::max(sequence.modN(), 1);
 
     bool rhythmPat[16] = {};
     bool modPat[16]    = {};
-    buildPat(rhythmPat, rn, sequence.rhythmK(), sequence.rhythmR());
-    buildPat(modPat,    mn, sequence.modK(),    sequence.modR());
+    computeEuclidean(rhythmPat, rn, sequence.rhythmK(), sequence.rhythmR());
+    computeEuclidean(modPat,    mn, sequence.modK(),    sequence.modR());
 
     int modMode = sequence.modMode();
 
@@ -441,20 +424,9 @@ void ArpSequenceEditPage::keyUp(KeyEvent &event) {
 }
 
 void ArpSequenceEditPage::keyPress(KeyPressEvent &event) {
+    if (handleCommonKeyPress(event)) return;
     const auto &key = event.key();
     auto &sequence = _project.selectedArpSequence();
-
-    if (key.isContextMenu()) {
-        contextShow();
-        event.consume();
-        return;
-    }
-
-    if (key.pageModifier() && event.count() == 2) {
-        contextShow(true);
-        event.consume();
-        return;
-    }
 
     if (key.isQuickEdit()) {
         _listModel.setSequence(&sequence);
@@ -533,17 +505,12 @@ void ArpSequenceEditPage::switchTab(int fKey) {
     _cursor = 0;
 }
 
-int ArpSequenceEditPage::activeFunctionKey() {
-    return _activeTab;
+const ContextMenuModel::Item *ArpSequenceEditPage::contextItems() const {
+    return contextMenuItems;
 }
 
-void ArpSequenceEditPage::contextShow(bool doubleClick) {
-    showContextMenu(ContextMenu(
-        contextMenuItems,
-        int(ContextAction::Last),
-        [&] (int index) { contextAction(index); },
-        [&] (int index) { return contextActionEnabled(index); }, doubleClick
-    ));
+int ArpSequenceEditPage::contextActionCount() const {
+    return int(ContextAction::Last);
 }
 
 void ArpSequenceEditPage::contextAction(int index) {

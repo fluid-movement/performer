@@ -1,6 +1,6 @@
 #pragma once
 
-#include "BasePage.h"
+#include "SequenceEditPageBase.h"
 
 #include "ui/StepSelection.h"
 #include "ui/model/NoteSequenceListModel.h"
@@ -10,7 +10,7 @@
 
 #include "core/utils/Container.h"
 
-class NoteSequenceEditPage : public BasePage {
+class NoteSequenceEditPage : public SequenceEditPageBase {
 public:
     NoteSequenceEditPage(PageManager &manager, PageContext &context);
 
@@ -34,14 +34,15 @@ private:
     int stepOffset() const { return _project.selectedNoteSequence().section() * StepCount; }
 
     void switchLayer(int functionKey, bool shift);
-    int activeFunctionKey();
+    int activeFunctionKey() override;
 
     void updateMonitorStep();
     void drawDetail(Canvas &canvas, const NoteSequence::Step &step);
 
-    void contextShow(bool doubleClick = false);
-    void contextAction(int index);
-    bool contextActionEnabled(int index) const;
+    const ContextMenuModel::Item *contextItems() const override;
+    int contextActionCount() const override;
+    void contextAction(int index) override;
+    bool contextActionEnabled(int index) const override;
 
     void initSequence();
     void copySequence();

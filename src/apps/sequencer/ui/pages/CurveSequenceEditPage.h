@@ -1,6 +1,6 @@
 #pragma once
 
-#include "BasePage.h"
+#include "SequenceEditPageBase.h"
 
 #include "ui/StepSelection.h"
 #include "ui/model/CurveSequenceListModel.h"
@@ -9,7 +9,7 @@
 
 #include "core/utils/Container.h"
 
-class CurveSequenceEditPage : public BasePage {
+class CurveSequenceEditPage : public SequenceEditPageBase {
 public:
     CurveSequenceEditPage(PageManager &manager, PageContext &context);
 
@@ -32,11 +32,12 @@ private:
     int stepOffset() const { return _project.selectedCurveSequence().section() * StepCount; }
 
     void switchLayer(int functionKey);
-    int activeFunctionKey();
+    int activeFunctionKey() override;
 
-    void contextShow(bool doubleClick = false);
-    void contextAction(int index);
-    bool contextActionEnabled(int index) const;
+    const ContextMenuModel::Item *contextItems() const override;
+    int contextActionCount() const override;
+    void contextAction(int index) override;
+    bool contextActionEnabled(int index) const override;
 
     void initSequence();
     void copySequence();

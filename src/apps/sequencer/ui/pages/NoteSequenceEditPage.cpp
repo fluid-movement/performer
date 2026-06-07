@@ -55,7 +55,7 @@ static const NoteSequenceListModel::Item quickEditItems[8] = {
 };
 
 NoteSequenceEditPage::NoteSequenceEditPage(PageManager &manager, PageContext &context) :
-    BasePage(manager, context)
+    SequenceEditPageBase(manager, context)
 {
     _stepSelection.setStepCompare([this] (int a, int b) {
         auto layer = _project.selectedNoteSequenceLayer();
@@ -377,16 +377,7 @@ void NoteSequenceEditPage::keyPress(KeyPressEvent &event) {
 
     auto &trackEngine = _engine.selectedTrackEngine().as<NoteTrackEngine>();
 
-    if (key.isContextMenu()) {
-        contextShow();
-        event.consume();
-        return;
-    }
-    if (key.pageModifier() && event.count() == 2) {
-        contextShow(true);
-        event.consume();
-        return;
-    }
+    if (handleCommonKeyPress(event)) return;
 
     if (key.isQuickEdit()) {
          if (key.is(Key::Step15)) {
@@ -1027,13 +1018,12 @@ void NoteSequenceEditPage::drawDetail(Canvas &canvas, const NoteSequence::Step &
     }
 }
 
-void NoteSequenceEditPage::contextShow(bool doubleClick) {
-    showContextMenu(ContextMenu(
-        contextMenuItems,
-        int(ContextAction::Last),
-        [&] (int index) { contextAction(index); },
-        [&] (int index) { return contextActionEnabled(index); }, doubleClick
-    ));
+const ContextMenuModel::Item *NoteSequenceEditPage::contextItems() const {
+    return contextMenuItems;
+}
+
+int NoteSequenceEditPage::contextActionCount() const {
+    return int(ContextAction::Last);
 }
 
 void NoteSequenceEditPage::contextAction(int index) {
