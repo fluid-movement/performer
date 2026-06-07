@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Config.h"
+#include "BaseTrack.h"
 #include "StochasticSequence.h"
 #include "Types.h"
 #include "Serialize.h"
@@ -8,12 +9,11 @@
 #include "FileDefs.h"
 #include "core/utils/StringUtils.h"
 
-class StochasticTrack {
+class StochasticTrack : public BaseTrack {
 public:
     //----------------------------------------
     // Types
     //----------------------------------------
-    static constexpr size_t NameLength = FileHeader::NameLength; 
 
     typedef std::array<StochasticSequence, CONFIG_PATTERN_COUNT + CONFIG_SNAPSHOT_COUNT> StochasticSequenceArray;
 
@@ -58,12 +58,6 @@ public:
     //----------------------------------------
     // Properties
     //----------------------------------------
-
-    // trackName
-    const char *name() const { return _name; }
-    void setName(const char *name) {
-        StringUtils::copy(_name, name, sizeof(_name));
-    }
 
     // playMode
 
@@ -305,7 +299,6 @@ private:
     }
 
     int8_t _trackIndex = -1;
-    char _name[NameLength + 1];
     Types::PlayMode _playMode;
     FillMode _fillMode;
     bool _fillMuted;
