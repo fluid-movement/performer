@@ -11,6 +11,8 @@
 #include "core/utils/Random.h"
 #include "core/math/Math.h"
 
+#include <ctime>
+
 #include "model/StochasticSequence.h"
 #include "model/Scale.h"
 #include <algorithm>
