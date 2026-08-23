@@ -190,7 +190,7 @@ void CurveSequenceEditPage::draw(Canvas &canvas) {
 
         switch (activeLayer) {
         case Layer::Shape: {
-            int val = int(std::round(step.shapeNorm() * 100.f));
+            int val = step.shapePercent();
             if (segW[i] >= 8) {
                 FixedStringBuilder<8> str("%d", val);
                 int tw = canvas.textWidth(str);
@@ -199,7 +199,7 @@ void CurveSequenceEditPage::draw(Canvas &canvas) {
             break;
         }
         case Layer::Skew: {
-            int tickX = segX[i] + std::min(int(std::round(step.skewNorm() * segW[i])), segW[i] - 1);
+            int tickX = segX[i] + std::min(int(std::round(step.skewNorm() * (segW[i] - 1))), segW[i] - 1);
             canvas.vline(tickX, indContent, 4);
             break;
         }
@@ -212,7 +212,7 @@ void CurveSequenceEditPage::draw(Canvas &canvas) {
             break;
         }
         case Layer::Level: {
-            int val = int(std::round(step.levelNorm() * 100.f));
+            int val = step.levelPercent();
             if (segW[i] >= 8) {
                 FixedStringBuilder<8> str("%d", val);
                 int tw = canvas.textWidth(str);
@@ -221,7 +221,7 @@ void CurveSequenceEditPage::draw(Canvas &canvas) {
             break;
         }
         case Layer::Offset: {
-            int val = int(std::round(step.offsetNorm() * 100.f));
+            int val = step.offsetPercent();
             if (segW[i] >= 8) {
                 FixedStringBuilder<8> str("%d", val);
                 int tw = canvas.textWidth(str);
@@ -327,34 +327,27 @@ void CurveSequenceEditPage::encoder(EncoderEvent &event) {
     }
 
     bool shift = globalKeyState()[Key::Shift];
+    int delta = event.value() * (shift ? 10 : 1);
 
     for (size_t i = 0; i < size_t(sequence.segmentCount()); ++i) {
         if (_stepSelection[i]) {
             auto &step = sequence.step(i);
             switch (layer()) {
-            case Layer::Shape: {
-                float delta = event.value() * (shift ? 0.01f : 0.05f);
-                step.setShapeNorm(clamp(step.shapeNorm() + delta, 0.f, 1.f));
+            case Layer::Shape:
+                step.setShapePercent(step.shapePercent() + delta);
                 break;
-            }
-            case Layer::Skew: {
-                float delta = event.value() * (shift ? 0.01f : 0.05f);
-                step.setSkewNorm(clamp(step.skewNorm() + delta, 0.f, 1.f));
+            case Layer::Skew:
+                step.setSkewPercent(step.skewPercent() + delta);
                 break;
-            }
             case Layer::Length:
                 step.setLength(step.length() + event.value());
                 break;
-            case Layer::Level: {
-                float delta = event.value() * (shift ? 0.01f : 0.05f);
-                step.setLevelNorm(clamp(step.levelNorm() + delta, 0.f, 1.f));
+            case Layer::Level:
+                step.setLevelPercent(step.levelPercent() + delta);
                 break;
-            }
-            case Layer::Offset: {
-                float delta = event.value() * (shift ? 0.01f : 0.05f);
-                step.setOffsetNorm(clamp(step.offsetNorm() + delta, 0.f, 1.f));
+            case Layer::Offset:
+                step.setOffsetPercent(step.offsetPercent() + delta);
                 break;
-            }
             case Layer::Last:
                 break;
             }

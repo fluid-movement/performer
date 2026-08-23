@@ -135,6 +135,18 @@ enum ProjectVersion {
     // arp track: euclidean+note-pool model replaces per-step grid
     Version46 = 46,
 
+    // quantizer track: loop length + loop start parameters
+    Version47 = 47,
+
+    // quantizer track: trigger source redesign, CvGate mode added; old Internal migrated to Free
+    Version48 = 48,
+
+    // arp track: playMode field removed (only Aligned was ever implemented)
+    Version49 = 49,
+
+    // curve track: shape/skew widened to 7 bits (0-127) for 1%-per-detent editing
+    Version50 = 50,
+
     // automatically derive latest version
     Last,
     Latest = Last - 1,

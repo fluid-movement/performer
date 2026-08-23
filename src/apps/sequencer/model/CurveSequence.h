@@ -25,8 +25,7 @@ public:
     // Types
     //----------------------------------------
 
-    typedef UnsignedValue<6> Shape;
-    typedef UnsignedValue<4> ShapeVariationProbability;
+    typedef UnsignedValue<7> Shape;
     typedef UnsignedValue<8> Min;
     typedef UnsignedValue<8> Max;
     typedef UnsignedValue<4> Gate;
@@ -59,10 +58,20 @@ public:
     static int layerDefaultValue(Layer layer);
 
     static float evalSegment(float phase, float shape, float skew) {
-        float sk = clamp(skew, 0.02f, 0.98f);
-        float t = phase < sk
-            ? (phase / sk) * 0.5f
-            : 0.5f + ((phase - sk) / (1.0f - sk)) * 0.5f;
+        // skew warps phase so that the sine peak lands at phase == skew. The two
+        // endpoints are handled exactly so that skew 0 gives an instant attack and
+        // skew 1 an instant release, rather than ramping over a small epsilon.
+        float sk = clamp(skew, 0.0f, 1.0f);
+        float t;
+        if (sk <= 0.0f) {
+            t = 0.5f + phase * 0.5f;
+        } else if (sk >= 1.0f) {
+            t = phase * 0.5f;
+        } else {
+            t = phase < sk
+                ? (phase / sk) * 0.5f
+                : 0.5f + ((phase - sk) / (1.0f - sk)) * 0.5f;
+        }
         float s = std::sin(t * float(M_PI));
         float p = shape <= 0.5f
             ? 1.0f + (1.0f - shape * 2.0f) * 7.0f
@@ -81,20 +90,6 @@ public:
         int shape() const { return _data0.shape; }
         void setShape(int shape) {
             _data0.shape = clamp(shape, 0, int(Curve::Last) - 1);
-        }
-
-        // shapeVariation
-
-        int shapeVariation() const { return _data0.shapeVariation; }
-        void setShapeVariation(int shapeVariation) {
-            _data0.shapeVariation = clamp(shapeVariation, 0, int(Curve::Last) - 1);
-        }
-
-        // shapeVariationProbability
-
-        int shapeVariationProbability() const { return _data0.shapeVariationProbability; }
-        void setShapeVariationProbability(int shapeVariationProbability) {
-            _data0.shapeVariationProbability = clamp(shapeVariationProbability, 0, 8);
         }
 
         // min
@@ -139,22 +134,41 @@ public:
 
         // V1 accessors (segment assembler model)
 
-        float shapeNorm() const { return float(_data0.shape) / 63.0f; }
-        void  setShapeNorm(float v) { _data0.shape = clamp(int(v * 63.0f + 0.5f), 0, 63); }
+        float shapeNorm() const { return float(_data0.shape) / Shape::Max; }
+        void  setShapeNorm(float v) { _data0.shape = Shape::clamp(int(v * Shape::Max + 0.5f)); }
 
         int   skewRaw() const { return _data0.shapeVariation; }
-        void  setSkewRaw(int v) { _data0.shapeVariation = clamp(v, 0, 63); }
-        float skewNorm() const { return float(_data0.shapeVariation) / 63.0f; }
-        void  setSkewNorm(float v) { _data0.shapeVariation = clamp(int(v * 63.0f + 0.5f), 0, 63); }
+        void  setSkewRaw(int v) { _data0.shapeVariation = Shape::clamp(v); }
+        float skewNorm() const { return float(_data0.shapeVariation) / Shape::Max; }
+        void  setSkewNorm(float v) { _data0.shapeVariation = Shape::clamp(int(v * Shape::Max + 0.5f)); }
 
-        float offsetNorm() const { return float(_data0.min) / 255.0f; }
-        void  setOffsetNorm(float v) { _data0.min = clamp(int(v * 255.0f + 0.5f), 0, 255); }
+        float offsetNorm() const { return float(_data0.min) / Min::Max; }
+        void  setOffsetNorm(float v) { _data0.min = Min::clamp(int(v * Min::Max + 0.5f)); }
 
-        float levelNorm() const { return float(_data0.max) / 255.0f; }
-        void  setLevelNorm(float v) { _data0.max = clamp(int(v * 255.0f + 0.5f), 0, 255); }
+        float levelNorm() const { return float(_data0.max) / Max::Max; }
+        void  setLevelNorm(float v) { _data0.max = Max::clamp(int(v * Max::Max + 0.5f)); }
 
         int   length() const { return _data1.gate + 1; }
         void  setLength(int len) { _data1.gate = clamp(len - 1, 0, 15); }
+
+        // Percent accessors (0..100) - the domain the UI edits and displays in.
+        // Integer math keeps the round trip exact in both directions, so stepping
+        // by +/-1 is symmetric: up then down returns to the original value.
+
+        static int   toPercent(int raw, int rawMax) { return (raw * 100 + rawMax / 2) / rawMax; }
+        static int   fromPercent(int percent, int rawMax) { return (clamp(percent, 0, 100) * rawMax + 50) / 100; }
+
+        int   shapePercent() const { return toPercent(_data0.shape, Shape::Max); }
+        void  setShapePercent(int v) { _data0.shape = fromPercent(v, Shape::Max); }
+
+        int   skewPercent() const { return toPercent(_data0.shapeVariation, Shape::Max); }
+        void  setSkewPercent(int v) { _data0.shapeVariation = fromPercent(v, Shape::Max); }
+
+        int   offsetPercent() const { return toPercent(_data0.min, Min::Max); }
+        void  setOffsetPercent(int v) { _data0.min = fromPercent(v, Min::Max); }
+
+        int   levelPercent() const { return toPercent(_data0.max, Max::Max); }
+        void  setLevelPercent(int v) { _data0.max = fromPercent(v, Max::Max); }
 
         int layerValue(Layer layer) const;
         void setLayerValue(Layer layer, int value);
@@ -182,8 +196,8 @@ public:
         union {
             uint32_t raw;
             BitField<uint32_t, 0, Shape::Bits> shape;
-            BitField<uint32_t, 6, Shape::Bits> shapeVariation;
-            BitField<uint32_t, 12, ShapeVariationProbability::Bits> shapeVariationProbability;
+            BitField<uint32_t, 7, Shape::Bits> shapeVariation;
+            // 2 bits left (bits 14-15)
             BitField<uint32_t, 16, Min::Bits> min;
             BitField<uint32_t, 24, Max::Bits> max;
         } _data0;

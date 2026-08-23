@@ -753,25 +753,27 @@ void OverviewPage::encoder(EncoderEvent &event) {
             break;
         case Track::TrackMode::Curve: {
             auto &sequence = _project.selectedCurveSequence();
+                bool shift = globalKeyState()[Key::Shift];
+                int delta = event.value() * (shift ? 10 : 1);
                 for (size_t stepIndex = 0; stepIndex < sequence.steps().size(); ++stepIndex) {
                     if (_stepSelection[stepIndex]) {
                         auto &step = sequence.step(stepIndex);
-                        
+
                         switch (_project.selectedCurveSequenceLayer()) {
                             case CurveSequence::Layer::Shape:
-                                step.setShapeNorm(clamp(step.shapeNorm() + event.value() * 0.05f, 0.f, 1.f));
+                                step.setShapePercent(step.shapePercent() + delta);
                                 break;
                             case CurveSequence::Layer::Skew:
-                                step.setSkewNorm(clamp(step.skewNorm() + event.value() * 0.05f, 0.f, 1.f));
+                                step.setSkewPercent(step.skewPercent() + delta);
                                 break;
                             case CurveSequence::Layer::Length:
                                 step.setLength(step.length() + event.value());
                                 break;
                             case CurveSequence::Layer::Level:
-                                step.setLevelNorm(clamp(step.levelNorm() + event.value() * 0.05f, 0.f, 1.f));
+                                step.setLevelPercent(step.levelPercent() + delta);
                                 break;
                             case CurveSequence::Layer::Offset:
-                                step.setOffsetNorm(clamp(step.offsetNorm() + event.value() * 0.05f, 0.f, 1.f));
+                                step.setOffsetPercent(step.offsetPercent() + delta);
                                 break;
                             default:
                                 break;
@@ -838,13 +840,13 @@ void OverviewPage::drawCurveDetail(Canvas &canvas, const CurveSequence::Step &st
 
     switch (_project.selectedCurveSequenceLayer()) {
         case CurveSequence::Layer::Shape: {
-            str("%.0f", step.shapeNorm() * 100.f);
+            str("%d", step.shapePercent());
             canvas.setFont(Font::Small);
             canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
             break;
         }
         case CurveSequence::Layer::Skew: {
-            str("%.0f", step.skewNorm() * 100.f);
+            str("%d", step.skewPercent());
             canvas.setFont(Font::Small);
             canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
             break;
@@ -856,13 +858,13 @@ void OverviewPage::drawCurveDetail(Canvas &canvas, const CurveSequence::Step &st
             break;
         }
         case CurveSequence::Layer::Level: {
-            str("%.0f", step.levelNorm() * 100.f);
+            str("%d", step.levelPercent());
             canvas.setFont(Font::Small);
             canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
             break;
         }
         case CurveSequence::Layer::Offset: {
-            str("%.0f", step.offsetNorm() * 100.f);
+            str("%d", step.offsetPercent());
             canvas.setFont(Font::Small);
             canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
             break;

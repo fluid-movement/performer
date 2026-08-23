@@ -33,7 +33,6 @@ void ArpTrack::writeRouted(Routing::Target target, int intValue, float floatValu
 }
 
 void ArpTrack::clear() {
-    setPlayMode(Types::PlayMode::Aligned);
     setFillMode(FillMode::Gates);
     setFillMuted(true);
     setCvUpdateMode(CvUpdateMode::Gate);
@@ -54,7 +53,6 @@ void ArpTrack::clear() {
 
 void ArpTrack::write(VersionedSerializedWriter &writer) const {
     writer.write(_name, NameLength + 1);
-    writer.write(_playMode);
     writer.write(_fillMode);
     writer.write(_fillMuted);
     writer.write(_cvUpdateMode);
@@ -75,7 +73,7 @@ void ArpTrack::read(VersionedSerializedReader &reader) {
 
     reader.read(_name, NameLength + 1, ProjectVersion::Version33);
 
-    reader.read(_playMode);
+    reader.skip<uint8_t>(0, ProjectVersion::Version49); // skip legacy playMode (only Aligned was ever used)
     reader.read(_fillMode);
     reader.read(_fillMuted, ProjectVersion::Version26);
     reader.read(_cvUpdateMode, ProjectVersion::Version4);

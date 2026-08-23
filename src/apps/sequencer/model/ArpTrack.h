@@ -65,21 +65,6 @@ public:
 
     const int trackIndex() const { return _trackIndex;}
 
-    // playMode
-
-    Types::PlayMode playMode() const { return _playMode; }
-    void setPlayMode(Types::PlayMode playMode) {
-        _playMode = ModelUtils::clampedEnum(playMode);
-    }
-
-    void editPlayMode(int value, bool shift) {
-        setPlayMode(ModelUtils::adjustedEnum(playMode(), value));
-    }
-
-    void printPlayMode(StringBuilder &str) const {
-        str(Types::playModeName(playMode()));
-    }
-
     // fillMode
 
     FillMode fillMode() const { return _fillMode; }
@@ -303,7 +288,6 @@ private:
     }
 
     int8_t _trackIndex = -1;
-    Types::PlayMode _playMode;
     FillMode _fillMode;
     bool _fillMuted;
     CvUpdateMode _cvUpdateMode;

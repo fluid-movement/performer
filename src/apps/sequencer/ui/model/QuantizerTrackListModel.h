@@ -11,8 +11,7 @@ public:
     enum Item {
         TrackName,
         InputSource,
-        TriggerMode,
-        TriggerTrack,
+        TriggerSource,
         Octave,
         Transpose,
         PatternFollow,
@@ -59,14 +58,13 @@ public:
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case TrackName:    return "Name";
-        case InputSource:  return "Input Source";
-        case TriggerMode:  return "Trigger Mode";
-        case TriggerTrack: return "Trigger Track";
-        case Octave:       return "Octave";
-        case Transpose:    return "Transpose";
+        case TrackName:     return "Name";
+        case InputSource:   return "Input Source";
+        case TriggerSource: return "Trigger Source";
+        case Octave:        return "Octave";
+        case Transpose:     return "Transpose";
         case PatternFollow: return "Pattern Follow";
-        case Last:         break;
+        case Last:          break;
         }
         return nullptr;
     }
@@ -83,11 +81,8 @@ private:
         case InputSource:
             _track->printInputSource(str);
             break;
-        case TriggerMode:
-            _track->printTriggerMode(str);
-            break;
-        case TriggerTrack:
-            _track->printTriggerTrack(str);
+        case TriggerSource:
+            _track->printTriggerSource(str);
             break;
         case Octave:
             _track->printOctave(str);
@@ -110,11 +105,8 @@ private:
         case InputSource:
             _track->editInputSource(value, shift);
             break;
-        case TriggerMode:
-            _track->editTriggerMode(value, shift);
-            break;
-        case TriggerTrack:
-            _track->editTriggerTrack(value, shift);
+        case TriggerSource:
+            _track->editTriggerSource(value, shift);
             break;
         case Octave:
             _track->editOctave(value, shift);

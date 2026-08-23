@@ -2421,10 +2421,20 @@
 	const SEG_PLAY    = 6;
 
 	function evalSegment(phase: number, shape: number, skew: number): number {
-		const sk = Math.max(0.02, Math.min(0.98, skew));
-		const t  = phase < sk
-			? (phase / sk) * 0.5
-			: 0.5 + ((phase - sk) / (1 - sk)) * 0.5;
+		// kept identical to CurveSequence::evalSegment in the firmware: skew warps
+		// phase so the sine peak lands at phase == skew, with the endpoints handled
+		// exactly so skew 0 is an instant attack and skew 1 an instant release
+		const sk = Math.max(0, Math.min(1, skew));
+		let t: number;
+		if (sk <= 0) {
+			t = 0.5 + phase * 0.5;
+		} else if (sk >= 1) {
+			t = phase * 0.5;
+		} else {
+			t = phase < sk
+				? (phase / sk) * 0.5
+				: 0.5 + ((phase - sk) / (1 - sk)) * 0.5;
+		}
 		const s = Math.sin(t * Math.PI);
 		const p = shape <= 0.5
 			? 1 + (1 - shape * 2) * 7
@@ -2524,7 +2534,7 @@
 
 			if (tab === 0) {
 				// SKEW: vertical mark at peak position
-				const peakX = x0 + Math.round(SEG_SKEWS[i] * w);
+				const peakX = x0 + Math.min(Math.round(SEG_SKEWS[i] * (w - 1)), w - 1);
 				c.vline(peakX, IND_Y + 2, 5);
 			} else if (w >= 10) {
 				// Numeric label centered in segment
@@ -3451,7 +3461,7 @@
 	// TRIG tab: trigger mode (FREE / INT / EXT) + trigger track when EXT.
 	// SCLE tab: scale + root note (two-column scrollable list).
 
-	const QUANT_V1_TABS        = ['GATE', 'SRCE', 'TRIG', 'TUNE', ''] as const;
+	const QUANT_V1_TABS        = ['GATE', 'SRCE', 'TRIG', 'TUNE', 'LOOP'] as const;
 	const QUANT_V1_GATES       = [1,0,1,1,0,1,0,1,0,1,0,0,1,0,0,1];
 	const QUANT_V1_CURSOR      = 3;
 	const QUANT_V1_PLAY        = 7;
@@ -3464,6 +3474,12 @@
 	const QUANT_V1_OCTAVE      = 0;   // -10..+10
 	const QUANT_V1_TRANSPOSE   = 7;   // -100..+100 (non-zero to show bar in demo)
 	const QUANT_V1_TUNE_PARAM: number = 1;  // 0=OCTAVE, 1=TRANSPOSE
+	const QUANT_V1_LOOP_MODE: 'play' | 'rec' | 'loop' = 'loop'; // current transport state
+	const QUANT_V1_LOOP_FILL_COUNT = 16;   // 0–16; slots captured so far
+	const QUANT_V1_LOOP_LENGTH     = 8;    // 1–16 steps in active window
+	const QUANT_V1_LOOP_START      = 2;    // 0–15 first slot of active window
+	const QUANT_V1_LOOP_PLAY_POS   = 3;    // 0–(loopLength-1) play cursor within window
+	const QUANT_V1_LOOP_FOCUSED: 'len' | 'start' | null = null; // which param button is held
 
 	const QUANT_TRIG_NAMES = ['FREE', 'INT', 'EXT'];
 
@@ -3691,6 +3707,107 @@
 
 			drawTuneColumn(64,  'OCTAVE',    QUANT_V1_OCTAVE,    10,  QUANT_V1_TUNE_PARAM === 0);
 			drawTuneColumn(192, 'TRANSPOSE', QUANT_V1_TRANSPOSE, 100, QUANT_V1_TUNE_PARAM === 1);
+
+		} else if (tab === 4) {
+			// ── LOOP: buffer visualization + transport controls ───────────────────
+			const mode = QUANT_V1_LOOP_MODE;
+
+			// Step cells (top area): 16 buffer slots
+			const SW2      = 16;
+			const cellY    = 10;
+			const cellH    = 12;
+			const activeSlot = (QUANT_V1_LOOP_START + QUANT_V1_LOOP_PLAY_POS) % 16;
+
+			function isInLoopRange(idx: number): boolean {
+				for (let k = 0; k < QUANT_V1_LOOP_LENGTH; k++) {
+					if ((QUANT_V1_LOOP_START + k) % 16 === idx) return true;
+				}
+				return false;
+			}
+
+			for (let i = 0; i < 16; i++) {
+				const x        = i * SW2;
+				const captured = i < QUANT_V1_LOOP_FILL_COUNT;
+				const inRange  = isInLoopRange(i);
+				const isPlay   = mode === 'loop' && i === activeSlot;
+
+				if (isPlay) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(x + 1, cellY, SW2 - 2, cellH);
+				} else if (inRange && captured) {
+					c.setColorValue(Color.Low);
+					c.fillRect(x + 1, cellY, SW2 - 2, cellH);
+				} else if (captured) {
+					c.setColorValue(Color.Low);
+					c.rect(x + 1, cellY, SW2 - 2, cellH);
+				}
+			}
+
+			// Separator
+			c.setColorValue(Color.Low);
+			c.hline(0, 26, 256);
+
+			// Transport + param buttons (bottom area)
+			// [  PLAY  ] [REC/LOOP] [  LEN N ] [ START N ]
+			const BTN_W = 64;
+			const BTN_Y = 29;
+			const BTN_H = 23;
+
+			interface BtnDef { label: string; sub?: string; active: boolean; }
+			const buttons: BtnDef[] = [
+				{
+					label: 'PLAY',
+					active: mode === 'play',
+				},
+				{
+					label: mode === 'loop' ? 'LOOP' : 'REC',
+					active: mode === 'rec' || mode === 'loop',
+				},
+				{
+					label: 'LEN',
+					sub: String(QUANT_V1_LOOP_LENGTH),
+					active: QUANT_V1_LOOP_FOCUSED === 'len',
+				},
+				{
+					label: 'START',
+					sub: String(QUANT_V1_LOOP_START + 1),
+					active: QUANT_V1_LOOP_FOCUSED === 'start',
+				},
+			];
+
+			for (let i = 0; i < buttons.length; i++) {
+				const btn = buttons[i];
+				const bx  = i * BTN_W + 2;
+				const bw  = BTN_W - 4;
+
+				if (btn.active) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(bx, BTN_Y, bw, BTN_H);
+					c.setBlendMode(BlendMode.Sub);
+					c.setColorValue(Color.Bright);
+				} else {
+					c.setColorValue(Color.Low);
+					c.rect(bx, BTN_Y, bw, BTN_H);
+					c.setColorValue(Color.Low);
+				}
+
+				if (btn.sub !== undefined) {
+					// Two-line: small label at top, large value below
+					const cx = i * BTN_W + Math.floor(BTN_W / 2);
+					c.setFont(Font.Tiny);
+					c.drawText(cx - Math.floor(c.textWidth(btn.label) / 2), BTN_Y + 7, btn.label);
+					c.setFont(Font.Normal);
+					c.drawText(cx - Math.floor(c.textWidth(btn.sub) / 2), BTN_Y + 19, btn.sub);
+					c.setFont(Font.Tiny);
+				} else {
+					// Single label centered
+					const cx = i * BTN_W + Math.floor(BTN_W / 2);
+					c.setFont(Font.Tiny);
+					c.drawText(cx - Math.floor(c.textWidth(btn.label) / 2), BTN_Y + Math.floor(BTN_H / 2) + 2, btn.label);
+				}
+
+				c.setBlendMode(BlendMode.Set);
+			}
 		}
 
 		fwDrawFooter(c, [...QUANT_V1_TABS], tab);
@@ -3707,10 +3824,356 @@
 		return s;
 	}
 
+	// ── MidiCv Track ─────────────────────────────────────────────────────────
+	// No step grid — event-driven by incoming MIDI.
+	// 4 tabs: PORT / VOIC / ARP / TUNE
+	// PORT: MIDI source (port + channel)
+	// VOIC: live voice activity monitor + voice count / note priority config
+	// ARP: arpeggiator settings (same column layout as Arp V2 ARP tab)
+	// TUNE: transpose + pitch bend range + mod range
+
+	const MIDICV_TABS = ['PORT', 'VOIC', 'ARP', 'TUNE'] as const;
+
+	// Fixture state
+	const MIDICV_PORT     = 0;       // 0=USB, 1=DIN1, 2=DIN2
+	const MIDICV_CHANNEL  = 0;       // 0=ALL, 1-16=specific channel
+	const MIDICV_VOICES   = 4;       // allocated polyphony: 1, 2, 4, 8
+	const MIDICV_PRIORITY = 0;       // 0=LAST, 1=LOW, 2=HIGH
+	const MIDICV_ACTIVE: { note: string; vel: number }[] = [
+		{ note: 'C4',  vel: 80  },
+		{ note: 'G3',  vel: 60  },
+		{ note: 'E4',  vel: 100 },
+		{ note: 'A4',  vel: 45  },
+	];
+	const MIDICV_PITCH_BEND =  0.3;   // -1..+1
+	const MIDICV_MOD        =  0.35;  // 0..1
+	const MIDICV_ARP_MODE   =  1;     // 0=OFF, 1=UP, 2=DOWN, 3=UP-DN, 4=DN-UP, 5=RAND
+	const MIDICV_ARP_HOLD   =  false;
+	const MIDICV_ARP_OCT    =  2;
+	const MIDICV_ARP_PARAM  =  0;     // focused column in ARP tab
+	const MIDICV_TRANSPOSE  =  0;
+	const MIDICV_BEND_RANGE =  2;     // semitones
+	const MIDICV_MOD_RANGE  =  12;    // semitones
+	const MIDICV_TUNE_PARAM =  0;     // 0=TRANSPOSE, 1=BEND RANGE, 2=MOD RANGE
+
+	const MIDICV_PORT_NAMES  = ['USB', 'DIN 1', 'DIN 2'];
+	const MIDICV_PRIO_NAMES  = ['LAST', 'LOW', 'HIGH'];
+	const MIDICV_ARP_NAMES   = ['OFF', 'UP', 'DOWN', 'UP-DN', 'DN-UP', 'RAND'];
+
+	function drawMidiCv(c: Canvas, tab = 0): void {
+		c.setFont(Font.Tiny);
+		fwDrawHeader(c, MIDICV_TABS[tab]);
+
+		if (tab === 0) {
+			// ── PORT: MIDI source port + channel ─────────────────────────────────
+
+			// PORT chips — 3 even columns
+			c.setColorValue(Color.Low);
+			c.drawText(4, 16, 'MIDI PORT');
+
+			const portW = Math.floor(256 / 3);
+			for (let i = 0; i < 3; i++) {
+				const bx  = i * portW + 4;
+				const bw  = portW - 8;
+				const sel = i === MIDICV_PORT;
+				if (sel) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(bx, 19, bw, 14);
+					c.setBlendMode(BlendMode.Sub);
+					c.setColorValue(Color.Bright);
+				} else {
+					c.setColorValue(Color.Low);
+					c.rect(bx, 19, bw, 14);
+					c.setColorValue(Color.Medium);
+				}
+				c.setFont(Font.Normal);
+				c.drawText(i * portW + Math.floor((portW - c.textWidth(MIDICV_PORT_NAMES[i])) / 2), 29, MIDICV_PORT_NAMES[i]);
+				c.setFont(Font.Tiny);
+				c.setBlendMode(BlendMode.Set);
+			}
+
+			// Separator
+			c.setColorValue(Color.Low);
+			c.hline(0, 37, 256);
+
+			// CHANNEL row — label left, current value large right
+			c.setColorValue(Color.Low);
+			c.drawText(4, 47, 'CHANNEL');
+			const chanStr = MIDICV_CHANNEL === 0 ? 'ALL' : String(MIDICV_CHANNEL);
+			c.setFont(Font.Normal);
+			c.setColorValue(Color.Bright);
+			c.drawText(256 - c.textWidth(chanStr) - 6, 51, chanStr);
+			c.setFont(Font.Tiny);
+			// Arrow hints
+			c.setColorValue(Color.Low);
+			c.drawText(256 - c.textWidth(chanStr) - 14, 47, '<');
+			c.drawText(256 - 4, 47, '>');
+
+		} else if (tab === 1) {
+			// ── VOIC: live voice activity + voice count + priority ────────────────
+
+			const slotH  = 9;
+			const slotY0 = 9;
+			const barMaxW = 140;
+			const noteX   = 18;
+			const barX    = 54;
+
+			// Voice slots
+			for (let v = 0; v < MIDICV_VOICES; v++) {
+				const y      = slotY0 + v * slotH;
+				const active = MIDICV_ACTIVE[v];
+
+				// Slot number
+				c.setColorValue(active ? Color.Low : Color.Low);
+				c.drawText(2, y + 6, String(v + 1));
+
+				if (active) {
+					// Note name (Normal font)
+					c.setFont(Font.Normal);
+					c.setColorValue(Color.Bright);
+					c.drawText(noteX, y + 7, active.note);
+					c.setFont(Font.Tiny);
+
+					// Velocity bar
+					const barW = Math.round(barMaxW * active.vel / 127);
+					c.setColorValue(Color.Low);
+					c.fillRect(barX, y + 2, barMaxW, 5);
+					c.setColorValue(Color.MediumBright);
+					c.fillRect(barX, y + 2, barW, 5);
+
+					// Velocity number
+					c.setColorValue(Color.Low);
+					c.drawText(barX + barMaxW + 3, y + 6, String(active.vel));
+				} else {
+					// Empty slot — dim dash
+					c.setColorValue(Color.Low);
+					c.drawText(noteX, y + 6, '—');
+				}
+			}
+
+			// Pitch bend + mod indicator strip (below active voices)
+			const stripY = slotY0 + MIDICV_VOICES * slotH + 1;
+			const stripW = 100;
+			const stripH = 3;
+			const pbMid  = 4 + Math.floor(stripW / 2);
+
+			// BEND
+			c.setColorValue(Color.Low);
+			c.drawText(4, stripY + stripH + 3, 'BEND');
+			c.fillRect(4, stripY, stripW, stripH);
+			const pbFill = Math.round((stripW / 2) * Math.abs(MIDICV_PITCH_BEND));
+			if (pbFill > 0) {
+				c.setColorValue(Color.Medium);
+				if (MIDICV_PITCH_BEND >= 0) {
+					c.fillRect(pbMid, stripY, pbFill, stripH);
+				} else {
+					c.fillRect(pbMid - pbFill, stripY, pbFill, stripH);
+				}
+			}
+			c.setColorValue(Color.Low);
+			c.vline(pbMid, stripY, stripH);   // center notch
+
+			// MOD
+			const modX = 4 + stripW + 8;
+			c.setColorValue(Color.Low);
+			c.drawText(modX, stripY + stripH + 3, 'MOD');
+			c.fillRect(modX, stripY, stripW, stripH);
+			c.setColorValue(Color.Medium);
+			c.fillRect(modX, stripY, Math.round(stripW * MIDICV_MOD), stripH);
+
+			// Separator
+			c.setColorValue(Color.Low);
+			c.hline(0, stripY + stripH + 8, 256);
+
+			// Voice count chips
+			const cfgY   = stripY + stripH + 12;
+			const cntW   = 30;
+			const cntGap = 4;
+			const cntX0  = 4;
+			const cnts   = [1, 2, 4, 8];
+			c.setColorValue(Color.Low);
+			c.drawText(cntX0, cfgY + 7, 'VOICES');
+
+			const chipsX0 = cntX0 + 36;
+			for (let i = 0; i < cnts.length; i++) {
+				const bx  = chipsX0 + i * (cntW + cntGap);
+				const sel = cnts[i] === MIDICV_VOICES;
+				const lbl = String(cnts[i]);
+				if (sel) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(bx, cfgY, cntW, 9);
+					c.setBlendMode(BlendMode.Sub);
+					c.setColorValue(Color.Bright);
+				} else {
+					c.setColorValue(Color.Low);
+					c.rect(bx, cfgY, cntW, 9);
+					c.setColorValue(Color.Medium);
+				}
+				c.drawText(bx + Math.floor((cntW - c.textWidth(lbl)) / 2), cfgY + 6, lbl);
+				c.setBlendMode(BlendMode.Set);
+			}
+
+			// Priority chips (right side)
+			const prioW  = 30;
+			const prioGap = 3;
+			const prioX0  = 256 - 3 * (prioW + prioGap) - 4;
+			c.setColorValue(Color.Low);
+			c.drawText(prioX0 - 32, cfgY + 7, 'PRIO');
+			for (let i = 0; i < 3; i++) {
+				const bx  = prioX0 + i * (prioW + prioGap);
+				const sel = i === MIDICV_PRIORITY;
+				const lbl = MIDICV_PRIO_NAMES[i];
+				if (sel) {
+					c.setColorValue(Color.Bright);
+					c.fillRect(bx, cfgY, prioW, 9);
+					c.setBlendMode(BlendMode.Sub);
+					c.setColorValue(Color.Bright);
+				} else {
+					c.setColorValue(Color.Low);
+					c.rect(bx, cfgY, prioW, 9);
+					c.setColorValue(Color.Medium);
+				}
+				c.drawText(bx + Math.floor((prioW - c.textWidth(lbl)) / 2), cfgY + 6, lbl);
+				c.setBlendMode(BlendMode.Set);
+			}
+
+		} else if (tab === 2) {
+			// ── ARP: play order + octaves + gate — 3 columns ─────────────────────
+			const colW = Math.floor(256 / 3);
+
+			c.setColorValue(Color.Low);
+			c.vline(colW,     8, 46);
+			c.vline(colW * 2, 8, 46);
+
+			// Column 0: PLAY ORDER
+			{
+				const cx  = Math.floor(colW / 2);
+				const sel = MIDICV_ARP_PARAM === 0;
+				c.setFont(Font.Tiny);
+				c.setColorValue(Color.Low);
+				c.drawText(cx - Math.floor(c.textWidth('PLAY ORDER') / 2), 16, 'PLAY ORDER');
+				c.setFont(Font.Normal);
+				c.setColorValue(sel ? Color.Bright : Color.Medium);
+				const modeName = MIDICV_ARP_NAMES[MIDICV_ARP_MODE];
+				c.drawText(cx - Math.floor(c.textWidth(modeName) / 2), 36, modeName);
+				c.setFont(Font.Tiny);
+			}
+
+			// Column 1: OCTAVES
+			{
+				const cx  = colW + Math.floor(colW / 2);
+				const sel = MIDICV_ARP_PARAM === 1;
+				c.setFont(Font.Tiny);
+				c.setColorValue(Color.Low);
+				c.drawText(cx - Math.floor(c.textWidth('OCTAVES') / 2), 16, 'OCTAVES');
+				const segW    = 10;
+				const segH    = 10;
+				const totalW  = 4 * segW + 3 * 2;
+				const sx      = cx - Math.floor(totalW / 2);
+				for (let o = 0; o < 4; o++) {
+					c.setColorValue(o < MIDICV_ARP_OCT
+						? (sel ? Color.Bright : Color.MediumBright)
+						: Color.Low);
+					c.fillRect(sx + o * (segW + 2), 22, segW, segH);
+				}
+				const octLbl = `${MIDICV_ARP_OCT} oct`;
+				c.setColorValue(sel ? Color.Bright : Color.Medium);
+				c.drawText(cx - Math.floor(c.textWidth(octLbl) / 2), 40, octLbl);
+			}
+
+			// Column 2: HOLD
+			{
+				const cx  = colW * 2 + Math.floor(colW / 2);
+				const sel = MIDICV_ARP_PARAM === 2;
+				c.setFont(Font.Tiny);
+				c.setColorValue(Color.Low);
+				c.drawText(cx - Math.floor(c.textWidth('HOLD') / 2), 16, 'HOLD');
+				const hlbl = MIDICV_ARP_HOLD ? 'ON' : 'OFF';
+				c.setFont(Font.Normal);
+				c.setColorValue(sel ? Color.Bright : (MIDICV_ARP_HOLD ? Color.MediumBright : Color.Medium));
+				c.drawText(cx - Math.floor(c.textWidth(hlbl) / 2), 36, hlbl);
+				c.setFont(Font.Tiny);
+			}
+
+			// ARP disabled notice
+			if (MIDICV_ARP_MODE === 0) {
+				c.setColorValue(Color.Low);
+				c.drawText(Math.floor((256 - c.textWidth('set PLAY ORDER to enable')) / 2), 51, 'set PLAY ORDER to enable');
+			}
+
+		} else if (tab === 3) {
+			// ── TUNE: transpose + pitch bend range + mod range — 3 columns ───────
+			const colW = Math.floor(256 / 3);
+
+			c.setColorValue(Color.Low);
+			c.vline(colW,     8, 46);
+			c.vline(colW * 2, 8, 46);
+
+			function drawMidiTuneCol(
+				cx: number, label: string,
+				value: number, maxVal: number,
+				bipolar: boolean, sel: boolean
+			): void {
+				const barW  = 70;
+				const barH  = 5;
+				const barY  = 27;
+				const barX  = cx - Math.floor(barW / 2);
+
+				c.setFont(Font.Tiny);
+				c.setColorValue(Color.Low);
+				c.drawText(cx - Math.floor(c.textWidth(label) / 2), 16, label);
+
+				c.setColorValue(Color.Low);
+				c.fillRect(barX, barY, barW, barH);
+
+				if (bipolar) {
+					const halfW  = Math.floor(barW / 2);
+					const midX   = cx;
+					const fillPx = Math.round(halfW * Math.abs(value) / maxVal);
+					if (fillPx > 0) {
+						c.setColorValue(sel ? Color.Bright : Color.Medium);
+						if (value >= 0) c.fillRect(midX, barY, fillPx, barH);
+						else            c.fillRect(midX - fillPx, barY, fillPx, barH);
+					}
+					c.setColorValue(Color.None);
+					c.vline(midX, barY, barH);
+				} else {
+					const fillPx = Math.round(barW * value / maxVal);
+					if (fillPx > 0) {
+						c.setColorValue(sel ? Color.Bright : Color.Medium);
+						c.fillRect(barX, barY, fillPx, barH);
+					}
+				}
+
+				const valStr = bipolar
+					? (value > 0 ? `+${value}` : String(value))
+					: String(value);
+				c.setFont(Font.Normal);
+				c.setColorValue(sel ? Color.Bright : Color.Medium);
+				c.drawText(cx - Math.floor(c.textWidth(valStr) / 2), 44, valStr);
+				c.setFont(Font.Tiny);
+			}
+
+			drawMidiTuneCol(Math.floor(colW / 2),          'TRANSPOSE', MIDICV_TRANSPOSE,  36, true,  MIDICV_TUNE_PARAM === 0);
+			drawMidiTuneCol(colW + Math.floor(colW / 2),   'BEND RNG',  MIDICV_BEND_RANGE, 12, false, MIDICV_TUNE_PARAM === 1);
+			drawMidiTuneCol(colW * 2 + Math.floor(colW / 2), 'MOD RNG',   MIDICV_MOD_RANGE,  36, false, MIDICV_TUNE_PARAM === 2);
+		}
+
+		fwDrawFooter(c, [...MIDICV_TABS, ''], tab);
+	}
+
+	function ledsMidiCv(): LedState {
+		const s = defaultLeds();
+		s.play = 'green';
+		s.track[4] = 'green';   // track 5 = MidiCv in this demo
+		return s;
+	}
+
 	// ── routing ───────────────────────────────────────────────────────────────
 
 	type PageId =
 		| 'dashboard' | 'perform' | 'trackedit' | 'curvetrack' | 'stochastic' | 'arp' | 'quantizer'
+		| 'midicv'
 		| 'trackconfig' | 'song' | 'settings' | 'tempo' | 'quickedit';
 
 	interface Variation {
@@ -3754,6 +4217,9 @@
 			{ label: '★ TRUNK — current firmware UI (GATE only, no tabs)', draw: drawQuantizerTrunk, leds: ledsQuantizerTrunk },
 			{ label: 'V1 — gate grid + config tabs (GATE|SRCE|TRIG|SCLE)', draw: drawQuantizerV1, tabs: [...QUANT_V1_TABS], leds: ledsQuantizerV1 },
 		],
+		midicv: [
+			{ label: 'V1 — voice monitor + config tabs (PORT|VOIC|ARP|TUNE)', draw: drawMidiCv, tabs: [...MIDICV_TABS, ''], leds: ledsMidiCv },
+		],
 		trackconfig: [
 			{ label: 'Option 1 — flat list',             draw: drawCfg_A },
 			{ label: 'Option 2 — grouped sections',      draw: drawCfg_B },
@@ -3784,7 +4250,7 @@
 	const PAGE_NAMES: Record<PageId, string> = {
 		dashboard: 'Dashboard', perform: 'Perform', trackedit: 'Note Track Edit',
 		curvetrack: 'Curve Track Edit', stochastic: 'Stochastic Track Edit', arp: 'Arp Track Edit',
-		quantizer: 'Quantizer Track Edit',
+		quantizer: 'Quantizer Track Edit', midicv: 'MidiCv Track Edit',
 		trackconfig: 'Track Config', song: 'Song', settings: 'Settings',
 		tempo: 'Tempo', quickedit: 'Quick Edit',
 	};
@@ -3797,8 +4263,9 @@
 		{ label: 'PG+STP2',   target: 'stochastic' },
 		{ label: 'PG+STP3',   target: 'arp' },
 		{ label: 'PG+STP4',   target: 'quantizer' },
-		{ label: 'PG+STP5',   target: 'trackconfig' },
-		{ label: 'PG+STP6',   target: 'song' },
+		{ label: 'PG+STP5',   target: 'midicv' },
+		{ label: 'PG+STP6',   target: 'trackconfig' },
+		{ label: 'PG+STP7',   target: 'song' },
 		{ label: 'PG+TRK0',   target: 'settings' },
 		{ label: 'TEMPO',     target: 'tempo' },
 		{ label: 'PG+STP8',   target: 'quickedit' },

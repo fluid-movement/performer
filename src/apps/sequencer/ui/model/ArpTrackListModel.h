@@ -10,7 +10,6 @@ class ArpTrackListModel : public RoutableListModel {
 public:
     enum Item {
         TrackName,
-        PlayMode,
         FillMode,
         FillMuted,
         CvUpdateMode,
@@ -87,7 +86,6 @@ private:
     static const char *itemName(Item item) {
         switch (item) {
         case TrackName: return "Name";
-        case PlayMode:  return "Play Mode";
         case FillMode:  return "Fill Mode";
         case FillMuted: return "Fill Muted";
         case CvUpdateMode:  return "CV Update Mode";
@@ -118,9 +116,6 @@ private:
         switch (item) {
         case TrackName:
             str(_track->name());
-            break;
-        case PlayMode:
-            _track->printPlayMode(str);
             break;
         case FillMode:
             _track->printFillMode(str);
@@ -180,8 +175,6 @@ private:
         switch (item) {
 
         case TrackName:
-            break;
-        case PlayMode:
             break;
         case FillMode:
             _track->editFillMode(value, shift);

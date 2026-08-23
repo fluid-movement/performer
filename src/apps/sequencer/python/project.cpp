@@ -30,7 +30,7 @@ static void loadProject(Project &project, const std::string &filename) {
     }
 }
 
-static void saveProject(const Project &project, const std::string &filename) {
+static void saveProject(const Project &project, const std::string &filename, uint32_t version) {
     std::ofstream ofs(filename);
     if (!ofs.good()) {
         throw std::runtime_error("Cannot open file");
@@ -41,7 +41,7 @@ static void saveProject(const Project &project, const std::string &filename) {
 
     VersionedSerializedWriter writer(
         [&ofs] (const void *data, size_t len) { ofs.write(reinterpret_cast<const char *>(data), len); },
-        ProjectVersion::Latest
+        version
     );
 
     project.write(writer);
@@ -94,7 +94,7 @@ void register_project(py::module &m) {
         .def("clearPattern", &Project::clearPattern, "patternIndex"_a)
         .def("setTrackMode", &Project::setTrackMode, "trackIndex"_a, "trackMode"_a)
         .def("load", &loadProject, "filename"_a)
-        .def("save", &saveProject, "filename"_a)
+        .def("save", &saveProject, "filename"_a, "version"_a = uint32_t(ProjectVersion::Latest))
     ;
 
     // ------------------------------------------------------------------------
@@ -441,7 +441,6 @@ void register_project(py::module &m) {
 
     py::class_<ArpTrack> arpTrack(m, "ArpTrack");
     arpTrack
-        .def_property("playMode", &ArpTrack::playMode, &ArpTrack::setPlayMode)
         .def_property("fillMode", &ArpTrack::fillMode, &ArpTrack::setFillMode)
         .def_property("cvUpdateMode", &ArpTrack::cvUpdateMode, &ArpTrack::setCvUpdateMode)
         .def_property("slideTime", &ArpTrack::slideTime, &ArpTrack::setSlideTime)
@@ -484,6 +483,10 @@ void register_project(py::module &m) {
         .def_property("inputSource", &QuantizerTrack::inputSource, &QuantizerTrack::setInputSource)
         .def_property("triggerMode", &QuantizerTrack::triggerMode, &QuantizerTrack::setTriggerMode)
         .def_property("triggerTrack", &QuantizerTrack::triggerTrack, &QuantizerTrack::setTriggerTrack)
+        .def_property("loopLength", &QuantizerTrack::loopLength,
+            [] (QuantizerTrack &t, int v) { t.setLoopLength(v); })
+        .def_property("loopStart", &QuantizerTrack::loopStart,
+            [] (QuantizerTrack &t, int v) { t.setLoopStart(v); })
         .def_property("octave", &QuantizerTrack::octave, [] (QuantizerTrack &t, int v) { t.setOctave(v); })
         .def_property("transpose", &QuantizerTrack::transpose, [] (QuantizerTrack &t, int v) { t.setTranspose(v); })
         .def_property_readonly("sequences", [] (QuantizerTrack &t) {
@@ -514,8 +517,8 @@ void register_project(py::module &m) {
 
     py::enum_<QuantizerTrack::TriggerMode>(quantizerTrack, "TriggerMode")
         .value("Free",     QuantizerTrack::TriggerMode::Free)
-        .value("Internal", QuantizerTrack::TriggerMode::Internal)
         .value("External", QuantizerTrack::TriggerMode::External)
+        .value("CvGate",   QuantizerTrack::TriggerMode::CvGate)
         .export_values()
     ;
 
@@ -673,6 +676,8 @@ void register_project(py::module &m) {
         .export_values()
     ;
 
+    curveSequence.def_static("evalSegment", &CurveSequence::evalSegment, "phase"_a, "shape"_a, "skew"_a);
+
     py::class_<CurveSequence::Step> curveSequenceStep(curveSequence, "Step");
     curveSequenceStep
         .def_property("shapeNorm",  &CurveSequence::Step::shapeNorm,  &CurveSequence::Step::setShapeNorm)
@@ -680,6 +685,12 @@ void register_project(py::module &m) {
         .def_property("levelNorm",  &CurveSequence::Step::levelNorm,  &CurveSequence::Step::setLevelNorm)
         .def_property("offsetNorm", &CurveSequence::Step::offsetNorm, &CurveSequence::Step::setOffsetNorm)
         .def_property("length",     &CurveSequence::Step::length,     &CurveSequence::Step::setLength)
+        .def_property("shapePercent",  &CurveSequence::Step::shapePercent,  &CurveSequence::Step::setShapePercent)
+        .def_property("skewPercent",   &CurveSequence::Step::skewPercent,   &CurveSequence::Step::setSkewPercent)
+        .def_property("levelPercent",  &CurveSequence::Step::levelPercent,  &CurveSequence::Step::setLevelPercent)
+        .def_property("offsetPercent", &CurveSequence::Step::offsetPercent, &CurveSequence::Step::setOffsetPercent)
+        .def("layerValue", &CurveSequence::Step::layerValue, "layer"_a)
+        .def("setLayerValue", &CurveSequence::Step::setLayerValue, "layer"_a, "value"_a)
         .def("clear", &CurveSequence::Step::clear)
     ;
 

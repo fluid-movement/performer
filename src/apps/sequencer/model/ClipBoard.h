@@ -107,6 +107,7 @@ private:
                 CurveSequence curve;
                 StochasticSequence stochastic;
                 ArpSequence arp;
+                NoteSequence quantizer;
             } data;
         } sequences[CONFIG_TRACK_COUNT];
     };

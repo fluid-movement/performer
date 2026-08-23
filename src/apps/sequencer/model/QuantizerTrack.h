@@ -71,8 +71,9 @@ public:
     // TriggerMode
     enum class TriggerMode : uint8_t {
         Free,
-        Internal,
-        External,
+        Internal,   // deprecated — migrated to Free on load; kept for serialization compat
+        External,   // track gate trigger (triggerTrack 0–7)
+        CvGate,     // CV input gate trigger (triggerTrack 0–3)
         Last
     };
 
@@ -81,9 +82,49 @@ public:
         case TriggerMode::Free:     return "Free";
         case TriggerMode::Internal: return "Internal";
         case TriggerMode::External: return "External";
+        case TriggerMode::CvGate:   return "CvGate";
         case TriggerMode::Last:     break;
         }
         return nullptr;
+    }
+
+    // Unified trigger source scroll index: 0=Free, 1–8=External+T0..T7, 9–12=CvGate+CV0..CV3
+    static constexpr int TriggerSourceCount = 13;
+
+    int triggerSourceIndex() const {
+        if (_triggerMode == TriggerMode::External)
+            return 1 + clamp(int(_triggerTrack), 0, 7);
+        if (_triggerMode == TriggerMode::CvGate)
+            return 9 + clamp(int(_triggerTrack), 0, 3);
+        return 0;  // Free (and legacy Internal)
+    }
+
+    void setTriggerSourceIndex(int idx) {
+        idx = ((idx % TriggerSourceCount) + TriggerSourceCount) % TriggerSourceCount;
+        if (idx == 0) {
+            setTriggerMode(TriggerMode::Free);
+        } else if (idx <= 8) {
+            setTriggerMode(TriggerMode::External);
+            setTriggerTrack(idx - 1);
+        } else {
+            setTriggerMode(TriggerMode::CvGate);
+            setTriggerTrack(idx - 9);
+        }
+    }
+
+    void editTriggerSource(int value, bool shift) {
+        setTriggerSourceIndex(triggerSourceIndex() + value);
+    }
+
+    void printTriggerSource(StringBuilder &str) const {
+        const int idx = triggerSourceIndex();
+        if (idx == 0) {
+            str("Free");
+        } else if (idx <= 8) {
+            str("T%d", idx);
+        } else {
+            str("CV%d", idx - 8);
+        }
     }
 
     //----------------------------------------
@@ -100,7 +141,8 @@ public:
     }
 
     void editInputSource(int value, bool shift) {
-        setInputSource(ModelUtils::adjustedEnum(inputSource(), value));
+        const int n = int(InputSource::Last);
+        setInputSource(InputSource(((int(inputSource()) + value) % n + n) % n));
     }
 
     void printInputSource(StringBuilder &str) const {
@@ -177,6 +219,20 @@ public:
         str("%+d", transpose());
     }
 
+    // loopLength (1–16)
+
+    int loopLength() const { return _loopLength; }
+    void setLoopLength(int length) { _loopLength = clamp(length, 1, 16); }
+    void editLoopLength(int value, bool shift) { setLoopLength(loopLength() + value); }
+    void printLoopLength(StringBuilder &str) const { str("%d", loopLength()); }
+
+    // loopStart (0–15)
+
+    int loopStart() const { return _loopStart; }
+    void setLoopStart(int start) { _loopStart = clamp(start, 0, 15); }
+    void editLoopStart(int value, bool shift) { setLoopStart(loopStart() + value); }
+    void printLoopStart(StringBuilder &str) const { str("%d", loopStart() + 1); }
+
     // sequences
 
     const NoteSequenceArray &sequences() const { return _sequences; }
@@ -218,6 +274,8 @@ private:
     int8_t _triggerTrack;
     Routable<int8_t> _octave;
     Routable<int8_t> _transpose;
+    uint8_t _loopLength = 16;
+    uint8_t _loopStart  = 0;
 
     NoteSequenceArray _sequences;
 

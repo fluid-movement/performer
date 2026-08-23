@@ -10,6 +10,58 @@ For a full map of all pages, button combos, and held-button overlays, see [`agen
 
 ---
 
+## 2026-08-23 — Curve Track: 1-unit encoder steps, full-range skew (Version50)
+
+Two usability fixes on the Curve track STEPS page.
+
+**Encoder granularity.** The page edited in normalized float space with a hard-coded `0.05f` per detent while the readout printed `norm * 100`, so every click jumped ~5 display units. `setXNorm()` re-quantized with `int(v*N + 0.5f)`, making the step asymmetric (+3 raw up, −2 raw down on SHPE/SKEW) — turning back did not return to the original value.
+
+- All UI editing and readouts moved to an integer **percent domain** (`shapePercent()` / `skewPercent()` / `levelPercent()` / `offsetPercent()` on `CurveSequence::Step`). One detent = 1 unit, SHIFT = 10 (matching the coarse-modifier convention used elsewhere in the firmware; SHIFT was previously the *fine* modifier on this page only).
+- Percent round trips are exact in both directions, so stepping is symmetric.
+- SHPE/SKEW widened from 6 to 7 bits (0–127) by reclaiming the unused 4-bit `shapeVariationProbability` field — 64 values could not back a 0–100 scale. `Step::read()` migrates Version49 projects (`raw * 127 / 63`, skew moves from bit 6 to bit 7).
+- The same encoder logic is duplicated in `OverviewPage`; it was updated too and gained the SHIFT branch it never had.
+
+**Full-range skew.** `evalSegment` clamped skew to `[0.02, 0.98]` as a divide-by-zero guard, so an envelope always ramped up over the first 2% and could never start at full level; 6-bit storage also made raw {0,1} and {62,63} degenerate pairs, wasting a detent at each end.
+
+- The clamp is replaced by exact handling of the endpoints: **skew 0** starts the segment at full amplitude and decays (completely sharp attack, SHPE picks the decay contour); **skew 100** rises across the segment and cuts off at the end (sharp release).
+- The SKEW indicator tick now scales by `segW - 1`, so it lands on the segment edges at 0 and 100 instead of over-reporting while the curve had stopped moving.
+
+**Tests:** `src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — 8 sections covering the percent round trip, per-detent stepping, symmetry, SHIFT, multi-segment editing, skew endpoints (curve math + DAC edge detection), and the Version49 migration. All pass.
+
+**Files changed:** `CurveSequence.h/cpp`, `ProjectVersion.h`, `CurveSequenceEditPage.cpp`, `OverviewPage.cpp`, `python/project.cpp`, sandbox `+page.svelte`, `agent-docs/features/curve-track.md`.
+
+**Known pre-existing issue (not fixed):** `OverviewPage.cpp:168` still renders the curve overview strip through the legacy `Curve::function(step.shape())` table, i.e. it reads the V1 shape percent as an old curve-type enum index.
+
+---
+
+## 2026-06-07 — Quantizer Track V2: trigger source scroll, CvGate, loop mode (Version47/48)
+
+Expanded Quantizer from V1 (4 tabs, 3 trigger modes) to V2 (5 tabs, 13 trigger sources, loop record/playback).
+
+**Trigger redesign (Version48):**
+- TRIG tab replaced 3-chip FREE/INT/EXT with a unified 13-position scroll: FREE → INT+T1..T8 → EXT+CV1..CV4
+- New `CvGate` trigger mode — rising edge on a CV input (threshold-based) fires a sample
+- `QuantizerTrackListModel` collapsed two broken rows (`TriggerMode` + `TriggerTrack`) into one unified `TriggerSource` row using `editTriggerSource()` / `printTriggerSource()`
+- Spurious-edge absorption: `_lastCvChannel` guard on CvGate entry (mirrors `_lastTriggerTrack` on External) — prevents false fires when mode or channel changes
+- Migration: old projects with Internal trigger mode → Free on load
+
+**Always-on sequence clock:**
+- Clock advancement moved out of the deprecated Internal trigger case — fires `_samplePending` every tick for all trigger modes
+- Gate/CV remain atomic via `commit()`; gate fires `SampleDelayTicks` (~10ms) after step boundary
+- Free mode does NOT get clock-driven samplePending outside Loop (hysteresis is sole commit path; prevents Rec double-fill)
+
+**Loop mode (LOOP tab, Version47):**
+- Buffer stores un-transposed note indices; octave/transpose applied live at playback
+- Free+Loop advances at clock rate
+- External/CvGate do NOT fire samplePending in Loop — loop advances from clock only, preventing double-advance of `_loopIndex`
+- `loopLength` and `loopStart` model params added
+
+**Engine tests:** `src/apps/sequencer/tests/ui/quantizer_loop_test.py` — 6 tests (internal/free/external rec+loop, window, start-offset, clock-rate loop). All pass.
+
+**Files changed:** `QuantizerTrackEngine.h/cpp`, `QuantizerTrack.h/cpp`, `ProjectVersion.h`, `QuantizerSequenceEditPage.h/cpp`, `QuantizerTrackListModel.h`, `python/sequencer.cpp`, `python/project.cpp`.
+
+---
+
 ## 2026-06-04 — Arp Track V2: euclidean + note-pool model (Version46)
 
 Full redesign of the Arp track. Old `Arpeggiator.h/cpp` per-step grid replaced by a degree-mask + dual-euclidean model. See [`agent-docs/features/arp-track.md`](features/arp-track.md) for full details.

@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  GREETING: Hello, world!
+  # Bundled ARM cross toolchain (installed by `make tools_install`)
+  ARM_SDK_DIR: '{{.TASKFILE_DIR}}/tools/gcc-arm-none-eabi'
+  # CMake build directory for the hardware release build
+  STM32_BUILD_DIR: '{{.TASKFILE_DIR}}/build/stm32/release'
+  # Where the firmware artifacts (sequencer.bin/.hex, UPDATE.DAT) end up
+  ARTIFACT_DIR: '{{.TASKFILE_DIR}}/build/stm32/release/src/apps/sequencer'
+
+tasks:
+  default:
+    desc: Print a greeting message
+    cmds:
+      - echo "{{.GREETING}}"
+    silent: true
+
+  tools:
+    desc: Install the ARM toolchain and OpenOCD (one-time, slow)
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - make tools_install
+    status:
+      - test -x '{{.ARM_SDK_DIR}}/bin/arm-none-eabi-gcc'
+
+  setup:stm32:
+    desc: Configure the CMake build directories for the hardware target
+    dir: '{{.TASKFILE_DIR}}'
+    deps: [tools]
+    cmds:
+      - make setup_stm32
+    status:
+      - test -f '{{.STM32_BUILD_DIR}}/Makefile'
+
+  build:
+    desc: Build the sequencer firmware for the hardware and reveal UPDATE.DAT in Finder
+    deps: [setup:stm32]
+    dir: '{{.STM32_BUILD_DIR}}'
+    env:
+      PATH: '{{.ARM_SDK_DIR}}/bin:{{.TASKFILE_DIR}}/tools/openocd/bin:{{.PATH}}'
+    cmds:
+      - make -j sequencer
+      - cmd: |
+          echo ""
+          echo "Firmware artifacts in {{.ARTIFACT_DIR}}:"
+          ls -lh '{{.ARTIFACT_DIR}}/UPDATE.DAT' '{{.ARTIFACT_DIR}}/sequencer.bin' '{{.ARTIFACT_DIR}}/sequencer.hex'
+        silent: true
+      # Reveal UPDATE.DAT in Finder, selected and ready to drag onto the SD card
+      - open -R '{{.ARTIFACT_DIR}}/UPDATE.DAT'
+
+  build:clean:
+    desc: Wipe the hardware build directory and rebuild from scratch
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - rm -rf '{{.STM32_BUILD_DIR}}'
+      - task: build

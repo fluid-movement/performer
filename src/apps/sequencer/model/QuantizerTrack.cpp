@@ -22,6 +22,8 @@ void QuantizerTrack::clear() {
     setTriggerTrack(-1);
     setOctave(0);
     setTranspose(0);
+    setLoopLength(16);
+    setLoopStart(0);
 
     for (auto &sequence : _sequences) {
         sequence.clear();
@@ -37,6 +39,8 @@ void QuantizerTrack::write(VersionedSerializedWriter &writer) const {
     writer.write(_transpose.base);
     writeArray(writer, _sequences);
     writer.write(_patternFollow);
+    writer.write(_loopLength);
+    writer.write(_loopStart);
 }
 
 void QuantizerTrack::read(VersionedSerializedReader &reader) {
@@ -44,8 +48,14 @@ void QuantizerTrack::read(VersionedSerializedReader &reader) {
     reader.read(_inputSource, ProjectVersion::Version40);
     reader.read(_triggerMode, ProjectVersion::Version40);
     reader.read(_triggerTrack, ProjectVersion::Version40);
+    // Version48: Internal trigger mode removed; migrate old INT projects to Free.
+    if (reader.dataVersion() < ProjectVersion::Version48 && _triggerMode == TriggerMode::Internal) {
+        _triggerMode = TriggerMode::Free;
+    }
     reader.read(_octave.base, ProjectVersion::Version40);
     reader.read(_transpose.base, ProjectVersion::Version40);
     readArray(reader, _sequences);
     reader.read(_patternFollow, ProjectVersion::Version40);
+    reader.read(_loopLength, ProjectVersion::Version47);
+    reader.read(_loopStart,  ProjectVersion::Version47);
 }

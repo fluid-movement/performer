@@ -6,7 +6,7 @@ Types::LayerRange CurveSequence::layerRange(Layer layer) {
     switch (layer) {
     case Layer::Shape:
     case Layer::Skew:
-        return { 0, 63 };
+        return { 0, 127 };
     case Layer::Length:
         return { 1, 16 };
     case Layer::Level:
@@ -23,9 +23,9 @@ int CurveSequence::layerDefaultValue(Layer layer)
 {
     switch (layer) {
     case Layer::Shape:
-        return 32;
+        return 64;
     case Layer::Skew:
-        return 32;
+        return 64;
     case Layer::Length:
         return 2;
     case Layer::Level:
@@ -53,11 +53,11 @@ int CurveSequence::Step::layerValue(Layer layer) const {
 
 void CurveSequence::Step::setLayerValue(Layer layer, int value) {
     switch (layer) {
-    case Layer::Shape:  _data0.shape = clamp(value, 0, 63); break;
-    case Layer::Skew:   _data0.shapeVariation = clamp(value, 0, 63); break;
+    case Layer::Shape:  _data0.shape = Shape::clamp(value); break;
+    case Layer::Skew:   _data0.shapeVariation = Shape::clamp(value); break;
     case Layer::Length: setLength(value); break;
-    case Layer::Level:  _data0.max = clamp(value, 0, 255); break;
-    case Layer::Offset: _data0.min = clamp(value, 0, 255); break;
+    case Layer::Level:  _data0.max = Max::clamp(value); break;
+    case Layer::Offset: _data0.min = Min::clamp(value); break;
     case Layer::Last:   break;
     }
 }
@@ -65,10 +65,10 @@ void CurveSequence::Step::setLayerValue(Layer layer, int value) {
 void CurveSequence::Step::clear() {
     _data0.raw = 0;
     _data1.raw = 0;
-    setShapeNorm(0.5f);
-    setSkewNorm(0.5f);
-    setOffsetNorm(0.0f);
-    setLevelNorm(1.0f);
+    setShapePercent(50);
+    setSkewPercent(50);
+    setOffsetPercent(0);
+    setLevelPercent(100);
     setLength(2);
 }
 
@@ -95,6 +95,21 @@ void CurveSequence::Step::read(VersionedSerializedReader &reader) {
     } else {
         reader.read(_data0);
         reader.read(_data1);
+
+        if (reader.dataVersion() < ProjectVersion::Version50) {
+            // shape and skew widened from 6 to 7 bits, shifting skew's bit position.
+            // Capture the old fields before rewriting, since the layouts overlap.
+            uint32_t old = _data0.raw;
+            int oldShape = old & 0x3f;
+            int oldSkew  = (old >> 6) & 0x3f;
+            int oldMin   = (old >> 16) & 0xff;
+            int oldMax   = (old >> 24) & 0xff;
+            _data0.raw = 0;
+            _data0.shape          = (oldShape * 127 + 31) / 63;
+            _data0.shapeVariation = (oldSkew  * 127 + 31) / 63;
+            _data0.min = oldMin;
+            _data0.max = oldMax;
+        }
     }
 }
 
