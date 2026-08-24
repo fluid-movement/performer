@@ -41,7 +41,7 @@ Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD132
 - **V1 is the chosen design.** TRUNK dropped entirely (breaking change to project files; acceptable).
 - V1 = segment assembler model (`drawCurveV1`), tabs: SHPE / SKEW / LEN / LVL / OFST
 - V1 model: N variable-length segments chain and loop; loop length = sum of segment lengths (implicit)
-- Each segment: shape (spike→sine→square via power fn), skew (peak position), length (pulses), level, offset
+- Each segment: shape (exponential fall→sine→flat hold), skew (peak position), length (pulses), level, offset
 - Shape math: `evalSegment(phase, shape, skew)` — skewed half-sine with power-function morphing
 - **Max shape = perfect flat hold** (block/step sequencer mode): guard `p <= 0 → return 1.0f`
 - Output: unipolar bumps (offset → offset+level → offset per segment); gate = trigger at segment start
@@ -50,7 +50,10 @@ Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD132
 - `evalSegment` in sandbox kept in sync with C++ formula
 - **Version50**: SHPE/SKEW widened 6→7 bits (0-127); all five params edit in an integer 0-100 percent domain, 1 unit per detent, SHIFT = x10 coarse. Migration in `Step::read()` rescales Version49 values.
 - **Skew reaches its extremes**: `evalSegment` no longer clamps to [0.02, 0.98] — skew 0 = instant attack, skew 100 = instant release. SKEW indicator tick scales by `segW - 1` so it lands on the segment edges.
-- **Engine tests**: `src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — 8 sections, all pass.
+- **Version51**: SHPE low end is an **exponential fall** (cusp at the peak) instead of a narrow bell, morphing to the half sine at 50 — this is what makes percussive AD envelopes possible. Steepness is a per-track `Shape Curve` setting (Gentle 4 / Medium 6 / Snappy 8, default Medium) on the Track page.
+- **Version52**: output is **unipolar 0V..max**. `Range` moved from CurveSequence to CurveTrack, restricted to 1V–5V in 1V steps (hardware ceiling is ±5V, not 10V — see `Calibration::CvOutput`), shown on the Track page under Shape Curve. Bipolar is still reachable via the track `Offset`.
+- **Version52 removals**: `curveMin`/`curveMax` and `shapeProbabilityBias`/`gateProbabilityBias` deleted from CurveTrack along with the `CurveMin`/`CurveMax`/`ShapeProbabilityBias` routing targets — all dead in the V1 engine. `GateProbabilityBias` stays (Note/Arp/Stochastic own one). Routes need no migration: targets serialize by stable id and unknown ids read back as `Target::None`.
+- **Engine tests**: `src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — 10 sections, 83 checks, all pass.
 
 ## Decisions made (Quantizer track Steps page) — DONE, C++ SHIPPED (Version47/48)
 

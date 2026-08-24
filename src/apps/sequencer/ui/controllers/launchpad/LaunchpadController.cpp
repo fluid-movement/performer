@@ -123,7 +123,6 @@ struct RangeMap {
     }
 };
 
-static const RangeMap curveMinMaxRangeMap = { { 0, 0 }, { 255, 7 } };
 
 static const RangeMap *curveSequenceLayerRangeMap[] = {
     [int(CurveSequence::Layer::Shape)]  = nullptr,

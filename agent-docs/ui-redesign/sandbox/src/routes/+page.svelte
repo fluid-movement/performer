@@ -2420,9 +2420,12 @@
 	const SEG_CURSOR  = 2;
 	const SEG_PLAY    = 6;
 
-	function evalSegment(phase: number, shape: number, skew: number): number {
+	// stands in for the track's Shape Curve setting (Gentle 4 / Medium 6 / Snappy 8)
+	const EXP_CURVE = 6;
+
+	function evalSegment(phase: number, shape: number, skew: number, expCurve = EXP_CURVE): number {
 		// kept identical to CurveSequence::evalSegment in the firmware: skew warps
-		// phase so the sine peak lands at phase == skew, with the endpoints handled
+		// phase so the peak lands at phase == skew, with the endpoints handled
 		// exactly so skew 0 is an instant attack and skew 1 an instant release
 		const sk = Math.max(0, Math.min(1, skew));
 		let t: number;
@@ -2435,11 +2438,33 @@
 				? (phase / sk) * 0.5
 				: 0.5 + ((phase - sk) / (1 - sk)) * 0.5;
 		}
-		const s = Math.sin(t * Math.PI);
-		const p = shape <= 0.5
-			? 1 + (1 - shape * 2) * 7
-			: Math.pow(1 - (shape - 0.5) * 2, 2);
-		return p <= 0 ? 1 : Math.pow(Math.max(0, s), p);
+		// u = normalized distance from the peak: 0 at the peak, 1 at the segment edges
+		const u = Math.abs(2 * t - 1);
+		const sine = Math.cos(u * Math.PI * 0.5); // identical to Math.sin(t * Math.PI)
+
+		if (shape < 0.5) {
+			// low half: blend an exponential fall into the half sine. The exponential
+			// has a cusp at the peak rather than a rounded top, which is what makes a
+			// sharp percussive envelope possible.
+			const m = shape * 2; // 0 at shape 0, 1 at shape 0.5
+			const k = (1 - m) * expCurve;
+			let ex: number;
+			if (k > 1e-4) {
+				const ek = Math.exp(-k);
+				ex = (Math.exp(-k * u) - ek) / (1 - ek);
+			} else {
+				ex = 1 - u;
+			}
+			return m * sine + (1 - m) * ex;
+		}
+
+		// upper half: widen the sine bump until it is a flat hold at shape 1
+		const p = Math.pow(1 - (shape - 0.5) * 2, 2);
+		if (p <= 0) return 1; // flat hold
+		// pinned explicitly: sine underflows to +/- epsilon at the segment edge and a
+		// small p would turn a tiny positive into a visibly non-zero value
+		if (u >= 1) return 0;
+		return Math.pow(Math.max(0, sine), p);
 	}
 
 	function drawCurveV1(c: Canvas, tab = 0): void {

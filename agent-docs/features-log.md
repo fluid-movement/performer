@@ -10,6 +10,47 @@ For a full map of all pages, button combos, and held-button overlays, see [`agen
 
 ---
 
+## 2026-08-24 — Curve Track: unipolar Range on the track, dead settings removed (Version52)
+
+**The output range was effectively invisible.** `CurveSequence::_range` existed and the engine used it, but the Sequence page shows only `Name` (`rows()` returns `ConfigPageRows` = 1) and `Range` is not in the STEPS quick-edit map — the only way to reach it was the Overview page's quick-edit overlay. Its default was `Bipolar5V`, so a curve segment idled at **−5V** and peaked at +5V, a poor fit for a V1 model that produces unipolar bumps by construction.
+
+**Range is now a per-track, unipolar setting.** Moved from `CurveSequence` to `CurveTrack` and shown on the Track page under Shape Curve as `Range  0..5V`, editable 1V–5V in 1V steps. The hardware ceiling is **±5V, not 10V** — `Calibration::CvOutput` spans −5…+5 and `voltsToValue()` hard-clamps there. Bipolar output stays reachable through the track `Offset` (±5.00V): Range 0..5V with Offset −2.50V gives −2.5V…+2.5V.
+
+Stored as `Types::VoltageRange` clamped to the `Unipolar1V…Unipolar5V` entries; a bipolar value maps to the unipolar entry of the same voltage. `editRange` clamps as an `int` before converting to the enum — `VoltageRange` is `uint8_t` backed, so a negative wrapped to 255 and landed on 5V instead of stopping at 1V (caught by the new test).
+
+**Dead weight removed.** `_curveMin` / `_curveMax` and `_shapeProbabilityBias` / `_gateProbabilityBias` are gone from `CurveTrack`, together with the `CurveMin` (39), `CurveMax` (40) and `ShapeProbabilityBias` (22) routing targets and the dead `CurveSequence::Step::gateProbability` accessors. Nothing in the V1 engine ever read any of them. **`GateProbabilityBias` (9) stays** — Note, Arp and Stochastic tracks each own one, and `NoteTrackEngine.cpp:379` reads it.
+
+**No migrations needed.** Routes serialize targets by stable id via `targetSerialize`, and `readEnum` falls back to `Target::None` for an unrecognized id, so old routes pointing at ids 22/39/40 degrade gracefully; all 25 remaining targets were verified to round-trip. The removed track fields sit mid-blob, so reads became `reader.skip<>(…, Version52)` — note `_min`/`_max` were written as whole `Routable<float>` values (8 bytes each), not `.base` like every other field. The writer still emits zeroed placeholders when asked for a pre-Version52 format, so the Version49/50/51 migration tests keep working.
+
+**Also fixed:** the `slideTime` / `offset` / `rotate` python properties were bound directly to setters carrying a defaulted `routed` argument, which pybind does not honour — assigning to them raised `TypeError`. Now wrapped in lambdas.
+
+**Tests:** `curve_encoder_skew_test.py` grew to 83 checks — unipolar 0V/5V and 0V/1V on the DAC, negative output via the track offset, bipolar values clamping, the encoder stopping at both ends, and Version49/51 projects defaulting to 5V.
+
+**Files changed:** `CurveTrack.h/cpp`, `CurveSequence.h/cpp`, `ProjectVersion.h`, `Routing.h/cpp`, `CurveTrackEngine.cpp`, `CurveTrackListModel.h`, `CurveSequenceListModel.h`, `OverviewPage.cpp`, `LaunchpadController.cpp`, `python/project.cpp`.
+
+---
+
+## 2026-08-23 — Curve Track: exponential fall at the low end of SHPE (Version51)
+
+The segment contour was `sin(t·π)^p`. Every power of a sine has **zero slope at the peak** (`d/dt sin^p = p·sin^(p-1)·cos`, which vanishes where `cos = 0`), so the top was always rounded — at SHPE 0 the value was still 99.6% after 2% of the segment and 53% at the quarter point. That bell meant the sharp-attack envelopes unlocked by the Version50 skew work still decayed like a bell rather than a pluck.
+
+**New shape family.** `evalSegment` now builds the contour around `u`, the normalized distance from the peak (`cos(u·π/2)` is identical to `sin(t·π)`), so the two halves of the range can use different families:
+- **SHPE 0–50** blends an exponential fall into the half sine — `m·sine + (1-m)·(exp(-k·u) - e^-k)/(1 - e^-k)`, `m = shape·2`, `k = (1-m)·expCurve`. The normalization pins the fall to exactly 1.0 at the peak and 0.0 at the edges, so segments still join cleanly. The exponential has a **cusp** at the peak, which is the whole point.
+- **SHPE 50–100** is untouched, and SHPE 50 is bit-for-bit the same half sine as before.
+- The exponential applies to both sides of the peak, so SKEW keeps meaning "peak position": SKEW 0 gives an exponential decay, SKEW 100 a reverse swell, SKEW 50 a symmetric cusped spike.
+
+**`Shape Curve` track setting (Version51).** Steepness is per-track and lives on the Track page below Mute Mode: Gentle (k=4) / Medium (k=6, default) / Snappy (k=8). Stored on `CurveTrack`, threaded to `evalSegment` as a plain `float` so the curve math keeps no dependency on `CurveTrack`. Pre-Version51 projects default to Medium via `clear()`, no explicit migration.
+
+`CurveTrack::write` now guards the new field on `writer.writerVersion()` so that writing at an older version produces a file an older reader can consume — the test harness relies on this to exercise the read migrations.
+
+**Sound change:** existing projects with low SHPE values sound different. That is the intent of the change; storage is untouched.
+
+**Tests:** `curve_encoder_skew_test.py` grew to 64 checks — cusp detection (`1 - eval(0.02, 0, 0) > 0.05`, where the old bell gave 0.004), convex front-loaded decay, exact endpoints at every skew, continuity across SHPE 50, SHPE 50 still matching `sin(t·π)`, output within [0,1] over the whole parameter grid, the three steepness settings ordering correctly, the setting reaching the DAC, and Version49/50 projects defaulting to Medium.
+
+**Files changed:** `CurveSequence.h`, `CurveTrack.h/cpp`, `ProjectVersion.h`, `CurveTrackListModel.h`, `CurveTrackEngine.cpp`, `CurveSequenceEditPage.cpp`, `python/project.cpp`, sandbox `+page.svelte`.
+
+---
+
 ## 2026-08-23 — Curve Track: 1-unit encoder steps, full-range skew (Version50)
 
 Two usability fixes on the Curve track STEPS page.

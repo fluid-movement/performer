@@ -9,6 +9,7 @@ Run from the project root:
     python src/apps/sequencer/tests/ui/curve_encoder_skew_test.py
 """
 
+import math
 import os
 import sys
 import tempfile
@@ -204,6 +205,69 @@ check("shape 100 holds flat",
           for i in range(9) for s in (0.0, 0.5, 1.0)))
 
 
+# --- 6b. the low end of shape is an exponential fall, not a bell -----------
+print("\n6b. shape 0 falls exponentially (cusp at the peak, not a rounded top)")
+
+# The defining difference from the old sin^8 family: every power of a sine has
+# zero slope at the peak, so it can only ever produce a rounded top. The old
+# curve dropped 0.004 over the first 2% of the segment; an exponential drops ~0.11.
+drop = 1.0 - evalSegment(0.02, 0.0, 0.0)
+check("shape 0 has a cusp at the peak", drop > 0.05,
+      "dropped only %.4f over the first 2%%" % drop)
+rise = 1.0 - evalSegment(0.98, 0.0, 1.0)
+check("shape 0 cusps at the peak with skew 100 too", rise > 0.05,
+      "rose only %.4f over the last 2%%" % rise)
+
+# a front-loaded decay: each successive drop is smaller than the last, unlike the
+# bell, which was nearly flat and then plunged
+steps = [evalSegment(i / 32.0, 0.0, 0.0) for i in range(33)]
+drops = [a - b for a, b in zip(steps, steps[1:])]
+check("shape 0 decays monotonically", all(d > 0 for d in drops))
+check("shape 0 decay is front loaded (convex)",
+      all(b <= a + 1e-6 for a, b in zip(drops, drops[1:])),
+      "drops: %s" % [round(d, 4) for d in drops[:6]])
+
+# segments must still join cleanly: exactly 1 at the peak, exactly 0 at the edges.
+# The upper shapes matter here too: sine underflows at the segment edge and a small
+# exponent would turn a tiny positive into a visibly non-zero value.
+for shape in (0.0, 0.25, 0.5, 0.75, 0.9):
+    check("shape %.2f: peak is 1.0 and edges are 0.0 at skew 0" % shape,
+          abs(evalSegment(0.0, shape, 0.0) - 1.0) < 1e-5
+          and evalSegment(1.0, shape, 0.0) < 1e-5)
+    check("shape %.2f: peak is 1.0 and edges are 0.0 at skew 100" % shape,
+          abs(evalSegment(1.0, shape, 1.0) - 1.0) < 1e-5
+          and evalSegment(0.0, shape, 1.0) < 1e-5)
+    check("shape %.2f: peak is 1.0 and edges are 0.0 at skew 50" % shape,
+          abs(evalSegment(0.5, shape, 0.5) - 1.0) < 1e-5
+          and evalSegment(0.0, shape, 0.5) < 1e-5
+          and evalSegment(1.0, shape, 0.5) < 1e-5)
+
+# the two halves of the shape range must meet without a discontinuity
+check("shape is continuous across the midpoint",
+      all(abs(evalSegment(i / 16.0, 0.4999, 0.3) - evalSegment(i / 16.0, 0.5001, 0.3)) < 1e-3
+          for i in range(17)))
+
+# shape 50 is still exactly the half sine
+check("shape 50 is still the half sine",
+      all(abs(evalSegment(i / 16.0, 0.5, 0.5) - math.sin((i / 16.0) * math.pi)) < 1e-5
+          for i in range(17)))
+
+# nothing leaves the unit range anywhere in the parameter space
+grid = [evalSegment(i / 20.0, sh / 10.0, sk / 10.0, k)
+        for i in range(21) for sh in range(11) for sk in range(11) for k in (4.0, 6.0, 8.0)]
+check("output stays within 0..1 everywhere",
+      all(-1e-6 <= v <= 1.0 + 1e-6 for v in grid),
+      "range %f..%f" % (min(grid), max(grid)))
+
+# the Shape Curve setting orders the decays
+gentle, medium, snappy = (evalSegment(0.1, 0.0, 0.0, k) for k in (4.0, 6.0, 8.0))
+check("Gentle / Medium / Snappy give progressively steeper falls",
+      gentle > medium > snappy,
+      "got %.3f / %.3f / %.3f" % (gentle, medium, snappy))
+check("the steepness setting has no effect at shape 50",
+      abs(evalSegment(0.25, 0.5, 0.0, 4.0) - evalSegment(0.25, 0.5, 0.0, 8.0)) < 1e-6)
+
+
 # --- 7. the sharp edge reaches the CV output -------------------------------
 print("\n7. the instant edge is visible on the DAC")
 
@@ -241,6 +305,41 @@ check("skew 100 produces an instant falling edge", min(jumps) < -0.8 * span,
 check("skew 100 has no instant rising edge", max(jumps) < 0.2 * span,
       "largest rise %.3f of span %.3f" % (max(jumps), span))
 
+
+# --- 7b. the Shape Curve track setting reaches the engine ------------------
+print("\n7b. the Shape Curve setting changes the CV output")
+
+def sample_shape_curve(setting):
+    track.shapeCurve = setting
+    seq.segmentCount = 1
+    s = seq.steps[0]
+    s.length = 16
+    s.shapePercent = 0
+    s.skewPercent = 0
+    s.levelPercent = 100
+    s.offsetPercent = 0
+    e.simulator.wait(2200)         # let the current segment finish
+    samples = []
+    for _ in range(200):
+        e.simulator.wait(10)
+        samples.append(e.simulator.targetState.dac.volts(0))
+    return samples
+
+track = p.tracks[0].curveTrack
+ShapeCurve = tsseq.CurveTrack.ShapeCurve
+
+gentle = sample_shape_curve(ShapeCurve.Gentle)
+snappy = sample_shape_curve(ShapeCurve.Snappy)
+
+# align both runs on their peak, then compare the same point in the decay
+def after_peak(samples, offset):
+    return samples[samples.index(max(samples)) + offset]
+
+check("Snappy decays faster than Gentle on the DAC",
+      after_peak(snappy, 20) < after_peak(gentle, 20),
+      "snappy %.3fV vs gentle %.3fV" % (after_peak(snappy, 20), after_peak(gentle, 20)))
+
+track.shapeCurve = ShapeCurve.Medium
 c.press("play")
 e.simulator.wait(100)
 
@@ -293,18 +392,123 @@ check("offset survives untouched", migrated.offsetPercent == MARKER_OFFSET,
 check("level survives untouched", migrated.levelPercent == MARKER_LEVEL,
       "got %d" % migrated.levelPercent)
 
+check("a Version49 project defaults to Shape Curve Medium",
+      loaded.tracks[0].curveTrack.shapeCurve == ShapeCurve.Medium,
+      "got %s" % loaded.tracks[0].curveTrack.shapeCurve)
+
+# a project saved before Version51 predates the setting and must default too
+track.shapeCurve = ShapeCurve.Snappy
+p.save(path, 50)
+v50 = tsseq.Project()
+v50.load(path)
+check("a Version50 project defaults to Shape Curve Medium",
+      v50.tracks[0].curveTrack.shapeCurve == ShapeCurve.Medium,
+      "got %s" % v50.tracks[0].curveTrack.shapeCurve)
+
 # a current-version project must round trip with no migration applied
 p.save(path)
 current = tsseq.Project()
 current.load(path)
 same = current.tracks[0].curveTrack.sequences[0].steps[0]
-check("Version50 round trips unchanged",
+check("Version51 round trips unchanged",
       (same.layerValue(Layer.Shape), same.layerValue(Layer.Skew),
        same.offsetPercent, same.levelPercent) ==
       (marker.layerValue(Layer.Shape), marker.layerValue(Layer.Skew),
        MARKER_OFFSET, MARKER_LEVEL))
+check("Shape Curve survives save and load",
+      current.tracks[0].curveTrack.shapeCurve == ShapeCurve.Snappy,
+      "got %s" % current.tracks[0].curveTrack.shapeCurve)
 
+track.shapeCurve = ShapeCurve.Medium
 os.remove(path)
+
+
+# --- 9. the output is unipolar 0V..Range -----------------------------------
+print("\n9. Range sets a unipolar 0V..max output")
+
+VoltageRange = tsseq.Types.VoltageRange
+
+def sample_range(voltage_range, offset=0):
+    track.range = voltage_range
+    track.offset = offset
+    seq.segmentCount = 1
+    s = seq.steps[0]
+    s.length = 16
+    s.shapePercent = 50
+    s.skewPercent = 50
+    s.levelPercent = 100
+    s.offsetPercent = 0
+    e.simulator.wait(2200)          # let the current segment finish
+    samples = []
+    for _ in range(220):
+        e.simulator.wait(10)
+        samples.append(e.simulator.targetState.dac.volts(0))
+    return min(samples), max(samples)
+
+c.press("play")
+e.simulator.wait(200)
+
+# before this change the same setup swung -5V..+5V
+lo, hi = sample_range(VoltageRange.Unipolar5V)
+check("Range 5V troughs at 0V", abs(lo) < 0.2, "got %.3fV" % lo)
+check("Range 5V peaks at 5V", abs(hi - 5.0) < 0.2, "got %.3fV" % hi)
+
+lo, hi = sample_range(VoltageRange.Unipolar1V)
+check("Range 1V troughs at 0V", abs(lo) < 0.1, "got %.3fV" % lo)
+check("Range 1V peaks at 1V", abs(hi - 1.0) < 0.1, "got %.3fV" % hi)
+
+# bipolar output is still reachable through the track offset
+lo, hi = sample_range(VoltageRange.Unipolar5V, offset=-250)
+check("offset -2.50V still reaches negative", abs(lo + 2.5) < 0.2, "got %.3fV" % lo)
+check("offset -2.50V peaks at +2.5V", abs(hi - 2.5) < 0.2, "got %.3fV" % hi)
+
+track.offset = 0
+c.press("play")
+e.simulator.wait(100)
+
+# the track is unipolar only: bipolar values are clamped away
+track.range = VoltageRange.Bipolar5V
+check("bipolar clamps to unipolar", track.range == VoltageRange.Unipolar5V,
+      "got %s" % track.range)
+track.range = VoltageRange.Bipolar1V
+check("bipolar 1V clamps to unipolar 1V", track.range == VoltageRange.Unipolar1V,
+      "got %s" % track.range)
+
+# and the encoder stops at both ends
+c.selectPage("track"); c.wait(60)
+c.rotateEncoder(5); c.wait(60)          # select the Range row
+c.pressEncoder(); c.wait(60)            # enter edit
+track.range = VoltageRange.Unipolar1V
+c.rotateEncoder(-3); c.wait(60)
+check("Range stops at 1V", track.range == VoltageRange.Unipolar1V, "got %s" % track.range)
+c.rotateEncoder(9); c.wait(60)
+check("Range stops at 5V", track.range == VoltageRange.Unipolar5V, "got %s" % track.range)
+c.pressEncoder(); c.wait(60)
+c.selectPage("steps"); c.wait(60)
+
+
+# --- 10. Range survives serialization -------------------------------------
+print("\n10. Range round trips and older projects default to 5V")
+
+path2 = os.path.join(tempfile.mkdtemp(), "range.pro")
+track.range = VoltageRange.Unipolar2V
+p.save(path2)
+reloaded = tsseq.Project()
+reloaded.load(path2)
+check("Range survives save and load",
+      reloaded.tracks[0].curveTrack.range == VoltageRange.Unipolar2V,
+      "got %s" % reloaded.tracks[0].curveTrack.range)
+
+for version in (49, 51):
+    p.save(path2, version)
+    old = tsseq.Project()
+    old.load(path2)
+    check("a Version%d project defaults to Range 5V" % version,
+          old.tracks[0].curveTrack.range == VoltageRange.Unipolar5V,
+          "got %s" % old.tracks[0].curveTrack.range)
+
+track.range = VoltageRange.Unipolar5V
+os.remove(path2)
 
 
 # ---------------------------------------------------------------------------

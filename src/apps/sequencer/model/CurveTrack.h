@@ -59,6 +59,35 @@ public:
         return nullptr;
     }
 
+    // ShapeCurve - steepness of the exponential fall at the low end of SHPE
+
+    enum class ShapeCurve : uint8_t {
+        Gentle,
+        Medium,
+        Snappy,
+        Last
+    };
+
+    static const char *shapeCurveName(ShapeCurve shapeCurve) {
+        switch (shapeCurve) {
+        case ShapeCurve::Gentle:    return "Gentle";
+        case ShapeCurve::Medium:    return "Medium";
+        case ShapeCurve::Snappy:    return "Snappy";
+        case ShapeCurve::Last:      break;
+        }
+        return nullptr;
+    }
+
+    static float shapeCurveExponent(ShapeCurve shapeCurve) {
+        switch (shapeCurve) {
+        case ShapeCurve::Gentle:    return 4.f;
+        case ShapeCurve::Medium:    return 6.f;
+        case ShapeCurve::Snappy:    return 8.f;
+        case ShapeCurve::Last:      break;
+        }
+        return 6.f;
+    }
+
     //----------------------------------------
     // Properties
     //----------------------------------------
@@ -106,6 +135,48 @@ public:
 
     void printMuteMode(StringBuilder &str) const {
         str(muteModeName(muteMode()));
+    }
+
+    // shapeCurve
+
+    ShapeCurve shapeCurve() const { return _shapeCurve; }
+    void setShapeCurve(ShapeCurve shapeCurve) {
+        _shapeCurve = ModelUtils::clampedEnum(shapeCurve);
+    }
+
+    float shapeCurveExponent() const { return shapeCurveExponent(_shapeCurve); }
+
+    void editShapeCurve(int value, bool shift) {
+        setShapeCurve(ModelUtils::adjustedEnum(shapeCurve(), value));
+    }
+
+    void printShapeCurve(StringBuilder &str) const {
+        str(shapeCurveName(shapeCurve()));
+    }
+
+    // range - output voltage range, unipolar 0V..max in 1V steps
+
+    Types::VoltageRange range() const { return _range; }
+    void setRange(Types::VoltageRange range) {
+        // the curve track is unipolar only; a bipolar value maps to the unipolar
+        // entry of the same voltage rather than clamping to the top of the enum
+        int index = int(range);
+        if (index >= int(Types::VoltageRange::Bipolar1V)) {
+            index -= int(Types::VoltageRange::Bipolar1V);
+        }
+        _range = Types::VoltageRange(clamp(index,
+            int(Types::VoltageRange::Unipolar1V), int(Types::VoltageRange::Unipolar5V)));
+    }
+
+    void editRange(int value, bool shift) {
+        // clamp as an int: VoltageRange is uint8_t backed, so a negative value
+        // would wrap to 255 before the clamp in setRange could see it
+        setRange(Types::VoltageRange(clamp(int(range()) + value,
+            int(Types::VoltageRange::Unipolar1V), int(Types::VoltageRange::Unipolar5V))));
+    }
+
+    void printRange(StringBuilder &str) const {
+        str("0..%.0fV", Types::voltageRangeInfo(range()).hi);
     }
 
     // slideTime
@@ -163,42 +234,6 @@ public:
         str("%+d", rotate());
     }
 
-    // shapeProbabilityBias
-
-    int shapeProbabilityBias() const { return _shapeProbabilityBias.get(isRouted(Routing::Target::ShapeProbabilityBias)); }
-    void setShapeProbabilityBias(int shapeProbabilityBias, bool routed = false) {
-        _shapeProbabilityBias.set(clamp(shapeProbabilityBias, -8, 8), routed);
-    }
-
-    void editShapeProbabilityBias(int value, bool shift) {
-        if (!isRouted(Routing::Target::ShapeProbabilityBias)) {
-            setShapeProbabilityBias(shapeProbabilityBias() + value);
-        }
-    }
-
-    void printShapeProbabilityBias(StringBuilder &str) const {
-        printRouted(str, Routing::Target::ShapeProbabilityBias);
-        str("%+.1f%%", shapeProbabilityBias() * 12.5f);
-    }
-
-    // gateProbabilityBias
-
-    int gateProbabilityBias() const { return _gateProbabilityBias.get(isRouted(Routing::Target::GateProbabilityBias)); }
-    void setGateProbabilityBias(int gateProbabilityBias, bool routed = false) {
-        _gateProbabilityBias.set(clamp(gateProbabilityBias, -CurveSequence::GateProbability::Range, CurveSequence::GateProbability::Range), routed);
-    }
-
-    void editGateProbabilityBias(int value, bool shift) {
-        if (!isRouted(Routing::Target::GateProbabilityBias)) {
-            setGateProbabilityBias(gateProbabilityBias() + value);
-        }
-    }
-
-    void printGateProbabilityBias(StringBuilder &str) const {
-        printRouted(str, Routing::Target::GateProbabilityBias);
-        str("%+.1f%%", gateProbabilityBias() * 12.5f);
-    }
-
     // curveCvInput
 
     Types::CurveCvInput curveCvInput() const { return _curveCvInput; }
@@ -212,44 +247,6 @@ public:
 
     void printCurveCvInput(StringBuilder &str) const {
         str(Types::curveCvInput(_curveCvInput));
-    }
-
-    // min
-
-    float min() const { return _min.get(isRouted(Routing::Target::CurveMin)); }
-    void setMin(float min, bool routed = false) {
-        _min.set(CurveSequence::Min::clamp(min), routed);
-        _max.set(std::max(max(), this->min()), routed);
-    }
-
-    void editMin(float value, bool shift) {
-        if (!isRouted(Routing::Target::CurveMin)) {
-            setMin(min() + value);
-        }
-    }
-
-    void printMin(StringBuilder &str) const {
-        printRouted(str, Routing::Target::CurveMin);
-        str("%+.1f%%", (100*min())/CurveSequence::Min::Max);
-    }
-
-    // max
-
-    float max() const { return _max.get(isRouted(Routing::Target::CurveMax)); }
-    void setMax(float max, bool routed = false) {
-        _max.set(CurveSequence::Max::clamp(max), routed);
-        _min.set(std::min(min(), this->max()), routed);
-    }
-
-    void editMax(float value, bool shift) {
-        if (!isRouted(Routing::Target::CurveMax)) {
-            setMax(max() + value);
-        }
-    }
-
-    void printMax(StringBuilder &str) const {
-        printRouted(str, Routing::Target::CurveMax);
-        str("%+.1f%%", (100*max()/CurveSequence::Max::Max));
     }
 
     // sequences
@@ -295,14 +292,11 @@ private:
     Types::PlayMode _playMode;
     FillMode _fillMode;
     MuteMode _muteMode;
+    ShapeCurve _shapeCurve;
+    Types::VoltageRange _range;
     Routable<uint8_t> _slideTime;
     Routable<int16_t> _offset;
     Routable<int8_t> _rotate;
-    Routable<int8_t> _shapeProbabilityBias;
-    Routable<int8_t> _gateProbabilityBias;
-
-    Routable<float> _min;
-    Routable<float> _max;
 
     Types::CurveCvInput _curveCvInput;
 

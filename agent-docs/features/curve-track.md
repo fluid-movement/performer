@@ -21,11 +21,21 @@ A CV automation track. Instead of note+gate steps it outputs smoothly interpolat
 - `_playMode` — `Types::PlayMode`
 - `_fillMode` — `FillMode` enum: None | Variation | NextPattern | Invert
 - `_muteMode` — what CV value to output when muted: LastValue | Zero (0V) | Min | Max
+- `_shapeCurve` — steepness of the exponential at the low end of SHPE: Gentle | Medium | Snappy (Version51, default Medium)
+- `_range` — output voltage range, **unipolar 0V..max** in 1V steps, 1V–5V (Version52, default 5V). Stored as `Types::VoltageRange` but clamped to the `Unipolar1V…Unipolar5V` entries; a bipolar value maps to the unipolar entry of the same voltage. `editRange` clamps as an `int` before converting — `VoltageRange` is `uint8_t` backed, so a negative would otherwise wrap to 255 and land on 5V.
+- `_slideTime` — CV slew (routable)
 - `_offset` — CV offset (routable via `Routing::Target::Offset`)
 - `_rotate` — step rotation (routable)
-- `_shapeProbabilityBias` — global shape variation bias (routable via `ShapeProbabilityBias`)
-- `_curveMin`, `_curveMax` — output CV range min/max (routable)
 - `_sequences` — array of 17 `CurveSequence` (16 patterns + 1 snapshot)
+
+**Removed in Version52:** `_curveMin` / `_curveMax` and `_shapeProbabilityBias` /
+`_gateProbabilityBias`, along with the `CurveMin` (39), `CurveMax` (40) and
+`ShapeProbabilityBias` (22) routing targets. Nothing in the V1 engine ever read
+them — they were leftovers from the pre-V1 per-step min/max model.
+`GateProbabilityBias` (9) remains: Note, Arp and Stochastic tracks each own one.
+Routes serialize targets by stable id, and `readEnum` falls back to
+`Target::None` for an id it no longer recognizes, so old routes degrade
+gracefully with no migration.
 
 ### `CurveSequence` (per-pattern data)
 - `_scale` — output scale (maps step values to voltage range)
@@ -45,7 +55,7 @@ length is the sum of their lengths. Step buttons select segments.
 
 | Layer | Tab | Stored in | Raw range | Meaning |
 |---|---|---|---|---|
-| Shape | SHPE | `_data0.shape` (7 bits) | 0–127 | spike (0) → half sine (50) → flat hold (100) |
+| Shape | SHPE | `_data0.shape` (7 bits) | 0–127 | exponential fall (0) → half sine (50) → flat hold (100) |
 | Skew | SKEW | `_data0.shapeVariation` (7 bits) | 0–127 | position of the peak within the segment |
 | Length | LEN | `_data1.gate` (4 bits) | 1–16 | segment length in pulses |
 | Level | LVL | `_data0.max` (8 bits) | 0–255 | peak height above the offset |
@@ -64,17 +74,32 @@ what makes stepping symmetric — turning back lands on the original value.
 Shape and skew were 6-bit before Version50; the migration in `Step::read()`
 rescales old values (`raw * 127 / 63`) and moves skew from bit 6 to bit 7.
 
-### Curve math — `CurveSequence::evalSegment(phase, shape, skew)`
+### Curve math — `CurveSequence::evalSegment(phase, shape, skew, expCurve)`
 
-Skew warps `phase` so the sine peak lands at `phase == skew`; shape raises the
-sine to a power (8 at shape 0, 1 at shape 50, → 0 at shape 100, where the
-`p <= 0` guard returns a constant 1.0 = flat hold).
+Skew warps `phase` so the peak lands at `phase == skew`. The contour is then built
+around that peak using `u`, the normalized distance from it (0 at the peak, 1 at
+the segment edges); `cos(u·π/2)` is identical to `sin(t·π)`.
 
-The endpoints are handled exactly rather than clamped to an epsilon:
+- **shape 0–50** — blends an exponential fall into the half sine:
+  `m·sine + (1-m)·(exp(-k·u) - e^-k)/(1 - e^-k)` with `m = shape·2` and
+  `k = (1-m)·expCurve`. The normalization puts the fall at exactly 1.0 at the peak
+  and 0.0 at the edges. Unlike any power of a sine — all of which have zero slope
+  at the peak, and so can only make a rounded top — the exponential has a **cusp**
+  there. That is what makes a sharp percussive envelope possible.
+- **shape 50–100** — unchanged: `sine^p` with `p = (1 - (shape-0.5)·2)²`, widening
+  the bump until the `p <= 0` guard returns a constant 1.0 (flat hold).
+
+`expCurve` is the exponential steepness at shape 0, supplied by the track's
+**Shape Curve** setting (`CurveTrack::shapeCurveExponent()`): Gentle 4, Medium 6,
+Snappy 8. It has no effect at shape 50 and above.
+
+The skew endpoints are handled exactly rather than clamped to an epsilon:
 - **skew 0** — the segment starts at full amplitude and decays: a completely
   sharp attack, with SHPE choosing the decay contour.
 - **skew 100** — the segment rises across its whole length and is cut off at the
   end: a sharp release.
+- **skew 50 with a low SHPE** — a symmetric cusped spike, since SHPE shapes the
+  rise and the fall equally.
 
 `evalSegment` is duplicated in the design sandbox
 (`agent-docs/ui-redesign/sandbox/src/routes/+page.svelte`) and the two must stay
@@ -85,12 +110,18 @@ identical.
 1. On each clock tick: determine the current segment via `SequenceState`.
 2. Compute `fraction = (currentPulse + intra) / length`, clamped to 0..1 — phase 0
    is genuinely hit at the segment boundary, so a skew-0 edge reaches the DAC.
-3. `amp = evalSegment(fraction, shapeNorm(), skewNorm())`.
+3. `amp = evalSegment(fraction, shapeNorm(), skewNorm(), _curveTrack.shapeCurveExponent())`.
 4. `value = clamp(offsetNorm() + levelNorm() * amp, 0, 1)`, denormalized into the
-   sequence's voltage `range`.
+   track's voltage `range` — **unipolar 0V…max**, so a segment idles at 0V.
 5. Apply `slideTime` slew if non-zero, then the track `offset`.
 6. Write the final CV value to `CvOutput` for this track's channel.
 7. No gate output — this track does not drive `GateOutput`.
+
+**Output range.** The hardware ceiling is ±5V, not 10V: `Calibration::CvOutput`
+spans `MinVoltage = -5` to `MaxVoltage = 5` and `voltsToValue()` hard-clamps
+there (the ideal DAC/opamp stage gives 5.17V / −5.25V). So `Range` offers 1V–5V.
+Bipolar output is still reachable through the track `Offset` (±5.00V): Range
+0..5V with Offset −2.50V gives −2.5V…+2.5V.
 
 ## UI Pages
 
@@ -115,4 +146,6 @@ identical.
 
 `src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — percent round trip,
 1-unit-per-detent encoder behaviour, SHIFT coarse steps, multi-segment editing,
-skew endpoints (curve math and DAC output), and the Version49 → Version50 migration.
+skew endpoints, the exponential low end of SHPE (cusp, convexity, continuity
+across the midpoint), the Shape Curve setting on the DAC, and the
+Version49 → Version50 → Version51 migrations.

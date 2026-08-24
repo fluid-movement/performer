@@ -366,11 +366,12 @@ void register_project(py::module &m) {
         .def_property("playMode", &CurveTrack::playMode, &CurveTrack::setPlayMode)
         .def_property("fillMode", &CurveTrack::fillMode, &CurveTrack::setFillMode)
         .def_property("muteMode", &CurveTrack::muteMode, &CurveTrack::setMuteMode)
-        .def_property("slideTime", &CurveTrack::slideTime, &CurveTrack::setSlideTime)
-        .def_property("offset", &CurveTrack::offset, &CurveTrack::setOffset)
-        .def_property("rotate", &CurveTrack::rotate, &CurveTrack::setRotate)
-        .def_property("shapeProbabilityBias", &CurveTrack::shapeProbabilityBias, &CurveTrack::setShapeProbabilityBias)
-        .def_property("gateProbabilityBias", &CurveTrack::gateProbabilityBias, &CurveTrack::setGateProbabilityBias)
+        .def_property("shapeCurve", &CurveTrack::shapeCurve, &CurveTrack::setShapeCurve)
+        .def_property("range", &CurveTrack::range, &CurveTrack::setRange)
+        // wrapped in lambdas: the routed defaulted argument is not visible to pybind
+        .def_property("slideTime", &CurveTrack::slideTime, [] (CurveTrack &t, int v) { t.setSlideTime(v); })
+        .def_property("offset", &CurveTrack::offset, [] (CurveTrack &t, int v) { t.setOffset(v); })
+        .def_property("rotate", &CurveTrack::rotate, [] (CurveTrack &t, int v) { t.setRotate(v); })
         .def_property("curveCvInput", &CurveTrack::curveCvInput, &CurveTrack::setCurveCvInput)
         .def_property_readonly("sequences", [] (CurveTrack &curveTrack) {
             py::list result;
@@ -387,6 +388,13 @@ void register_project(py::module &m) {
         .value("Variation", CurveTrack::FillMode::Variation)
         .value("NextPattern", CurveTrack::FillMode::NextPattern)
         .value("Invert", CurveTrack::FillMode::Invert)
+        .export_values()
+    ;
+
+    py::enum_<CurveTrack::ShapeCurve>(curveTrack, "ShapeCurve")
+        .value("Gentle", CurveTrack::ShapeCurve::Gentle)
+        .value("Medium", CurveTrack::ShapeCurve::Medium)
+        .value("Snappy", CurveTrack::ShapeCurve::Snappy)
         .export_values()
     ;
 
@@ -643,7 +651,6 @@ void register_project(py::module &m) {
 
     py::class_<CurveSequence> curveSequence(m, "CurveSequence");
     curveSequence
-        .def_property("range", &CurveSequence::range, &CurveSequence::setRange)
         .def_property("divisor", &CurveSequence::divisor, &CurveSequence::setDivisor)
         .def_property("resetMeasure", &CurveSequence::resetMeasure, &CurveSequence::setResetMeasure)
         .def_property("runMode", &CurveSequence::runMode, &CurveSequence::setRunMode)
@@ -676,7 +683,8 @@ void register_project(py::module &m) {
         .export_values()
     ;
 
-    curveSequence.def_static("evalSegment", &CurveSequence::evalSegment, "phase"_a, "shape"_a, "skew"_a);
+    curveSequence.def_static("evalSegment", &CurveSequence::evalSegment,
+        "phase"_a, "shape"_a, "skew"_a, "expCurve"_a = 6.0f);
 
     py::class_<CurveSequence::Step> curveSequenceStep(curveSequence, "Step");
     curveSequenceStep
@@ -792,7 +800,6 @@ void register_project(py::module &m) {
         .value("RetriggerProbabilityBias", Routing::Target::RetriggerProbabilityBias)
         .value("LengthBias", Routing::Target::LengthBias)
         .value("NoteProbabilityBias", Routing::Target::NoteProbabilityBias)
-        .value("ShapeProbabilityBias", Routing::Target::ShapeProbabilityBias)
         .value("FirstStep", Routing::Target::FirstStep)
         .value("LastStep", Routing::Target::LastStep)
         .value("RunMode", Routing::Target::RunMode)

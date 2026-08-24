@@ -162,7 +162,7 @@ void CurveTrackEngine::updateOutput(uint32_t relativeTick, uint32_t divisor) {
         ? clamp((float(pulsesBeforeCurrent + _currentPulse) + intra) / float(_loopLength), 0.f, 1.f)
         : 0.f;
 
-    const auto &range = Types::voltageRangeInfo(_sequence->range());
+    const auto &range = Types::voltageRangeInfo(_curveTrack.range());
 
     if (mute()) {
         switch (_curveTrack.muteMode()) {
@@ -185,7 +185,7 @@ void CurveTrackEngine::updateOutput(uint32_t relativeTick, uint32_t divisor) {
         int len = step.length();
         float fraction = clamp((float(_currentPulse) + intra) / float(len), 0.f, 1.f);
         _segmentFraction = fraction;
-        float amp   = CurveSequence::evalSegment(fraction, step.shapeNorm(), step.skewNorm());
+        float amp   = CurveSequence::evalSegment(fraction, step.shapeNorm(), step.skewNorm(), _curveTrack.shapeCurveExponent());
         float value = clamp(step.offsetNorm() + step.levelNorm() * amp, 0.f, 1.f);
         _cvOutputTarget = range.denormalize(value);
     }

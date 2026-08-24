@@ -42,10 +42,6 @@ public:
             return Routing::Target::Offset;
         case Rotate:
             return Routing::Target::Rotate;
-        case ShapeProbabilityBias:
-            return Routing::Target::ShapeProbabilityBias;
-        case GateProbabilityBias:
-            return Routing::Target::GateProbabilityBias;
         default:
             return Routing::Target::None;
         }
@@ -57,15 +53,13 @@ private:
         PlayMode,
         FillMode,
         MuteMode,
+        ShapeCurve,
+        Range,
         SlideTime,
         Offset,
         Rotate,
-        ShapeProbabilityBias,
-        GateProbabilityBias,
         PatternFollow,
         CurveCvInput,
-        Min,
-        Max,
         Last
     };
 
@@ -75,15 +69,13 @@ private:
         case PlayMode:              return "Play Mode";
         case FillMode:              return "Fill Mode";
         case MuteMode:              return "Mute Mode";
+        case ShapeCurve:            return "Shape Curve";
+        case Range:                 return "Range";
         case SlideTime:             return "Slide Time";
         case Offset:                return "Offset";
         case Rotate:                return "Rotate";
-        case ShapeProbabilityBias:  return "Shape P. Bias";
-        case GateProbabilityBias:   return "Gate P. Bias";
         case PatternFollow:         return "Pattern Follow";
         case CurveCvInput:          return "Curve CV Input";
-        case Min:                   return "Min";
-        case Max:                   return "Max";                   
         case Last:                  break;
         }
         return nullptr;
@@ -107,6 +99,12 @@ private:
         case MuteMode:
             _track->printMuteMode(str);
             break;
+        case ShapeCurve:
+            _track->printShapeCurve(str);
+            break;
+        case Range:
+            _track->printRange(str);
+            break;
         case SlideTime:
             _track->printSlideTime(str);
             break;
@@ -116,23 +114,11 @@ private:
         case Rotate:
             _track->printRotate(str);
             break;
-        case ShapeProbabilityBias:
-            _track->printShapeProbabilityBias(str);
-            break;
-        case GateProbabilityBias:
-            _track->printGateProbabilityBias(str);
-            break;
         case PatternFollow:
             _track->printPatternFollow(str);
             break;
         case CurveCvInput:
             _track->printCurveCvInput(str);
-            break;
-        case Min:
-            _track->printMin(str);
-            break;
-        case Max:
-            _track->printMax(str);
             break;
         case Last:
             break;
@@ -152,6 +138,12 @@ private:
         case MuteMode:
             _track->editMuteMode(value, shift);
             break;
+        case ShapeCurve:
+            _track->editShapeCurve(value, shift);
+            break;
+        case Range:
+            _track->editRange(value, shift);
+            break;
         case SlideTime:
             _track->editSlideTime(value, shift);
             break;
@@ -161,23 +153,11 @@ private:
         case Rotate:
             _track->editRotate(value, shift);
             break;
-        case ShapeProbabilityBias:
-            _track->editShapeProbabilityBias(value, shift);
-            break;
-        case GateProbabilityBias:
-            _track->editGateProbabilityBias(value, shift);
-            break;
         case PatternFollow:
             _track->editPatternFollow(value, shift);
             break;
         case CurveCvInput:
             _track->editCurveCvInput(value, shift);
-            break;
-        case Min:
-            _track->editMin(value, shift);
-            break;
-        case Max:
-            _track->editMax(value, shift);
             break;
         case Last:
             break;

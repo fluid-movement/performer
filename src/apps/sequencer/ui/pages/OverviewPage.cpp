@@ -23,8 +23,8 @@ static const NoteSequenceListModel::Item noteQuickEditItems[8] = {
 static const CurveSequenceListModel::Item curveQuickEditItems[8] = {
     CurveSequenceListModel::Item::Divisor,
     CurveSequenceListModel::Item::SegmentCount,
-    CurveSequenceListModel::Item::Range,
     CurveSequenceListModel::Item::ResetMeasure,
+    CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last,
     CurveSequenceListModel::Item::Last,

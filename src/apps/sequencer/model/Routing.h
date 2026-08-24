@@ -61,10 +61,7 @@ public:
         RetriggerProbabilityBias,
         LengthBias,
         NoteProbabilityBias,
-        ShapeProbabilityBias,
-        CurveMin,
-        CurveMax,
-        TrackLast = CurveMax,
+        TrackLast = NoteProbabilityBias,
 
         // Sequence targets
         SequenceFirst,
@@ -116,9 +113,6 @@ public:
         case Target::RetriggerProbabilityBias:  return "Retrig P. Bias";
         case Target::LengthBias:                return "Length Bias";
         case Target::NoteProbabilityBias:       return "Note P. Bias";
-        case Target::ShapeProbabilityBias:      return "Shape P. Bias";
-        case Target::CurveMin:                  return "Curve Min";
-        case Target::CurveMax:                  return "Curve Max";
 
         case Target::FirstStep:                 return "First Step";
         case Target::LastStep:                  return "Last Step";
@@ -172,8 +166,6 @@ public:
 
         case Target::TapTempo:                  return 21;
 
-        case Target::ShapeProbabilityBias:      return 22;
-
         case Target::Scale:                     return 23;
         case Target::RootNote:                  return 24;
 
@@ -191,8 +183,8 @@ public:
         case Target::RestProbability8:          return 36;
         case Target::LengthModifier:            return 37;    
         case Target::CurrentRecordStep:         return 38;    
-        case Target::CurveMin:                  return 39;
-        case Target::CurveMax:                  return 40;
+        // ids 22, 39 and 40 are retired (ShapeProbabilityBias, CurveMin, CurveMax):
+        // readEnum falls back to Target::None for an id it no longer recognizes
 
         case Target::Last:                      break;
         }

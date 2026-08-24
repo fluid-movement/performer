@@ -136,6 +136,7 @@ void CurveSequenceEditPage::draw(Canvas &canvas) {
     }
 
     // 3. Per-segment curves
+    float expCurve = track.shapeCurveExponent();
     for (int i = 0; i < segCount; ++i) {
         const auto &step = sequence.step(i);
         bool isCursor = _stepSelection[i];
@@ -154,7 +155,7 @@ void CurveSequenceEditPage::draw(Canvas &canvas) {
         int prevPY = -1;
         for (int px = 0; px < w; ++px) {
             float phase = w > 1 ? float(px) / float(w - 1) : 0.5f;
-            float amp = CurveSequence::evalSegment(phase, shp, skw);
+            float amp = CurveSequence::evalSegment(phase, shp, skw, expCurve);
             float val = off + lvl * amp;
             if (val < 0.f) val = 0.f;
             if (val > 1.f) val = 1.f;

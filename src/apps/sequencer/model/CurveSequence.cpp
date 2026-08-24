@@ -134,7 +134,6 @@ void CurveSequence::writeRouted(Routing::Target target, int intValue, float floa
 
 void CurveSequence::clear() {
     setName("INIT");
-    setRange(Types::VoltageRange::Bipolar5V);
     setDivisor(12);
     setResetMeasure(0);
     setRunMode(Types::RunMode::Forward);
@@ -226,7 +225,12 @@ void CurveSequence::duplicateSteps() {
 }
 
 void CurveSequence::write(VersionedSerializedWriter &writer) const {
-    writer.write(_range);
+    // was the per-sequence voltage range, moved to CurveTrack in Version52; still
+    // emitted when writing an older format so that format's layout is preserved
+    if (writer.writerVersion() < ProjectVersion::Version52) {
+        const Types::VoltageRange legacyRange = Types::VoltageRange::Bipolar5V;
+        writer.write(legacyRange);
+    }
     writer.write(_divisor.base);
     writer.write(_resetMeasure);
     writer.write(_runMode.base);
@@ -241,7 +245,8 @@ void CurveSequence::write(VersionedSerializedWriter &writer) const {
 }
 
 bool CurveSequence::read(VersionedSerializedReader &reader) {
-    reader.read(_range);
+    // was the per-sequence voltage range, moved to CurveTrack in Version52
+    reader.skip<Types::VoltageRange>(0, ProjectVersion::Version52);
     if (reader.dataVersion() < ProjectVersion::Version10) {
         reader.readAs<uint8_t>(_divisor.base);
     } else {

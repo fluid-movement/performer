@@ -19,9 +19,8 @@ public:
         RunMode     = 3,
         Divisor     = 4,
         ResetMeasure = 5,
-        Range       = 6,
-        SegmentCount = 7,
-        Last        = 8,
+        SegmentCount = 6,
+        Last        = 7,
     };
 
     CurveSequenceListModel() {}
@@ -62,8 +61,6 @@ public:
         case Divisor:
         case ResetMeasure:
             return 16;
-        case Range:
-            return int(Types::VoltageRange::Last);
         case SegmentCount:
             return 16;
         default:
@@ -84,8 +81,6 @@ public:
             return _sequence->indexedDivisor();
         case ResetMeasure:
             return _sequence->resetMeasure();
-        case Range:
-            return int(_sequence->range());
         case SegmentCount:
             return _sequence->segmentCount() - 1;
         default:
@@ -106,8 +101,6 @@ public:
             return _sequence->setIndexedDivisor(index);
         case ResetMeasure:
             return _sequence->setResetMeasure(index);
-        case Range:
-            return _sequence->setRange(Types::VoltageRange(index));
         case SegmentCount:
             return _sequence->setSegmentCount(index + 1);
         default:
@@ -141,7 +134,6 @@ private:
         case RunMode:       return "Run Mode";
         case Divisor:       return "Divisor";
         case ResetMeasure:  return "Reset Measure";
-        case Range:         return "Range";
         case SegmentCount:  return "Segments";
         case Last:          break;
         }
@@ -172,9 +164,6 @@ private:
         case ResetMeasure:
             _sequence->printResetMeasure(str);
             break;
-        case Range:
-            _sequence->printRange(str);
-            break;
         case SegmentCount:
             _sequence->printSegmentCount(str);
             break;
@@ -201,9 +190,6 @@ private:
             break;
         case ResetMeasure:
             _sequence->editResetMeasure(value, shift);
-            break;
-        case Range:
-            _sequence->editRange(value, shift);
             break;
         case SegmentCount:
             _sequence->editSegmentCount(value, shift);

@@ -147,6 +147,13 @@ enum ProjectVersion {
     // curve track: shape/skew widened to 7 bits (0-127) for 1%-per-detent editing
     Version50 = 50,
 
+    // curve track: per-track Shape Curve setting (exponential steepness at SHPE 0)
+    Version51 = 51,
+
+    // curve track: Range moved to the track and restricted to unipolar;
+    // min/max and shape/gate probability bias removed
+    Version52 = 52,
+
     // automatically derive latest version
     Last,
     Latest = Last - 1,

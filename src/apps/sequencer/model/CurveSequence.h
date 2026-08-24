@@ -29,7 +29,6 @@ public:
     typedef UnsignedValue<8> Min;
     typedef UnsignedValue<8> Max;
     typedef UnsignedValue<4> Gate;
-    typedef UnsignedValue<3> GateProbability;
 
     enum class Layer {
         Shape,
@@ -57,8 +56,10 @@ public:
     static Types::LayerRange layerRange(Layer layer);
     static int layerDefaultValue(Layer layer);
 
-    static float evalSegment(float phase, float shape, float skew) {
-        // skew warps phase so that the sine peak lands at phase == skew. The two
+    // expCurve is the exponential steepness at shape 0, taken from the track's
+    // Shape Curve setting (CurveTrack::shapeCurveExponent).
+    static float evalSegment(float phase, float shape, float skew, float expCurve = 6.0f) {
+        // skew warps phase so that the peak lands at phase == skew. The two
         // endpoints are handled exactly so that skew 0 gives an instant attack and
         // skew 1 an instant release, rather than ramping over a small epsilon.
         float sk = clamp(skew, 0.0f, 1.0f);
@@ -72,11 +73,40 @@ public:
                 ? (phase / sk) * 0.5f
                 : 0.5f + ((phase - sk) / (1.0f - sk)) * 0.5f;
         }
-        float s = std::sin(t * float(M_PI));
-        float p = shape <= 0.5f
-            ? 1.0f + (1.0f - shape * 2.0f) * 7.0f
-            : std::pow(1.0f - (shape - 0.5f) * 2.0f, 2.0f);
-        return p <= 0.0f ? 1.0f : std::pow(std::max(0.0f, s), p);
+        // u = normalized distance from the peak: 0 at the peak, 1 at the segment
+        // edges. cos(u * pi/2) is identical to sin(t * pi), just expressed so both
+        // halves of the shape range can be built around the peak.
+        float u = std::abs(2.0f * t - 1.0f);
+        float sine = std::cos(u * float(M_PI) * 0.5f);
+
+        if (shape < 0.5f) {
+            // low half: blend an exponential fall into the half sine. Unlike any
+            // power of a sine, the exponential has a cusp at the peak rather than a
+            // rounded top, which is what makes a sharp percussive envelope possible.
+            float m = shape * 2.0f;                 // 0 at shape 0, 1 at shape 0.5
+            float k = (1.0f - m) * expCurve;
+            float e;
+            if (k > 1e-4f) {
+                // normalized so the fall is exactly 1 at the peak and 0 at the edges
+                float ek = std::exp(-k);
+                e = (std::exp(-k * u) - ek) / (1.0f - ek);
+            } else {
+                e = 1.0f - u;                       // limit of the above as k -> 0
+            }
+            return m * sine + (1.0f - m) * e;
+        }
+
+        // upper half: widen the sine bump until it is a flat hold at shape 1
+        float p = std::pow(1.0f - (shape - 0.5f) * 2.0f, 2.0f);
+        if (p <= 0.0f) {
+            return 1.0f;                            // flat hold
+        }
+        if (u >= 1.0f) {
+            // pinned explicitly: sine underflows to +/- epsilon at the segment edge
+            // and a small p would turn a tiny positive into a visibly non-zero value
+            return 0.0f;
+        }
+        return std::pow(std::max(0.0f, sine), p);
     }
 
     class Step {
@@ -123,13 +153,6 @@ public:
         int gate() const { return _data1.gate; }
         void setGate(int gate) {
             _data1.gate = Gate::clamp(gate);
-        }
-
-        // gateProbability
-
-        int gateProbability() const { return _data1.gateProbability; }
-        void setGateProbability(int gateProbability) {
-            _data1.gateProbability = GateProbability::clamp(gateProbability);
         }
 
         // V1 accessors (segment assembler model)
@@ -204,8 +227,7 @@ public:
         union {
             uint16_t raw;
             BitField<uint16_t, 0, Gate::Bits> gate;
-            BitField<uint16_t, 4, GateProbability::Bits> gateProbability;
-            // 9 bits left
+            // 12 bits left
         } _data1;
     };
 
@@ -236,21 +258,6 @@ public:
     // trackIndex
 
     int trackIndex() const { return _trackIndex; }
-
-    // range
-
-    Types::VoltageRange range() const { return _range; }
-    void setRange(Types::VoltageRange range) {
-        _range = ModelUtils::clampedEnum(range);
-    }
-
-    void editRange(int value, bool shift) {
-        setRange(ModelUtils::adjustedEnum(range(), value));
-    }
-
-    void printRange(StringBuilder &str) const {
-        str(Types::voltageRangeName(range()));
-    }
 
     // divisor
 
@@ -439,7 +446,6 @@ private:
     uint8_t _slot = uint8_t(-1);
     char _name[NameLength + 1];
     int8_t _trackIndex = -1;
-    Types::VoltageRange _range;
     Routable<uint16_t> _divisor;
     uint8_t _resetMeasure;
     Routable<Types::RunMode> _runMode;
