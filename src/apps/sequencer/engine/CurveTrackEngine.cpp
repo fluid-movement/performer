@@ -107,7 +107,6 @@ void CurveTrackEngine::update(float dt) {
 
 void CurveTrackEngine::changePattern() {
     _sequence = &_curveTrack.sequence(pattern());
-    _fillSequence = &_curveTrack.sequence(std::min(pattern() + 1, CONFIG_PATTERN_COUNT - 1));
 
     _loopLength = 0;
     for (int i = 0; i < _sequence->segmentCount(); ++i) {
@@ -184,8 +183,14 @@ void CurveTrackEngine::updateOutput(uint32_t relativeTick, uint32_t divisor) {
         const auto &step = _sequence->step(_currentSegment);
         int len = step.length();
         float fraction = clamp((float(_currentPulse) + intra) / float(len), 0.f, 1.f);
-        _segmentFraction = fraction;
-        float amp   = CurveSequence::evalSegment(fraction, step.shapeNorm(), step.skewNorm(), _curveTrack.shapeCurveExponent());
+        // Travelling backwards plays the segment mirrored. The curve is a pure
+        // function of phase, so the time reverse is simply 1 - phase - every curve
+        // has a mirrored twin for free. _segmentFraction gets the mirrored value so
+        // the play scanline sweeps right to left and stays on the point of the drawn
+        // curve that is actually reaching the jack.
+        float phase = _sequenceState.direction() < 0 ? 1.f - fraction : fraction;
+        _segmentFraction = phase;
+        float amp   = CurveSequence::evalSegment(phase, step.shapeNorm(), step.skewNorm(), _curveTrack.shapeCurveExponent());
         float value = clamp(step.offsetNorm() + step.levelNorm() * amp, 0.f, 1.f);
         _cvOutputTarget = range.denormalize(value);
     }

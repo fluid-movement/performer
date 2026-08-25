@@ -53,7 +53,9 @@ Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD132
 - **Version51**: SHPE low end is an **exponential fall** (cusp at the peak) instead of a narrow bell, morphing to the half sine at 50 — this is what makes percussive AD envelopes possible. Steepness is a per-track `Shape Curve` setting (Gentle 4 / Medium 6 / Snappy 8, default Medium) on the Track page.
 - **Version52**: output is **unipolar 0V..max**. `Range` moved from CurveSequence to CurveTrack, restricted to 1V–5V in 1V steps (hardware ceiling is ±5V, not 10V — see `Calibration::CvOutput`), shown on the Track page under Shape Curve. Bipolar is still reachable via the track `Offset`.
 - **Version52 removals**: `curveMin`/`curveMax` and `shapeProbabilityBias`/`gateProbabilityBias` deleted from CurveTrack along with the `CurveMin`/`CurveMax`/`ShapeProbabilityBias` routing targets — all dead in the V1 engine. `GateProbabilityBias` stays (Note/Arp/Stochastic own one). Routes need no migration: targets serialize by stable id and unknown ids read back as `Target::None`.
-- **Engine tests**: `src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — 10 sections, 83 checks, all pass.
+- **Version53 — mirrored playback**: running backwards plays each segment **mirrored** (`phase = 1 - fraction`). Backward mirrors everything including the wrap; Pendulum/PingPong mirror the descending leg; RandomWalk mirrors when it steps back; Random never does. Required fixing `SequenceState::direction()`, which had no callers and was only set by PingPong/Pendulum/RandomWalk. The play scanline sweeps right-to-left when reversed; the drawn curve is never mirrored.
+- **Version53 removals**: `playMode`/`fillMode` deleted from CurveTrack (engine always uses `advanceFree`; `_fillSequence` was never read), plus the CurveTrack-local `FillMode` enum.
+- **Engine tests**: `src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — 12 sections, 94 checks, all pass.
 
 ## Decisions made (Quantizer track Steps page) — DONE, C++ SHIPPED (Version47/48)
 

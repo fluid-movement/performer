@@ -50,8 +50,6 @@ public:
 private:
     enum Item {
         TrackName,
-        PlayMode,
-        FillMode,
         MuteMode,
         ShapeCurve,
         Range,
@@ -66,8 +64,6 @@ private:
     static const char *itemName(Item item) {
         switch (item) {
         case TrackName:             return "Name";
-        case PlayMode:              return "Play Mode";
-        case FillMode:              return "Fill Mode";
         case MuteMode:              return "Mute Mode";
         case ShapeCurve:            return "Shape Curve";
         case Range:                 return "Range";
@@ -89,12 +85,6 @@ private:
         switch (item) {
         case TrackName:
             str(_track->name());
-            break;
-        case PlayMode:
-            _track->printPlayMode(str);
-            break;
-        case FillMode:
-            _track->printFillMode(str);
             break;
         case MuteMode:
             _track->printMuteMode(str);
@@ -128,12 +118,6 @@ private:
     void editValue(Item item, int value, bool shift) {
         switch (item) {
         case TrackName:
-            break;
-        case PlayMode:
-            _track->editPlayMode(value, shift);
-            break;
-        case FillMode:
-            _track->editFillMode(value, shift);
             break;
         case MuteMode:
             _track->editMuteMode(value, shift);

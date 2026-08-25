@@ -50,7 +50,6 @@ private:
     CurveRecorder _recorder;
 
     CurveSequence *_sequence;
-    CurveSequence *_fillSequence;
     SequenceState _sequenceState;
 
     int   _currentSegment  = -1;

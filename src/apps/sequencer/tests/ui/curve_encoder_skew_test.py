@@ -476,7 +476,8 @@ check("bipolar 1V clamps to unipolar 1V", track.range == VoltageRange.Unipolar1V
 
 # and the encoder stops at both ends
 c.selectPage("track"); c.wait(60)
-c.rotateEncoder(5); c.wait(60)          # select the Range row
+# Track page rows: Name, Mute Mode, Shape Curve, Range, ...
+c.rotateEncoder(3); c.wait(60)          # select the Range row
 c.pressEncoder(); c.wait(60)            # enter edit
 track.range = VoltageRange.Unipolar1V
 c.rotateEncoder(-3); c.wait(60)
@@ -509,6 +510,115 @@ for version in (49, 51):
 
 track.range = VoltageRange.Unipolar5V
 os.remove(path2)
+
+
+# --- 11. running backwards plays the curves mirrored -----------------------
+print("\n11. backwards run modes play each segment mirrored")
+
+RunMode = tsseq.Types.RunMode
+
+# A strongly asymmetric segment is the discriminator: SKEW 0 slams to full level
+# and decays, so forward playback shows one instant *rise* per segment and no
+# instant falls. Mirrored, that is exactly inverted.
+def edges(mode, segments=4, ms=6000):
+    seq.runMode = mode
+    seq.segmentCount = segments
+    for i in range(segments):
+        st = seq.steps[i]
+        st.length = 8
+        st.shapePercent = 0
+        st.skewPercent = 0
+        st.levelPercent = 100
+        st.offsetPercent = 0
+    e.simulator.wait(1500)              # let the current segment finish
+    v = []
+    for _ in range(ms // 10):
+        e.simulator.wait(10)
+        v.append(e.simulator.targetState.dac.volts(0))
+    span = max(v) - min(v)
+    jumps = [b - a for a, b in zip(v, v[1:])]
+    rises = sum(1 for x in jumps if x > 0.5 * span)
+    falls = sum(1 for x in jumps if x < -0.5 * span)
+    return rises, falls, span
+
+track.range = VoltageRange.Unipolar5V
+track.offset = 0
+c.press("play")
+e.simulator.wait(200)
+
+rises, falls, span = edges(RunMode.Forward)
+check("Forward plays every segment forward", rises > 0 and falls == 0,
+      "%d instant rises, %d instant falls" % (rises, falls))
+
+# every segment must be mirrored, including the one played straight after the
+# wrap from the first segment back round to the last
+rises, falls, span = edges(RunMode.Backward)
+check("Backward mirrors every segment, wrap included", falls > 0 and rises == 0,
+      "%d instant rises, %d instant falls" % (rises, falls))
+
+# the two-directional modes mix both: forward on the way out, mirrored on the way back
+for name, mode in (("Pendulum", RunMode.Pendulum), ("PingPong", RunMode.PingPong)):
+    rises, falls, span = edges(mode)
+    check("%s mirrors only the descending leg" % name, rises > 0 and falls > 0,
+          "%d instant rises, %d instant falls" % (rises, falls))
+
+# a stale direction must not leak across a run mode change
+edges(RunMode.Backward)
+rises, falls, span = edges(RunMode.Forward)
+check("Backward then Forward leaves nothing mirrored", rises > 0 and falls == 0,
+      "%d instant rises, %d instant falls" % (rises, falls))
+
+# random jumps by arbitrary distances, so there is no direction of travel
+rises, falls, span = edges(RunMode.Random)
+check("Random never mirrors", falls == 0,
+      "%d instant rises, %d instant falls" % (rises, falls))
+
+# a symmetric curve mirrors to itself: this bounds the blast radius of the change
+def samples_symmetric(mode, ms=4000):
+    seq.runMode = mode
+    seq.segmentCount = 4
+    for i in range(4):
+        st = seq.steps[i]
+        st.length = 8
+        st.shapePercent = 50
+        st.skewPercent = 50
+        st.levelPercent = 100
+        st.offsetPercent = 0
+    e.simulator.wait(1500)
+    v = []
+    for _ in range(ms // 10):
+        e.simulator.wait(10)
+        v.append(e.simulator.targetState.dac.volts(0))
+    return v
+
+fwd = samples_symmetric(RunMode.Forward)
+bwd = samples_symmetric(RunMode.Backward)
+check("a symmetric curve is unaffected by direction",
+      abs(max(fwd) - max(bwd)) < 0.1 and abs(min(fwd) - min(bwd)) < 0.1,
+      "forward %.2f..%.2fV vs backward %.2f..%.2fV"
+      % (min(fwd), max(fwd), min(bwd), max(bwd)))
+
+seq.runMode = RunMode.Forward
+c.press("play")
+e.simulator.wait(100)
+
+
+# --- 12. Play Mode / Fill Mode are gone ------------------------------------
+print("\n12. the dead curve track settings are removed")
+
+for name in ("playMode", "fillMode"):
+    check("CurveTrack no longer exposes %s" % name, not hasattr(track, name))
+check("CurveTrack.FillMode enum is gone", not hasattr(tsseq.CurveTrack, "FillMode"))
+
+path3 = os.path.join(tempfile.mkdtemp(), "v52.pro")
+track.range = VoltageRange.Unipolar3V
+p.save(path3, 52)
+v52 = tsseq.Project()
+v52.load(path3)
+check("a Version52 project still loads", v52.tracks[0].curveTrack.range == VoltageRange.Unipolar3V,
+      "got %s" % v52.tracks[0].curveTrack.range)
+track.range = VoltageRange.Unipolar5V
+os.remove(path3)
 
 
 # ---------------------------------------------------------------------------

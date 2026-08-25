@@ -18,8 +18,6 @@ A CV automation track. Instead of note+gate steps it outputs smoothly interpolat
 ## Data Model
 
 ### `CurveTrack` (track-level settings)
-- `_playMode` — `Types::PlayMode`
-- `_fillMode` — `FillMode` enum: None | Variation | NextPattern | Invert
 - `_muteMode` — what CV value to output when muted: LastValue | Zero (0V) | Min | Max
 - `_shapeCurve` — steepness of the exponential at the low end of SHPE: Gentle | Medium | Snappy (Version51, default Medium)
 - `_range` — output voltage range, **unipolar 0V..max** in 1V steps, 1V–5V (Version52, default 5V). Stored as `Types::VoltageRange` but clamped to the `Unipolar1V…Unipolar5V` entries; a bipolar value maps to the unipolar entry of the same voltage. `editRange` clamps as an `int` before converting — `VoltageRange` is `uint8_t` backed, so a negative would otherwise wrap to 255 and land on 5V.
@@ -115,7 +113,39 @@ identical.
    track's voltage `range` — **unipolar 0V…max**, so a segment idles at 0V.
 5. Apply `slideTime` slew if non-zero, then the track `offset`.
 6. Write the final CV value to `CvOutput` for this track's channel.
-7. No gate output — this track does not drive `GateOutput`.
+7. A short gate fires at each **segment boundary** — note this is unaffected by
+   mirroring, so a mirrored sharp-attack segment has its transient at the end of
+   the segment while the gate still marks the start.
+
+### Mirrored playback
+
+Travelling backwards plays each segment **mirrored**. The curve is a pure function
+of phase, so the time reverse is just `1 - phase` — every curve has a mirrored twin
+for free, with nothing extra stored:
+
+```cpp
+float phase = _sequenceState.direction() < 0 ? 1.f - fraction : fraction;
+```
+
+| Run mode | Behaviour |
+|---|---|
+| Forward | never mirrored |
+| Backward | always mirrored, including the wrap from first back round to last |
+| Pendulum | mirrored on the descending leg; the repeated endpoint plays forward once, then mirrored once |
+| PingPong | mirrored on the descending leg |
+| RandomWalk | mirrored whenever the walk steps back one |
+| Random | never mirrored — it jumps arbitrary distances, so there is no direction of travel |
+
+This relies on `SequenceState::direction()`, which until Version53 had **no callers
+at all** and was only half maintained: PingPong, Pendulum and RandomWalk tracked it,
+while Forward, Backward and Random never touched it, so Backward reported `+1` and a
+stale `-1` could survive a run-mode change. Both free and aligned advance now set it
+in every mode.
+
+`_segmentFraction` is assigned the *mirrored* phase, so the play scanline on the
+STEPS and Overview pages sweeps right-to-left when running backwards and sits on the
+point of the drawn curve actually reaching the jack. The drawn curve itself is never
+mirrored — it is the segment's definition, not a picture of the current traversal.
 
 **Output range.** The hardware ceiling is ±5V, not 10V: `Calibration::CvOutput`
 spans `MinVoltage = -5` to `MaxVoltage = 5` and `voltsToValue()` hard-clamps
@@ -144,7 +174,8 @@ Bipolar output is still reachable through the track `Offset` (±5.00V): Range
 
 ## Tests
 
-`src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — percent round trip,
+`src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — mirrored playback per run
+mode, percent round trip,
 1-unit-per-detent encoder behaviour, SHIFT coarse steps, multi-segment editing,
 skew endpoints, the exponential low end of SHPE (cusp, convexity, continuity
 across the midpoint), the Shape Curve setting on the DAC, and the

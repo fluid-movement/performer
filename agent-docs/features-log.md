@@ -10,6 +10,45 @@ For a full map of all pages, button combos, and held-button overlays, see [`agen
 
 ---
 
+## 2026-08-24 — Curve Track: mirrored playback when running backwards (Version53)
+
+With Backward, PingPong or Pendulum the curve track played its segments in reverse *order*, but each segment was still traversed left-to-right — so a sharp-attack envelope stayed a sharp-attack envelope on the way back and the sequence never actually sounded reversed.
+
+**The mirror is free.** The output is a pure function of a phase, so the time reverse is just `1 - phase`; every curve has a mirrored twin with nothing extra stored:
+
+```cpp
+float phase = _sequenceState.direction() < 0 ? 1.f - fraction : fraction;
+```
+
+| Run mode | Behaviour |
+|---|---|
+| Forward | never mirrored |
+| Backward | always mirrored, including the wrap from first back round to last |
+| Pendulum | mirrored on the descending leg; the repeated endpoint plays forward once then mirrored once |
+| PingPong | mirrored on the descending leg |
+| RandomWalk | mirrored whenever the walk steps back one |
+| Random | never mirrored — arbitrary jump distances, so no direction of travel |
+
+**The prerequisite was fixing `SequenceState::direction()`**, which had **no callers anywhere** and showed it: PingPong, Pendulum and RandomWalk maintained it, while Forward, Backward and Random never touched it. Since `reset()` sets it to 1, Backward reported `+1`, and a stale `-1` from Backward or a Pendulum descent would survive a run-mode change and mirror everything forever. Both `calculateNextStepFree` and `calculateNextStepAligned` now set it in every mode; the aligned Pendulum/PingPong branches derive it from `absoluteStep` the same way `_nextStep` is, instead of a toggle keyed off the previous step.
+
+A rule based on the raw step transition (`step == prevStep - 1`) was rejected: it breaks on Backward's wrap (a +n−1 jump in index terms that is still backwards travel, leaving one segment per cycle unmirrored) and on Pendulum's repeated endpoint (delta 0, so the transition cannot say which leg you are on).
+
+`_segmentFraction` is assigned the mirrored phase, so the play scanline sweeps **right-to-left** when reversed and stays on the point of the drawn curve actually reaching the jack. The drawn curve is never mirrored — it is the segment's definition.
+
+**Blast radius is narrow:** a symmetric curve (SKEW 50) mirrors to itself, so only skewed segments change at all. There is a test asserting exactly that.
+
+**Not changed:** the gate still fires at the segment boundary, so a mirrored sharp-attack segment has its transient at the *end* while the gate marks the start.
+
+**Also removed:** `playMode` and `fillMode` on `CurveTrack` — dead like the Version52 removals, since the engine always calls `advanceFree` and `_fillSequence` was assigned but never read. The CurveTrack-local `FillMode` enum goes with them; `Types::PlayMode` stays (Note/Stochastic use it). Read becomes `reader.skip<uint8_t>(0, Version53)` twice, with zeroed placeholders on write for older formats — note `CurveTrack::write` now needs two separate legacy flags, one per version boundary.
+
+**Also fixed:** `CurveSequence`'s `divisor` / `runMode` / `firstStep` / `lastStep` python properties were bound straight to setters carrying a defaulted `routed` argument that pybind does not honour, so assigning to them raised `TypeError` — same bug as the CurveTrack properties fixed in Version52. Now wrapped in lambdas.
+
+**Tests:** `curve_encoder_skew_test.py` grew to 94 checks — instant-edge counting per run mode (Forward all rises / Backward all falls / Pendulum and PingPong mixed), the stale-direction case, Random staying forward, symmetric curves being unaffected, and the removals.
+
+**Files changed:** `SequenceState.h/cpp`, `CurveTrackEngine.h/cpp`, `CurveTrack.h/cpp`, `ProjectVersion.h`, `CurveTrackListModel.h`, `python/project.cpp`.
+
+---
+
 ## 2026-08-24 — Curve Track: unipolar Range on the track, dead settings removed (Version52)
 
 **The output range was effectively invisible.** `CurveSequence::_range` existed and the engine used it, but the Sequence page shows only `Name` (`rows()` returns `ConfigPageRows` = 1) and `Range` is not in the STEPS quick-edit map — the only way to reach it was the Overview page's quick-edit overlay. Its default was `Bipolar5V`, so a curve segment idled at **−5V** and peaked at +5V, a poor fit for a V1 model that produces unipolar bumps by construction.

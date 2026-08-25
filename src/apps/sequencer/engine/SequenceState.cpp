@@ -55,6 +55,7 @@ if (_step == -1) {
 
         switch (runMode) {
         case Types::RunMode::Forward:
+            _direction = 1;
             if (_step >= lastStep) {
                 _nextStep = firstStep;
                 _nextIteration = _iteration + 1 ;
@@ -63,6 +64,8 @@ if (_step == -1) {
             }
             break;
         case Types::RunMode::Backward:
+            // the wrap from firstStep back round to lastStep is still backwards travel
+            _direction = -1;
             if (_step <= firstStep) {
                 _nextStep = lastStep;
                 _nextIteration = _iteration + 1 ;
@@ -87,6 +90,8 @@ if (_step == -1) {
             }
             break;
         case Types::RunMode::Random:
+            // random jumps by arbitrary distances, so there is no direction of travel
+            _direction = 1;
             _nextStep = randomStep(firstStep, lastStep, rng);
             break;
         case Types::RunMode::RandomWalk:
@@ -130,25 +135,16 @@ void SequenceState::calculateNextStepAligned(int absoluteStep, Types::RunMode ru
         _iteration = absoluteStep / (2 * stepCount);
         absoluteStep %= (2 * stepCount);
         _nextStep = (absoluteStep < stepCount) ? (firstStep + absoluteStep) : (lastStep - (absoluteStep - stepCount));
-        if (_direction > 0 && _step>= lastStep) {
-                _direction = -1;
-            } else if (_direction < 0 && _step <= firstStep) {
-                _direction = 1;
-                ++_nextIteration;
-            }
+        _direction = absoluteStep < stepCount ? 1 : -1;
         break;
     case Types::RunMode::PingPong:
         _iteration = absoluteStep / (2 * stepCount - 2);
         absoluteStep %= (2 * stepCount - 2);
         _nextStep = (absoluteStep < stepCount) ? (firstStep + absoluteStep) : (lastStep - (absoluteStep - stepCount) - 1);
-        if (_direction > 0 && _step>= lastStep) {
-                _direction = -1;
-            } else if (_direction < 0 && _step <= firstStep) {
-                _direction = 1;
-                ++_nextIteration;
-            }
+        _direction = absoluteStep < stepCount ? 1 : -1;
         break;
     case Types::RunMode::Random:
+        _direction = 1;
         _nextStep = firstStep + rng.nextRange(stepCount);
         break;
     case Types::RunMode::RandomWalk:

@@ -363,8 +363,6 @@ void register_project(py::module &m) {
 
     py::class_<CurveTrack> curveTrack(m, "CurveTrack");
     curveTrack
-        .def_property("playMode", &CurveTrack::playMode, &CurveTrack::setPlayMode)
-        .def_property("fillMode", &CurveTrack::fillMode, &CurveTrack::setFillMode)
         .def_property("muteMode", &CurveTrack::muteMode, &CurveTrack::setMuteMode)
         .def_property("shapeCurve", &CurveTrack::shapeCurve, &CurveTrack::setShapeCurve)
         .def_property("range", &CurveTrack::range, &CurveTrack::setRange)
@@ -381,14 +379,6 @@ void register_project(py::module &m) {
             return result;
         })
         .def("clear", &CurveTrack::clear)
-    ;
-
-    py::enum_<CurveTrack::FillMode>(curveTrack, "FillMode")
-        .value("None", CurveTrack::FillMode::None)
-        .value("Variation", CurveTrack::FillMode::Variation)
-        .value("NextPattern", CurveTrack::FillMode::NextPattern)
-        .value("Invert", CurveTrack::FillMode::Invert)
-        .export_values()
     ;
 
     py::enum_<CurveTrack::ShapeCurve>(curveTrack, "ShapeCurve")
@@ -651,11 +641,12 @@ void register_project(py::module &m) {
 
     py::class_<CurveSequence> curveSequence(m, "CurveSequence");
     curveSequence
-        .def_property("divisor", &CurveSequence::divisor, &CurveSequence::setDivisor)
+        // wrapped in lambdas: the routed defaulted argument is not visible to pybind
+        .def_property("divisor", &CurveSequence::divisor, [] (CurveSequence &s, int v) { s.setDivisor(v); })
         .def_property("resetMeasure", &CurveSequence::resetMeasure, &CurveSequence::setResetMeasure)
-        .def_property("runMode", &CurveSequence::runMode, &CurveSequence::setRunMode)
-        .def_property("firstStep", &CurveSequence::firstStep, &CurveSequence::setFirstStep)
-        .def_property("lastStep", &CurveSequence::lastStep, &CurveSequence::setLastStep)
+        .def_property("runMode", &CurveSequence::runMode, [] (CurveSequence &s, Types::RunMode v) { s.setRunMode(v); })
+        .def_property("firstStep", &CurveSequence::firstStep, [] (CurveSequence &s, int v) { s.setFirstStep(v); })
+        .def_property("lastStep", &CurveSequence::lastStep, [] (CurveSequence &s, int v) { s.setLastStep(v); })
         .def_property("segmentCount", &CurveSequence::segmentCount, &CurveSequence::setSegmentCount)
         .def_property_readonly("steps", [] (CurveSequence &curveSequence) {
             py::list result;

@@ -19,27 +19,6 @@ public:
 
     typedef std::array<CurveSequence, CONFIG_PATTERN_COUNT + CONFIG_SNAPSHOT_COUNT> CurveSequenceArray;
 
-    // FillMode
-
-    enum class FillMode : uint8_t {
-        None,
-        Variation,
-        NextPattern,
-        Invert,
-        Last
-    };
-
-    static const char *fillModeName(FillMode fillMode) {
-        switch (fillMode) {
-        case FillMode::None:        return "None";
-        case FillMode::Variation:   return "Variation";
-        case FillMode::NextPattern: return "Next Pattern";
-        case FillMode::Invert:      return "Invert";
-        case FillMode::Last:        break;
-        }
-        return nullptr;
-    }
-
     enum class MuteMode : uint8_t {
         LastValue,
         Zero,
@@ -91,36 +70,6 @@ public:
     //----------------------------------------
     // Properties
     //----------------------------------------
-
-    // playMode
-
-    Types::PlayMode playMode() const { return _playMode; }
-    void setPlayMode(Types::PlayMode playMode) {
-        _playMode = ModelUtils::clampedEnum(playMode);
-    }
-
-    void editPlayMode(int value, bool shift) {
-        setPlayMode(ModelUtils::adjustedEnum(playMode(), value));
-    }
-
-    void printPlayMode(StringBuilder &str) const {
-        str(Types::playModeName(playMode()));
-    }
-
-    // fillMode
-
-    FillMode fillMode() const { return _fillMode; }
-    void setFillMode(FillMode fillMode) {
-        _fillMode = ModelUtils::clampedEnum(fillMode);
-    }
-
-    void editFillMode(int value, bool shift) {
-        setFillMode(ModelUtils::adjustedEnum(fillMode(), value));
-    }
-
-    void printFillMode(StringBuilder &str) const {
-        str(fillModeName(fillMode()));
-    }
 
     // muteMode
 
@@ -289,8 +238,6 @@ private:
     }
 
     int8_t _trackIndex = -1;
-    Types::PlayMode _playMode;
-    FillMode _fillMode;
     MuteMode _muteMode;
     ShapeCurve _shapeCurve;
     Types::VoltageRange _range;

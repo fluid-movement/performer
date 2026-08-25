@@ -154,6 +154,9 @@ enum ProjectVersion {
     // min/max and shape/gate probability bias removed
     Version52 = 52,
 
+    // curve track: play mode and fill mode removed (never read by the V1 engine)
+    Version53 = 53,
+
     // automatically derive latest version
     Last,
     Latest = Last - 1,
