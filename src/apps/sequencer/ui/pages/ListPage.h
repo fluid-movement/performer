@@ -46,6 +46,11 @@ protected:
     // Right pane: the selected row blown up, with a preview when available.
     void drawDetailPanel(Canvas &canvas);
 
+    // Pages that implement their own F-key tabs (Layout, System, User Scale)
+    // call this when the pressed tab is already the active one, so the gesture
+    // matches the section tabs on Track/Project/Clock.
+    void advanceSelection();
+
     static constexpr int LineHeight = 7;
     static constexpr int LineCount = 6;
     static constexpr int ContentTop = 10;
@@ -68,7 +73,6 @@ private:
     int sectionRowAt(int index) const;
     int indexInSection(int row) const;
 
-    void advanceSelection();
     void moveSelection(int delta);
     void scrollTo(int index);
 

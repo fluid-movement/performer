@@ -64,7 +64,13 @@ void UserScalePage::keyPress(KeyPressEvent &event) {
 
     if (key.isFunction()) {
         if (key.function() < CONFIG_USER_SCALE_COUNT) {
-            setSelectedIndex(key.function());
+            if (key.function() == _selectedIndex) {
+                // Already on this scale -- walk the cursor rather than
+                // reloading it and snapping back to row 0.
+                advanceSelection();
+            } else {
+                setSelectedIndex(key.function());
+            }
         }
         event.consume();
     }

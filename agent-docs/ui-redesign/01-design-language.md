@@ -135,6 +135,9 @@ Content: track number / track type glyph / page context on the left; record/play
   - **F1-F5 jump between sections; pressing the tab you are already on walks the cursor down that
     section and wraps.** One finger does both jobs -- it is already on the button. Left/Right
     remain as an alternative.
+  - This applies wherever an F-key acts as a **tab** (a highlighted active state), including pages
+    that implement their own footer rather than declaring model sections: Layout, System, User
+    Scale. It does not apply where F-keys are **actions** (PREV/NEXT/INIT, CANCEL/OK).
   - Exception: single-column models (pickers, where the row *is* the value) move the cursor,
     because that *is* changing the value. `ListModel::columns()` is the discriminant.
 - **Encoder press is never a mode toggle.** It may be a one-way descent into a sub-page (name

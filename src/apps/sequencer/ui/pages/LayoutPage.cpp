@@ -47,7 +47,13 @@ void LayoutPage::keyPress(KeyPressEvent &event) {
                 }
             });
         }
-        setMode(Mode(key.function()));
+        if (key.function() == int(_mode)) {
+            // Already on this tab -- walk the cursor instead, matching the
+            // section tabs on the Track/Project/Clock pages.
+            advanceSelection();
+        } else {
+            setMode(Mode(key.function()));
+        }
         event.consume();
     }
 

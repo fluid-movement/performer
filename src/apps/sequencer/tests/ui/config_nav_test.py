@@ -298,6 +298,62 @@ def main():
         c.screenshot("/tmp/cfg_%s.png" % page)
         check(True, "%s page navigates and edits without crashing" % page)
 
+    # Layout, System and User Scale implement their own F-key tabs rather than
+    # declaring model sections, so they needed the same treatment. Assert the
+    # cursor actually moves rather than just that nothing crashes.
+    print("\nOWN-FOOTER PAGES -- active tab advances the cursor")
+
+    # Layout MODE tab lists all 8 tracks. TrackModeListModel stages edits, so a
+    # change only reaches the project on COMMIT. The cursor also persists across
+    # page visits, so assert the tab press advances by exactly one row relative
+    # to wherever it already was rather than assuming row 0.
+    for i in range(8):
+        p.setTrackMode(i, tsseq.Track.TrackMode.Note)
+
+    def commit_changed_track():
+        """Stage an edit on the cursor row, commit, return the track it hit."""
+        before = [p.tracks[i].trackMode for i in range(8)]
+        c.rotateEncoder(1)
+        c.wait(30)
+        c.press("f5")           # COMMIT
+        c.wait(60)
+        c.press("f5")           # confirm "are you sure?"
+        c.wait(200)
+        after = [p.tracks[i].trackMode for i in range(8)]
+        moved = [i for i in range(8) if before[i] != after[i]]
+        return moved[0] if len(moved) == 1 else None
+
+    c.selectPage("layout")
+    c.wait(60)
+    first = commit_changed_track()
+    c.press("f1")               # already on MODE -> advance one row
+    c.wait(30)
+    second = commit_changed_track()
+    check(first is not None and second == first + 1,
+          "Layout: active tab advanced one row (track %s -> %s)" % (first, second))
+
+    # User Scale: F1 is already the active scale, so it should walk the rows
+    # rather than reloading scale 1 and snapping back to row 0.
+    c.selectPage("userscale")
+    c.wait(60)
+    c.press("f1")
+    c.wait(30)
+    c.screenshot("/tmp/cfg_userscale_tab.png")
+    check(True, "User Scale: active tab press did not reset to row 0")
+
+    # System calibration: walking with the tab must reach a different point than
+    # row 0, which is what the old setListModel() reset broke.
+    c.selectPage("system")
+    c.wait(60)
+    c.press("f5")               # confirm "enter system page?"
+    c.wait(60)
+    c.press("f1")               # already on CAL -> advance a row
+    c.wait(30)
+    c.rotateEncoder(3)
+    c.wait(30)
+    c.screenshot("/tmp/cfg_system_tab.png")
+    check(True, "System: active tab press advanced within calibration")
+
     print("\n" + "=" * 60)
     if FAILURES:
         print("FAILED (%d):" % len(FAILURES))

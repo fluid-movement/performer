@@ -179,6 +179,10 @@ void SystemPage::keyPress(KeyPressEvent &event) {
             if (CalibrationEditFunction(key.function()) == CalibrationEditFunction::Auto) {
                 _settings.calibration().cvOutput(_project.selectedTrackIndex()).setUserDefined(selectedRow(), false);
             }
+        } else if (key.function() == int(_mode)) {
+            // Already on this tab -- walk the cursor. Without this, setMode()
+            // re-applied the list model and snapped the cursor back to row 0.
+            advanceSelection();
         } else {
             switch (Function(key.function())) {
             case Function::Calibration:
