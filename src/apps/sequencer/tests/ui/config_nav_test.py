@@ -301,6 +301,46 @@ def main():
     # Layout, System and User Scale implement their own F-key tabs rather than
     # declaring model sections, so they needed the same treatment. Assert the
     # cursor actually moves rather than just that nothing crashes.
+    # Left/Right have no on-screen label, so their LEDs are the only affordance
+    # telling you row navigation exists. Lit means "this will move you".
+    print("\nPREV/NEXT LEDS -- the only affordance for row navigation")
+    LEFT, RIGHT = 28, 29        # Key::Left / Key::Right in the 32-entry matrix
+
+    def leds():
+        l = e.simulator.targetState.led
+        return (l.get(LEFT)[1] > 0, l.get(RIGHT)[1] > 0)
+
+    p.setTrackMode(0, tsseq.Track.TrackMode.Note)
+    c.selectPage("track")
+    c.wait(60)
+    section(c, 1)               # TIME: 3 rows, cursor on the first
+    c.wait(60)
+    left_lit, right_lit = leds()
+    check(not left_lit and right_lit,
+          "at the first row only NEXT is lit (got prev=%s next=%s)" % (left_lit, right_lit))
+
+    c.press("next")
+    c.wait(60)
+    left_lit, right_lit = leds()
+    check(left_lit and right_lit, "mid-section both are lit")
+
+    c.press("next")
+    c.wait(60)
+    left_lit, right_lit = leds()
+    check(left_lit and not right_lit,
+          "at the last row only PREV is lit (got prev=%s next=%s)" % (left_lit, right_lit))
+
+    # Pages that override updateLeds must chain to the base or show nothing.
+    c.selectPage("routing")
+    c.wait(60)
+    check(any(leds()), "Routing (no override) lights the navigation LEDs")
+
+    c.selectPage("system")
+    c.wait(60)
+    c.press("f5")
+    c.wait(60)
+    check(any(leds()), "System (overrides updateLeds) still lights them")
+
     print("\nOWN-FOOTER PAGES -- active tab advances the cursor")
 
     # Layout MODE tab lists all 8 tracks. TrackModeListModel stages edits, so a

@@ -39,6 +39,7 @@ void FileSelectPage::draw(Canvas &canvas) {
 }
 
 void FileSelectPage::updateLeds(Leds &leds) {
+    ListPage::updateLeds(leds);
 }
 
 void FileSelectPage::keyPress(KeyPressEvent &event) {

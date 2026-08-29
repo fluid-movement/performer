@@ -34,6 +34,7 @@ void GeneratorSelectPage::draw(Canvas &canvas) {
 }
 
 void GeneratorSelectPage::updateLeds(Leds &leds) {
+    ListPage::updateLeds(leds);
 }
 
 void GeneratorSelectPage::keyPress(KeyPressEvent &event) {

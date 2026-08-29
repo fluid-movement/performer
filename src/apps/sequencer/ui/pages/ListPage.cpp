@@ -205,10 +205,20 @@ void ListPage::drawSectionFooter(Canvas &canvas) {
 }
 
 void ListPage::updateLeds(Leds &leds) {
-    // The function keys have no LEDs on this hardware -- the LED matrix covers
-    // the 8 track, 16 step and 8 global buttons only (indices 0..31, where
-    // Key::F0 is already 32). The active section is communicated by the
-    // inverted footer tab instead.
+    // Left/Right move the cursor, but nothing on screen says so. Lighting their
+    // LEDs is the only affordance these buttons get -- without it the row
+    // navigation is invisible until someone happens to press one.
+    //
+    // Lit means "this will move you": off at the ends of the section, which is
+    // honest because moveSelection() clamps rather than wraps.
+    int count = rowsInSection();
+    int index = indexInSection(_selectedRow);
+    leds.set(Key::Left, false, count > 0 && index > 0);
+    leds.set(Key::Right, false, count > 0 && index < count - 1);
+
+    // The function keys have no LEDs on this hardware -- the matrix covers the
+    // 8 track, 16 step and 8 global buttons only (indices 0..31, where Key::F0
+    // is already 32). The active section is shown by the inverted footer tab.
 }
 
 void ListPage::keyPress(KeyPressEvent &event) {

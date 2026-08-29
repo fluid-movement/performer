@@ -7,7 +7,7 @@
 **Config pages are modeless (2026-08-29).** All 15 `ListPage` subclasses: the encoder always edits
 the selected row and never navigates. F1-F5 jump between sections on Track/Project/Clock, and
 **pressing the active tab again walks the cursor down that section and wraps** — the finger is
-already there. Left/Right still move the cursor. `Font::Tiny` at 7px gives 6 visible rows instead
+already there. Left/Right still move the cursor, and their LEDs light when they will. `Font::Tiny` at 7px gives 6 visible rows instead
 of 4. The right 76px is a detail pane showing a **drawing of what the selected parameter does**
 (slide ramp, pulse train, swung grid, keyboard) or its value large. All 88 row labels shortened to
 ≤8 chars. UI only, no version bump.

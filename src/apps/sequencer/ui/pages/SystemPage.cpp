@@ -116,6 +116,7 @@ void SystemPage::draw(Canvas &canvas) {
 }
 
 void SystemPage::updateLeds(Leds &leds) {
+    ListPage::updateLeds(leds);
     int selectedTrack = _project.selectedTrackIndex();
 
     for (int track = 0; track < 8; ++track) {

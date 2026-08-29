@@ -184,6 +184,10 @@ The 32 bi-color LEDs are designed alongside the screen. Every variation must spe
 | Blinking green | Recording |
 | Blinking red | Waiting for external sync |
 
+**Config pages** light the LEFT/RIGHT LEDs (`Key::Left`/`Key::Right`, matrix indices 28/29) green
+when that button will move the cursor, off at the ends of the section. These buttons carry no
+on-screen label, so their LEDs are the only affordance saying row navigation exists.
+
 > **The 5 function keys have no LEDs.** The matrix is 32 entries (8 track + 16 step + 8 global);
 > `Key::F0` is already index 32, so writing an F-key LED is out of bounds. F-key state must be
 > communicated on screen (inverted footer tab), never by an LED.
