@@ -4,7 +4,12 @@
 
 **Note V2, Stochastic V2, Arp V2, and Quantizer V2 C++ all shipped.** Note (Version54): 5 tabs (GATE/RETRIG/REPEAT/NOTE/COND), ratio-based step length, gate length as a real percentage, Metropolix repeats, arp retrigger, and a bounded 303-style slide that actually arrives. Stochastic (Version45): SIG-inspired 7-degree probability bars, OCT/LEN/LOOP tabs, Turing Machine loop mutation. Arp (Version46): euclidean + note-pool model, 4 tabs (NOTE/RHYTHM/MOD/ARP), UP/DOWN/UP-DN/DN-UP/RAND arp orders. Quantizer (Version47/48): 5 tabs (GATE/SRCE/TRIG/TUNE/LOOP), unified 13-position trigger source scroll, CvGate trigger mode, loop record/playback, always-on sequence clock.
 
-Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD1322 column coupling) remains an open visual issue.
+**Config pages are modeless (2026-08-29).** All 15 `ListPage` subclasses: the encoder always edits
+the selected row and never navigates, Left/Right move the cursor, F1-F5 jump between sections on
+Track/Project/Clock. `Font::Tiny` at 7px gives 6 visible rows instead of 4. UI only, no version bump.
+
+Next: **UI redesign** — MidiCv track, then live parameter previews on config pages. Stochastic
+hardware bar ghosting (SSD1322 column coupling) remains an open visual issue.
 
 ## Active TODOs
 
@@ -16,6 +21,13 @@ Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD132
 - [ ] G7 — Continue UI redesign: MidiCv (Note, Curve, Stochastic, Arp, Quantizer done)
 - [ ] Note — `MidiCvTrackEngine` still uses the old unbounded `Slide::applySlide` for its legato-detected portamento; consider moving it to `Slide::Ramp` too
 - [ ] Note — Arp/Stochastic `slideTime` remains dead (both engines hard-code `slide = false` on every CV push); either wire the flag or remove the setting
+- [ ] Config pages — **live parameter previews** (deliberate second pass): draw what a parameter
+      *does* in the space right of the values — slide ramp, divisor pulse train, swung beat grid,
+      scale on a keyboard. `evalSegment` and the probability-bar painters already exist to draw with.
+- [ ] Config pages — row labels still exceed the 6-char rule (`ARPEGGIATOR`, `GATE LENGTH`). They
+      come from each model's `itemName()`; renaming was out of scope for the interaction pass.
+- [ ] Config pages — no long-press primitive exists, so Metropolix-style long-press-to-reset-default
+      is not yet possible. Only `SystemPage` hand-rolls one by polling ticks in `draw()`.
 - [ ] Iterate — Run tastemaker iterations with consolidate cadence against each trunk
 
 ## Decisions made (Arp track V2) — DONE, C++ SHIPPED
@@ -163,3 +175,6 @@ Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD132
 | Note UI page | `src/apps/sequencer/ui/pages/NoteSequenceEditPage.cpp` |
 | Slide ramp + shapes | `src/apps/sequencer/engine/Slide.h` |
 | Note engine tests | `src/apps/sequencer/tests/ui/note_v2_test.py` |
+| **Modeless config list page** | `src/apps/sequencer/ui/pages/ListPage.cpp` |
+| Config section definitions | `src/apps/sequencer/ui/model/*ListModel.h` (`sections`/`rowSection`) |
+| Config nav tests | `src/apps/sequencer/tests/ui/config_nav_test.py` |

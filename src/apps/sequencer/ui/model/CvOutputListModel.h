@@ -42,7 +42,6 @@ public:
         }
     }
 
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
     
 private:
     Project &_project;

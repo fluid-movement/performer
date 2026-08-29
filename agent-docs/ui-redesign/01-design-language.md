@@ -130,10 +130,18 @@ Content: track number / track type glyph / page context on the left; record/play
 
 ## Encoder
 
-- **Encoder press does not exist.** No interaction requires it.
-- **Value change: hold any button + rotate encoder.** The held button selects what changes.
+- **The encoder never navigates on config pages.** Every turn changes a value. There is no edit
+  mode. Cursor movement is Left/Right; F1-F5 jump between sections. (Shipped 2026-08-29.)
+  - Exception: single-column models (pickers, where the row *is* the value) move the cursor,
+    because that *is* changing the value. `ListModel::columns()` is the discriminant.
+- **Encoder press is never a mode toggle.** It may be a one-way descent into a sub-page (name
+  entry, picker confirm) -- a mode you can see, because the screen changed.
+- **On grid pages, value change is: hold the target button + rotate encoder.** The held button
+  selects what changes. This suits pages with a spatial button-to-target mapping (steps). It is
+  *not* used on config pages: hunting for the right button in the 3x8 field to reach a named
+  setting is fiddlier than walking a list with Left/Right.
 - **Idle rotate (no button held):**
-  - List/config pages (Track Config, Settings): scrolls cursor up/down.
+  - Config pages: edits the selected row (see above).
   - Grid pages (Track Edit, Dashboard): no-op unless the current page defines a clear "most important single value" (e.g., selected step's note value on Note track). If ambiguous — no-op.
 
 ---
@@ -170,13 +178,16 @@ The 32 bi-color LEDs are designed alongside the screen. Every variation must spe
 | Blinking green | Recording |
 | Blinking red | Waiting for external sync |
 
+> **The 5 function keys have no LEDs.** The matrix is 32 entries (8 track + 16 step + 8 global);
+> `Key::F0` is already index 32, so writing an F-key LED is out of bounds. F-key state must be
+> communicated on screen (inverted footer tab), never by an LED.
+
 **Per-button LED assignments (defaults, pages may override):**
 
 | Button group | Default LED meaning |
 |---|---|
 | Track 0–7 | Green = active/selected track. Red = muted. Off = present but not focused. |
 | Step 0–15 | Depends on page. On Track Edit gate layer: green = gate on. On Perform: current pattern green, queued pattern amber. |
-| F0–F4 | Green = active tab. Off = inactive tab. Red = destructive action available. |
 | Play | Green (playing), blinking green (recording), off (stopped) |
 | Pattern / Performer | Green when the corresponding page is open non-modally |
 | Page | Off normally; lights during Page-hold to show navigation slots |

@@ -90,7 +90,6 @@ public:
         }
     }
 
-    void setSelectedScale(int /*defaultScale*/, bool /*force*/ = false) override {}
 
 private:
     static const char *itemName(Item item) {

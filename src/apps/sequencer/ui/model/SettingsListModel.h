@@ -40,7 +40,6 @@ public:
         }
     }
 
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
 
     void setIsLaunchopad(bool value) {
         _isLaunchpad = value;

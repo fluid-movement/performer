@@ -476,15 +476,16 @@ check("bipolar 1V clamps to unipolar 1V", track.range == VoltageRange.Unipolar1V
 
 # and the encoder stops at both ends
 c.selectPage("track"); c.wait(60)
-# Track page rows: Name, Mute Mode, Shape Curve, Range, ...
-c.rotateEncoder(3); c.wait(60)          # select the Range row
-c.pressEncoder(); c.wait(60)            # enter edit
+# Config pages are modeless now: the encoder always edits the selected row, so
+# there is no click-to-arm. F2 selects the SHPE section (Shape Curve, Range,
+# Offset) and Right steps to Range.
+c.press("f2"); c.wait(60)
+c.press("next"); c.wait(60)
 track.range = VoltageRange.Unipolar1V
 c.rotateEncoder(-3); c.wait(60)
 check("Range stops at 1V", track.range == VoltageRange.Unipolar1V, "got %s" % track.range)
 c.rotateEncoder(9); c.wait(60)
 check("Range stops at 5V", track.range == VoltageRange.Unipolar5V, "got %s" % track.range)
-c.pressEncoder(); c.wait(60)
 c.selectPage("steps"); c.wait(60)
 
 

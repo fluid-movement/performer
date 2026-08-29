@@ -41,7 +41,7 @@ void ProjectPage::exit() {
 void ProjectPage::draw(Canvas &canvas) {
     WindowPainter::clear(canvas);
     WindowPainter::drawHeader(canvas, _model, _engine, "PROJECT");
-    WindowPainter::drawFooter(canvas);
+    drawSectionFooter(canvas);
 
     ListPage::draw(canvas);
 }
@@ -81,13 +81,6 @@ void ProjectPage::keyPress(KeyPressEvent &event) {
         });
 
         return;
-    }
-
-    if (key.isEncoder()) {
-        auto row = ListPage::selectedRow();
-        if (row == ProjectListModel::Scale) {
-            _listModel.setSelectedScale();
-        }
     }
 
     ListPage::keyPress(event);

@@ -67,7 +67,6 @@ public:
         }
     }
     
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
     
 private:
     std::array<Track::TrackMode, CONFIG_TRACK_COUNT> _trackModes;

@@ -75,7 +75,7 @@ void SystemPage::draw(Canvas &canvas) {
     case Mode::Calibration: {
         FixedStringBuilder<8> str("CAL CV%d", _outputIndex + 1);
         WindowPainter::drawActiveFunction(canvas, str);
-        if (edit()) {
+        if (calibrationRowUserDefined()) {
             WindowPainter::drawFooter(canvas, calibrationEditFunctionNames, pageKeyState());
         } else {
             WindowPainter::drawFooter(canvas, functionNames, pageKeyState(), int(_mode));
@@ -175,10 +175,9 @@ void SystemPage::keyPress(KeyPressEvent &event) {
     }
 
     if (key.isFunction()) {
-        if (_mode == Mode::Calibration && edit()) {
+        if (_mode == Mode::Calibration && calibrationRowUserDefined()) {
             if (CalibrationEditFunction(key.function()) == CalibrationEditFunction::Auto) {
                 _settings.calibration().cvOutput(_project.selectedTrackIndex()).setUserDefined(selectedRow(), false);
-                setEdit(false);
             }
         } else {
             switch (Function(key.function())) {
@@ -203,7 +202,7 @@ void SystemPage::keyPress(KeyPressEvent &event) {
         if (key.isTrack()) {
             setOutputIndex(key.track());
         }
-        if (!edit() && key.isEncoder()) {
+        if (!calibrationRowUserDefined() && key.isEncoder()) {
             _settings.calibration().cvOutput(_project.selectedTrackIndex()).setUserDefined(selectedRow(), true);
         }
         ListPage::keyPress(event);
@@ -284,6 +283,10 @@ void SystemPage::executeUtilityItem(UtilitiesListModel::Item item) {
     case UtilitiesListModel::Last:
         break;
     }
+}
+
+bool SystemPage::calibrationRowUserDefined() const {
+    return _settings.calibration().cvOutput(_project.selectedTrackIndex()).userDefined(selectedRow());
 }
 
 void SystemPage::contextShow(bool doubleClick) {

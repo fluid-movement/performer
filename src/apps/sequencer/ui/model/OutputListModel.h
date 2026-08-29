@@ -172,7 +172,6 @@ private:
         }
     }
 
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
 
     MidiOutput::Output &_output;
 };

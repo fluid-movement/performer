@@ -37,6 +37,7 @@ private:
 
     void executeUtilityItem(UtilitiesListModel::Item item);
 
+    bool calibrationRowUserDefined() const;
     void contextShow(bool doubleClick = false);
     void contextAction(int index);
     bool contextActionEnabled(int index) const;

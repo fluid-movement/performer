@@ -58,13 +58,11 @@ void MidiOutputPage::keyPress(KeyPressEvent &event) {
         case Function::Init:
             _editOutput.clear();
             setSelectedRow(0);
-            setEdit(false);
             break;
         case Function::Commit:
             bool showCommit = *_output != _editOutput;
             if (showCommit) {
                 *_output = _editOutput;
-                setEdit(false);
                 showMessage("OUTPUT CHANGED");
             }
             break;
@@ -76,7 +74,7 @@ void MidiOutputPage::keyPress(KeyPressEvent &event) {
 }
 
 void MidiOutputPage::encoder(EncoderEvent &event) {
-    if (!edit() && pageKeyState()[Key::Shift]) {
+    if (pageKeyState()[Key::Shift]) {
         selectOutput(_outputIndex + event.value());
         event.consume();
         return;
@@ -91,7 +89,6 @@ void MidiOutputPage::showOutput(int outputIndex) {
     _editOutput = *_output;
 
     setSelectedRow(0);
-    setEdit(false);
 }
 
 void MidiOutputPage::selectOutput(int outputIndex) {

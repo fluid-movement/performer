@@ -11,9 +11,6 @@ public:
     ProjectListModel(Project &project) :
         _project(project)
     {
-        for (int i = 0; i < 23; ++i) {
-            _scales[i] = i;
-        }
     }
 
     virtual int rows() const override {
@@ -22,6 +19,54 @@ public:
 
     virtual int columns() const override {
         return 2;
+    }
+
+    virtual int sections() const override {
+        return 5;
+    }
+
+    virtual void sectionName(int section, StringBuilder &str) const override {
+        static const char *names[] = { "PROJ", "SCALE", "MIDI", "REC", "CV" };
+        str(names[section]);
+    }
+
+    virtual int rowSection(int row) const override {
+        switch (Item(row)) {
+        case Name:
+            return 0;
+        case Swing:
+            return 0;
+        case TimeSignature:
+            return 0;
+        case SyncMeasure:
+            return 0;
+        case Scale:
+            return 1;
+        case RootNote:
+            return 1;
+        case MidiInput:
+            return 2;
+        case MidiIntegrationMode:
+            return 2;
+        case MidiProgramOffset:
+            return 2;
+        case MonitorMode:
+            return 3;
+        case RecordMode:
+            return 3;
+        case RecordDelay:
+            return 3;
+        case StepsToStop:
+            return 3;
+        case CvGateInput:
+            return 4;
+        case ResetCvOnStop:
+            return 4;
+        case MultiCvRec:
+            return 4;
+        default:
+            return 0;
+        }
     }
 
     virtual void cell(int row, int column, StringBuilder &str) const override {
@@ -45,13 +90,6 @@ public:
         default:
             return Routing::Target::None;
         }
-    }
-
-    void setSelectedScale() {
-        if (_editScale) {
-            _project.editScale(_scales[_selectedScale], false);
-        }
-        _editScale = !_editScale;
     }
 
     void initScale() {
@@ -125,10 +163,8 @@ public:
         case SyncMeasure:
             _project.printSyncMeasure(str);
             break;
-        case Scale: {
-            auto name = _scales[_selectedScale] < 0 ? "Default" : Scale::name(_scales[_selectedScale]);
-            str(name);
-            }
+        case Scale:
+            _project.printScale(str);
             break;
         case RootNote:
             _project.printRootNote(str);
@@ -185,7 +221,10 @@ public:
             _project.editSyncMeasure(value, shift);
             break;
         case Scale:
-            _selectedScale = clamp(_selectedScale + value, 0, 23);
+            // Clamp against the real scale count; the old bound of 23 ran one
+            // past the end of the 23-entry table.
+            _selectedScale = clamp(_selectedScale + value, 0, Scale::Count - 1);
+            _project.setScale(_selectedScale);
             break;
         case RootNote:
             _project.editRootNote(value, shift);
@@ -229,11 +268,8 @@ public:
     
     }
 
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
     
     Project &_project;
     private:
-        std::array<int, 23> _scales;
         int _selectedScale = 0;
-        bool _editScale = false;
 };

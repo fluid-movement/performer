@@ -39,7 +39,6 @@ void LayoutPage::keyPress(KeyPressEvent &event) {
         if (key.function() == 4 && _mode == Mode::TrackMode && !_trackModeListModel.sameAsProject(_project)) {
             _manager.pages().confirmation.show("ARE YOU SURE?", [this] (bool result) {
                 if (result) {
-                    setEdit(false);
                     // we are about to change track engines -> lock the engine to avoid inconsistent state
                     _engine.lock();
                     _trackModeListModel.toProject(_project);

@@ -30,7 +30,6 @@ public:
     }
 
 
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
 
 private:
     void formatName(int row, StringBuilder &str) const {

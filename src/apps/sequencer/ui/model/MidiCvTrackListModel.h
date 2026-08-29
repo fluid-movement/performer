@@ -20,6 +20,58 @@ public:
         return 2;
     }
 
+    virtual int sections() const override {
+        return 4;
+    }
+
+    virtual void sectionName(int section, StringBuilder &str) const override {
+        static const char *names[] = { "PORT", "VOIC", "MOD", "ARP" };
+        str(names[section]);
+    }
+
+    virtual int rowSection(int row) const override {
+        switch (Item(row)) {
+        case TrackName:
+            return 0;
+        case Source:
+            return 0;
+        case Voices:
+            return 1;
+        case VoiceConfig:
+            return 1;
+        case NotePriority:
+            return 1;
+        case LowNote:
+            return 1;
+        case HighNote:
+            return 1;
+        case PitchBendRange:
+            return 2;
+        case ModulationRange:
+            return 2;
+        case Retrigger:
+            return 2;
+        case SlideTime:
+            return 2;
+        case Transpose:
+            return 2;
+        case ArpeggiatorEnabled:
+            return 3;
+        case ArpeggiatorHold:
+            return 3;
+        case ArpeggiatorMode:
+            return 3;
+        case ArpeggiatorDivisor:
+            return 3;
+        case ArpeggiatorGateLength:
+            return 3;
+        case ArpeggiatorOctaves:
+            return 3;
+        default:
+            return 0;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -222,7 +274,6 @@ private:
         }
     }
 
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
     
     MidiCvTrack *_track;
 };

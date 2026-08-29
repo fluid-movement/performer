@@ -88,7 +88,6 @@ void UserScalePage::setSelectedIndex(int index) {
     _listModel.setUserScale(*_userScale);
 
     setSelectedRow(0);
-    setEdit(false);
 }
 
 void UserScalePage::contextShow(bool doubleClick) {

@@ -47,6 +47,56 @@ public:
         return 2;
     }
 
+    virtual int sections() const override {
+        return 5;
+    }
+
+    virtual void sectionName(int section, StringBuilder &str) const override {
+        static const char *names[] = { "TYPE", "TIME", "TUNE", "BIAS", "ARP" };
+        str(names[section]);
+    }
+
+    virtual int rowSection(int row) const override {
+        switch (Item(row)) {
+        case TrackName:
+            return 0;
+        case FillMode:
+            return 0;
+        case FillMuted:
+            return 0;
+        case CvUpdateMode:
+            return 0;
+        case PatternFollow:
+            return 0;
+        case SlideTime:
+            return 1;
+        case Octave:
+            return 2;
+        case Transpose:
+            return 2;
+        case GateProbabilityBias:
+            return 3;
+        case RetriggerProbabilityBias:
+            return 3;
+        case LengthBias:
+            return 3;
+        case NoteProbabilityBias:
+            return 3;
+        case ArpeggiatorMode:
+            return 4;
+        case ArpeggiatorHold:
+            return 4;
+        case ArpeggiatorOctaves:
+            return 4;
+        case ArpeggiatorGateLength:
+            return 4;
+        case ArpeggiatorDivisor:
+            return 4;
+        default:
+            return 0;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -229,7 +279,6 @@ private:
         }
     }
 
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
 
     ArpTrack *_track;
 

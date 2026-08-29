@@ -20,6 +20,40 @@ public:
         return 2;
     }
 
+    virtual int sections() const override {
+        return 4;
+    }
+
+    virtual void sectionName(int section, StringBuilder &str) const override {
+        static const char *names[] = { "TYPE", "SHPE", "TIME", "CV" };
+        str(names[section]);
+    }
+
+    virtual int rowSection(int row) const override {
+        switch (Item(row)) {
+        case TrackName:
+            return 0;
+        case MuteMode:
+            return 0;
+        case PatternFollow:
+            return 0;
+        case ShapeCurve:
+            return 1;
+        case Range:
+            return 1;
+        case Offset:
+            return 1;
+        case SlideTime:
+            return 2;
+        case Rotate:
+            return 2;
+        case CurveCvInput:
+            return 3;
+        default:
+            return 0;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -148,7 +182,6 @@ private:
         }
     }
 
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
 
     CurveTrack *_track;
 };

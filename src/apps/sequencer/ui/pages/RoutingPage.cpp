@@ -53,7 +53,9 @@ void RoutingPage::draw(Canvas &canvas) {
 void RoutingPage::keyPress(KeyPressEvent &event) {
     const auto &key = event.key();
     
-    if (edit() && selectedRow() == int(RouteListModel::Item::Tracks) && key.isTrack()) {
+    // Track buttons have no other job on this page, so route membership toggles
+    // whenever the Tracks row is selected -- no edit mode needed.
+    if (selectedRow() == int(RouteListModel::Item::Tracks) && key.isTrack()) {
         _editRoute.toggleTrack(key.track());
         event.consume();
         return;
@@ -71,7 +73,6 @@ void RoutingPage::keyPress(KeyPressEvent &event) {
             _engine.midiLearn().stop();
             _editRoute.clear();
             setSelectedRow(0);
-            setEdit(false);
             break;
         case Function::Learn:
             if (_engine.midiLearn().isActive()) {
@@ -93,7 +94,6 @@ void RoutingPage::keyPress(KeyPressEvent &event) {
                     showMessage(FixedStringBuilder<64>("ROUTE SETTINGS CONFLICT WITH ROUTE %d", conflict + 1));
                 } else {
                     *_route = _editRoute;
-                    setEdit(false);
                     showMessage("ROUTE CHANGED");
                 }
             }
@@ -106,7 +106,7 @@ void RoutingPage::keyPress(KeyPressEvent &event) {
 }
 
 void RoutingPage::encoder(EncoderEvent &event) {
-    if (!edit() && pageKeyState()[Key::Shift]) {
+    if (pageKeyState()[Key::Shift]) {
         selectRoute(_routeIndex + event.value());
         event.consume();
         return;
@@ -121,7 +121,6 @@ void RoutingPage::showRoute(int routeIndex, const Routing::Route *initialValue) 
     _editRoute = *(initialValue ? initialValue : _route);
 
     setSelectedRow(0);
-    setEdit(false);
 }
 
 void RoutingPage::drawCell(Canvas &canvas, int row, int column, int x, int y, int w, int h) {
@@ -131,13 +130,16 @@ void RoutingPage::drawCell(Canvas &canvas, int row, int column, int x, int y, in
     ) {
         canvas.setFont(Font::Tiny);
         canvas.setBlendMode(BlendMode::Set);
-        canvas.setColor(edit() && row == selectedRow() ? Color::Bright : Color::Medium);
+        canvas.setBlendMode(row == selectedRow() ? BlendMode::Sub : BlendMode::Set);
+        canvas.setColor(row == selectedRow() ? Color::Bright : Color::MediumLow);
 
+        // Sized for the 7px list row -- the previous 8px boxes overflowed into
+        // the row below once the line height came down.
         uint8_t tracks = _editRoute.tracks();
         for (int i = 0; i < CONFIG_TRACK_COUNT; ++i) {
-            canvas.drawRect(x + i * 10, y + 1, 8, 8);
+            canvas.drawRect(x + i * 8, y, 6, 6);
             if (tracks & (1 << i)) {
-                canvas.fillRect(x + 2 + i * 10, y + 3, 4, 4);
+                canvas.fillRect(x + 2 + i * 8, y + 2, 2, 2);
             }
         }
     } else {
@@ -183,7 +185,6 @@ void RoutingPage::assignMidiLearn(const MidiLearn::Result &result) {
 
     setSelectedRow(int(RouteListModel::MidiSource));
     setTopRow(int(RouteListModel::MidiSource));
-    setEdit(false);
 }
 
 void RoutingPage::functionShortcuts(KeyPressEvent event) {

@@ -33,10 +33,15 @@ public:
 
     virtual void edit(int row, int column, int value, bool shift) override {
         if (column == 1) {
+            // Turning the encoder takes ownership of the point. Without this the
+            // edit is discarded on the next update(), which interpolates every
+            // non-user-defined item from its neighbours.
+            if (!_cvOutput->userDefined(row)) {
+                _cvOutput->setUserDefined(row, true);
+            }
             _cvOutput->editItem(row, value, shift);
         }
     }
-    virtual void setSelectedScale(int defaultScale, bool force = false) override {};
 
 private:
     Calibration::CvOutput *_cvOutput;
