@@ -37,7 +37,6 @@ private:
     int activeFunctionKey() override;
 
     void updateMonitorStep();
-    void drawDetail(Canvas &canvas, const NoteSequence::Step &step);
 
     const ContextMenuModel::Item *contextItems() const override;
     int contextActionCount() const override;
@@ -63,8 +62,6 @@ private:
     NoteSequence::Layer layer() const { return _project.selectedNoteSequenceLayer(); };
     void setLayer(NoteSequence::Layer layer) { _project.setSelectedNoteSequenceLayer(layer); }
 
-    bool _showDetail;
-    uint32_t _showDetailTicks;
 
     KeyPressEventTracker _keyPressEventTracker;
 

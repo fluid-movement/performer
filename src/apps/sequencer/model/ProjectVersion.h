@@ -157,6 +157,12 @@ enum ProjectVersion {
     // curve track: play mode and fill mode removed (never read by the V1 engine)
     Version53 = 53,
 
+    // note track: V2 rework -- step length ratio, gate length percent, repeat,
+    // arp retrigger and retrigger condition replace probability/variation/gate
+    // offset/stage repeat mode/bypass scale; play mode and cv update mode removed;
+    // slide reworked into a bounded ramp with a type and a millisecond time
+    Version54 = 54,
+
     // automatically derive latest version
     Last,
     Latest = Last - 1,

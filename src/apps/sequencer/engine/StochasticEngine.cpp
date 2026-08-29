@@ -84,7 +84,7 @@ void StochasticEngine::reset() {
     _prevCondition = false;
     _activity = false;
     _gateOutput = false;
-    _slideActive = false;
+    _slideRamp.reset();
     _loopPhaseOffset = 0;
     _lastSeqLen = 0;
     if (_model.project().resetCvOnStop()) {
@@ -169,9 +169,10 @@ TrackEngine::TickResult StochasticEngine::tick(uint32_t tick) {
 
     drainGateQueue(tick, _gateQueue, _activity, _gateOutput,
         _monitorOverrideActive, mute(), fill(), midiOutputEngine, _track.trackIndex(), result);
-    drainCvQueue(tick, _cvQueue, _cvOutputTarget, _slideActive,
+    drainCvQueue(tick, _cvQueue, _cvOutputTarget, _cvOutput, _slideRamp,
         _monitorOverrideActive, mute(),
         _stochasticTrack.cvUpdateMode() == StochasticTrack::CvUpdateMode::Always,
+        _stochasticTrack.slideTime() * 0.005f,
         midiOutputEngine, _track.trackIndex(), result);
 
     return result;
@@ -217,7 +218,7 @@ void StochasticEngine::update(float dt) {
         clearOverride();
     }
 
-    applySlideUpdate(_cvOutput, _cvOutputTarget, _slideActive, _stochasticTrack.slideTime(), dt);
+    applySlideUpdate(_cvOutput, _cvOutputTarget, _slideRamp, Types::SlideType::Exponential, dt);
 }
 
 void StochasticEngine::changePattern() {

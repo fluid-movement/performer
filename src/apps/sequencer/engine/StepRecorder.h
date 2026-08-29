@@ -34,7 +34,7 @@ public:
             // record to step
             auto &step = sequence.step(_stepIndex);
             step.setGate(true);
-            step.setLength(NoteSequence::Length::Max / 2);
+            step.setGateLength(50);
             step.setNote(noteFromMidiNote(message.note()));
 
             // remember last edited step
@@ -59,7 +59,7 @@ public:
         } else if (message.isControlChange() && message.controlNumber() == 1) {
             // tag tie
             if (_pressedStepIndex != -1) {
-                sequence.step(_pressedStepIndex).setLength(NoteSequence::Length::Max);
+                sequence.step(_pressedStepIndex).setGateLength(100);
             }
         }
     }

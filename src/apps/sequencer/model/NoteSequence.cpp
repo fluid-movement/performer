@@ -9,35 +9,28 @@
 #include <cstdint>
 
 Types::LayerRange NoteSequence::layerRange(Layer layer) {
-    #define CASE(_layer_) \
-    case Layer::_layer_: \
-        return { _layer_::Min, _layer_::Max };
-
     switch (layer) {
     case Layer::Gate:
-        return { 0, 1 };
     case Layer::Slide:
         return { 0, 1 };
-    case Layer::BypassScale:
-        return {0 ,1 };
-    CASE(GateOffset)
-    CASE(GateProbability)
-    CASE(Retrigger)
-    CASE(RetriggerProbability)
-    CASE(Length)
-    CASE(LengthVariationRange)
-    CASE(LengthVariationProbability)
-    CASE(Note)
-    CASE(NoteVariationRange)
-    CASE(NoteVariationProbability)
-    CASE(Condition)
-    CASE(StageRepeats)
-    CASE(StageRepeatsMode)
+    case Layer::StepLength:
+        return { 0, StepLengthCount - 1 };
+    case Layer::GateLength:
+        return { 1, 100 };
+    case Layer::Retrigger:
+        return { 1, Retrigger::Max + 1 };
+    case Layer::Repeat:
+        return { 1, Repeat::Max + 1 };
+    case Layer::ArpRetrigger:
+        return { ArpRetrigger::Min, ArpRetrigger::Max };
+    case Layer::Note:
+        return { Note::Min, Note::Max };
+    case Layer::Condition:
+    case Layer::RetriggerCondition:
+        return { 0, int(Types::Condition::Last) - 1 };
     case Layer::Last:
         break;
     }
-
-    #undef CASE
 
     return { 0, 0 };
 }
@@ -47,40 +40,17 @@ int NoteSequence::layerDefaultValue(Layer layer)
     NoteSequence::Step step;
 
     switch (layer) {
-    case Layer::Gate:
-        return step.gate();
-    case Layer::GateProbability:
-        return step.gateProbability();
-    case Layer::GateOffset:
-        return step.gateOffset();
-    case Layer::Slide:
-        return step.slide();
-    case Layer::BypassScale:
-        return step.bypassScale();
-    case Layer::Retrigger:
-        return step.retrigger();
-    case Layer::RetriggerProbability:
-        return step.retriggerProbability();
-    case Layer::Length:
-        return step.length();
-    case Layer::LengthVariationRange:
-        return step.lengthVariationRange();
-    case Layer::LengthVariationProbability:
-        return step.lengthVariationProbability();
-    case Layer::Note:
-        return step.note();
-    case Layer::NoteVariationRange:
-        return step.noteVariationRange();
-    case Layer::NoteVariationProbability:
-        return step.noteVariationProbability();
-    case Layer::Condition:
-        return int(step.condition());
-    case Layer::StageRepeats:
-        return step.stageRepeats();
-    case Layer::StageRepeatsMode:
-        return step.stageRepeatMode();
-    case Layer::Last:
-        break;
+    case Layer::Gate:               return step.gate();
+    case Layer::Slide:              return step.slide();
+    case Layer::StepLength:         return step.stepLength();
+    case Layer::GateLength:         return step.gateLength();
+    case Layer::Retrigger:          return step.retrigger();
+    case Layer::ArpRetrigger:       return step.arpRetrigger();
+    case Layer::Repeat:             return step.repeat();
+    case Layer::Note:               return step.note();
+    case Layer::Condition:          return int(step.condition());
+    case Layer::RetriggerCondition: return int(step.retriggerCondition());
+    case Layer::Last:               break;
     }
 
     return 0;
@@ -88,40 +58,17 @@ int NoteSequence::layerDefaultValue(Layer layer)
 
 int NoteSequence::Step::layerValue(Layer layer) const {
     switch (layer) {
-    case Layer::Gate:
-        return gate() ? 1 : 0;
-    case Layer::Slide:
-        return slide() ? 1 : 0;
-    case Layer::BypassScale:
-        return bypassScale() ? 1 : 0;
-    case Layer::GateProbability:
-        return gateProbability();
-    case Layer::GateOffset:
-        return gateOffset();
-    case Layer::Retrigger:
-        return retrigger();
-    case Layer::RetriggerProbability:
-        return retriggerProbability();
-    case Layer::Length:
-        return length();
-    case Layer::LengthVariationRange:
-        return lengthVariationRange();
-    case Layer::LengthVariationProbability:
-        return lengthVariationProbability();
-    case Layer::Note:
-        return note();
-    case Layer::NoteVariationRange:
-        return noteVariationRange();
-    case Layer::NoteVariationProbability:
-        return noteVariationProbability();
-    case Layer::Condition:
-        return int(condition());
-    case Layer::StageRepeats:
-        return stageRepeats();
-    case Layer::StageRepeatsMode:
-        return stageRepeatMode();
-    case Layer::Last:
-        break;
+    case Layer::Gate:               return gate() ? 1 : 0;
+    case Layer::Slide:              return slide() ? 1 : 0;
+    case Layer::StepLength:         return stepLength();
+    case Layer::GateLength:         return gateLength();
+    case Layer::Retrigger:          return retrigger();
+    case Layer::ArpRetrigger:       return arpRetrigger();
+    case Layer::Repeat:             return repeat();
+    case Layer::Note:               return note();
+    case Layer::Condition:          return int(condition());
+    case Layer::RetriggerCondition: return int(retriggerCondition());
+    case Layer::Last:               break;
     }
 
     return 0;
@@ -129,117 +76,129 @@ int NoteSequence::Step::layerValue(Layer layer) const {
 
 void NoteSequence::Step::setLayerValue(Layer layer, int value) {
     switch (layer) {
-    case Layer::Gate:
-        setGate(value);
-        break;
-    case Layer::Slide:
-        setSlide(value);
-        break;
-    case Layer::BypassScale:
-        setBypassScale(value);
-        break;
-    case Layer::GateProbability:
-        setGateProbability(value);
-        break;
-    case Layer::GateOffset:
-        setGateOffset(value);
-        break;
-    case Layer::Retrigger:
-        setRetrigger(value);
-        break;
-    case Layer::RetriggerProbability:
-        setRetriggerProbability(value);
-        break;
-    case Layer::Length:
-        setLength(value);
-        break;
-    case Layer::LengthVariationRange:
-        setLengthVariationRange(value);
-        break;
-    case Layer::LengthVariationProbability:
-        setLengthVariationProbability(value);
-        break;
-    case Layer::Note:
-        setNote(value);
-        break;
-    case Layer::NoteVariationRange:
-        setNoteVariationRange(value);
-        break;
-    case Layer::NoteVariationProbability:
-        setNoteVariationProbability(value);
-        break;
-    case Layer::Condition:
-        setCondition(Types::Condition(value));
-        break;
-    case Layer::StageRepeats:
-        setStageRepeats(value);
-        break;
-    case Layer::StageRepeatsMode:
-        setStageRepeatsMode(static_cast<Types::StageRepeatMode>(value));
-        break;
-    case Layer::Last:
-        break;
+    case Layer::Gate:               setGate(bool(value)); break;
+    case Layer::Slide:              setSlide(bool(value)); break;
+    case Layer::StepLength:         setStepLength(value); break;
+    case Layer::GateLength:         setGateLength(value); break;
+    case Layer::Retrigger:          setRetrigger(value); break;
+    case Layer::ArpRetrigger:       setArpRetrigger(value); break;
+    case Layer::Repeat:             setRepeat(value); break;
+    case Layer::Note:               setNote(value); break;
+    case Layer::Condition:          setCondition(Types::Condition(value)); break;
+    case Layer::RetriggerCondition: setRetriggerCondition(Types::Condition(value)); break;
+    case Layer::Last:               break;
     }
 }
 
 void NoteSequence::Step::clear() {
     _data0.raw = 0;
-    _data1.raw = 1;
+    _data1.raw = 0;
     setGate(false);
-    setGateProbability(GateProbability::Max);
-    setGateOffset(0);
     setSlide(false);
-    setBypassScale(false);
-    setRetrigger(0);
-    setRetriggerProbability(RetriggerProbability::Max);
-    setLength(Length::Max / 2);
-    setLengthVariationRange(0);
-    setLengthVariationProbability(LengthVariationProbability::Max);
+    setStepLength(StepLengthDefault);
+    setGateLength(50);
+    setRetrigger(1);
+    setArpRetrigger(0);
+    setRepeat(1);
     setNote(0);
-    setNoteVariationRange(0);
-    setNoteVariationProbability(NoteVariationProbability::Max);
     setCondition(Types::Condition::Off);
-    setStageRepeats(0);
-    setStageRepeatsMode(Types::StageRepeatMode::Each);
+    setRetriggerCondition(Types::Condition::Off);
 }
 
 void NoteSequence::Step::write(VersionedSerializedWriter &writer) const {
-    writer.write(_data0.raw);
-    writer.write(_data1.raw);
+    if (writer.writerVersion() >= ProjectVersion::Version54) {
+        writer.write(_data0.raw);
+        writer.write(_data1.raw);
+        return;
+    }
+
+    // Emit the pre-Version54 (post-Version36) bit layout so that writing at an
+    // older version produces a file an older reader can consume -- the test
+    // harness uses this to exercise the read migration.
+    int legacyLength = clamp((gateLength() * 16) / 100 - 1, 0, 15);
+
+    uint32_t d0 = 0;
+    d0 |= uint32_t(gate() ? 1 : 0) << 0;
+    d0 |= uint32_t(slide() ? 1 : 0) << 1;
+    d0 |= uint32_t(legacyLength & 0xF) << 2;
+    d0 |= uint32_t(7) << 6;                             // lengthVariationRange = 0 (biased)
+    d0 |= uint32_t(15) << 10;                           // lengthVariationProbability = max
+    d0 |= uint32_t(_data0.note & 0x7F) << 14;           // same bias as the new field
+    d0 |= uint32_t(63) << 21;                           // noteVariationRange = 0 (biased)
+    d0 |= uint32_t(15) << 28;                           // noteVariationProbability = max
+
+    uint32_t d1 = 0;
+    d1 |= uint32_t(0) << 0;                             // bypassScale
+    d1 |= uint32_t((retrigger() - 1) & 0x7) << 1;
+    d1 |= uint32_t(15) << 4;                            // gateProbability = max
+    d1 |= uint32_t(15) << 8;                            // retriggerProbability = max
+    d1 |= uint32_t(7) << 12;                            // gateOffset = 0 (biased)
+    d1 |= uint32_t(int(condition()) & 0x7F) << 16;
+    d1 |= uint32_t((repeat() - 1) & 0x7) << 23;
+    d1 |= uint32_t(0) << 26;                            // stageRepeatMode = Each
+
+    writer.write(d0);
+    writer.write(d1);
 }
 
 void NoteSequence::Step::read(VersionedSerializedReader &reader) {
 
-    if (reader.dataVersion() < ProjectVersion::Version27) {
-        reader.read(_data0.raw);
-        reader.readAs<uint16_t>(_data1.raw);
-        if (reader.dataVersion() < ProjectVersion::Version5) {
-            _data1.raw &= 0x1f;
-        }
-        if (reader.dataVersion() < ProjectVersion::Version7) {
-            setGateOffset(0);
-        }
-        if (reader.dataVersion() < ProjectVersion::Version12) {
-            setCondition(Types::Condition(0));
-        }
-    } else {
+    if (reader.dataVersion() >= ProjectVersion::Version54) {
         reader.read(_data0.raw);
         reader.read(_data1.raw);
-        if (reader.dataVersion() < ProjectVersion::Version36) {
-            bool bypassScale = (bool)((_data0.raw >> 31) & 0x1);
-
-            _data0.raw = (_data0.raw & 0x3 ) | (((_data0.raw ) & 0xFFFFFFFC) << 1);
-            _data1.raw = 0x7FFFFFFF & (_data1.raw << 1);
-            _data1.bypassScale = bypassScale;
-        }
-
-        if (reader.dataVersion() < ProjectVersion::Version34) {
-            setBypassScale(false);
-        }
-
-
-
+        return;
     }
+
+    // --- Version54 migration -------------------------------------------------
+    // Read the legacy pair, normalize it to the post-Version36 bit layout, then
+    // map the surviving fields into the new layout. Probability, variation, gate
+    // offset, stage repeat mode and bypass scale no longer exist.
+
+    uint32_t d0 = 0;
+    uint32_t d1 = 0;
+
+    if (reader.dataVersion() < ProjectVersion::Version27) {
+        reader.read(d0);
+        reader.readAs<uint16_t>(d1);
+        if (reader.dataVersion() < ProjectVersion::Version5) {
+            d1 &= 0x1f;
+        }
+    } else {
+        reader.read(d0);
+        reader.read(d1);
+    }
+
+    if (reader.dataVersion() < ProjectVersion::Version36) {
+        // length grew 3->4 bits: shift everything above gate/slide up by one,
+        // and open _data1 bit 0 for the bypassScale flag that used to live in
+        // _data0 bit 31.
+        d0 = (d0 & 0x3) | ((d0 & 0xFFFFFFFC) << 1);
+        d1 = 0x7FFFFFFF & (d1 << 1);
+    }
+
+    // legacy field extraction (post-Version36 layout)
+    bool legacyGate      = (d0 >> 0) & 0x1;
+    bool legacySlide     = (d0 >> 1) & 0x1;
+    int  legacyLength    = (d0 >> 2) & 0xF;
+    int  legacyNote      = (d0 >> 14) & 0x7F;
+    int  legacyRetrigger = (d1 >> 1) & 0x7;
+    int  legacyCondition = (d1 >> 16) & 0x7F;
+    int  legacyRepeats   = (d1 >> 23) & 0x7;
+
+    if (reader.dataVersion() < ProjectVersion::Version12) {
+        legacyCondition = 0;
+    }
+
+    clear();
+
+    _data0.gate = legacyGate;
+    _data0.slide = legacySlide;
+    _data0.note = legacyNote;                       // same bit width and bias
+    _data0.retrigger = legacyRetrigger;             // both store count-1
+    _data0.repeat = legacyRepeats;                  // stage repeats stored count-1
+    // old length was a 1/16..16/16 duty cycle of the step
+    setGateLength(((legacyLength + 1) * 100) / 16);
+    setCondition(Types::Condition(legacyCondition));
 }
 
 void NoteSequence::writeRouted(Routing::Target target, int intValue, float floatValue) {

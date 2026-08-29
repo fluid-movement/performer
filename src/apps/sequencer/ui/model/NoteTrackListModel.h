@@ -47,14 +47,6 @@ public:
             return Routing::Target::Transpose;
         case Rotate:
             return Routing::Target::Rotate;
-        case GateProbabilityBias:
-            return Routing::Target::GateProbabilityBias;
-        case RetriggerProbabilityBias:
-            return Routing::Target::RetriggerProbabilityBias;
-        case LengthBias:
-            return Routing::Target::LengthBias;
-        case NoteProbabilityBias:
-            return Routing::Target::NoteProbabilityBias;
         default:
             return Routing::Target::None;
         }
@@ -63,18 +55,14 @@ public:
 private:
     enum Item {
         TrackName,
-        PlayMode,
         FillMode,
         FillMuted,
-        CvUpdateMode,
+        GateMode,
+        SlideType,
         SlideTime,
         Octave,
         Transpose,
         Rotate,
-        GateProbabilityBias,
-        RetriggerProbabilityBias,
-        LengthBias,
-        NoteProbabilityBias,
         PatternFollow,
         Last
     };
@@ -82,18 +70,14 @@ private:
     static const char *itemName(Item item) {
         switch (item) {
         case TrackName: return "Name";
-        case PlayMode:  return "Play Mode";
         case FillMode:  return "Fill Mode";
         case FillMuted: return "Fill Muted";
-        case CvUpdateMode:  return "CV Update Mode";
+        case GateMode:  return "Gate Mode";
+        case SlideType: return "Slide Type";
         case SlideTime: return "Slide Time";
         case Octave:    return "Octave";
         case Transpose: return "Transpose";
         case Rotate:    return "Rotate";
-        case GateProbabilityBias: return "Gate P. Bias";
-        case RetriggerProbabilityBias: return "Retrig P. Bias";
-        case LengthBias: return "Length Bias";
-        case NoteProbabilityBias: return "Note P. Bias";
         case PatternFollow: return "Pattern Follow";
         case Last:      break;
         }
@@ -109,17 +93,17 @@ private:
         case TrackName:
             str(_track->name());
             break;
-        case PlayMode:
-            _track->printPlayMode(str);
-            break;
         case FillMode:
             _track->printFillMode(str);
             break;
         case FillMuted:
             _track->printFillMuted(str);
             break;
-        case CvUpdateMode:
-            _track->printCvUpdateMode(str);
+        case GateMode:
+            _track->printGateMode(str);
+            break;
+        case SlideType:
+            _track->printSlideType(str);
             break;
         case SlideTime:
             _track->printSlideTime(str);
@@ -132,18 +116,6 @@ private:
             break;
         case Rotate:
             _track->printRotate(str);
-            break;
-        case GateProbabilityBias:
-            _track->printGateProbabilityBias(str);
-            break;
-        case RetriggerProbabilityBias:
-            _track->printRetriggerProbabilityBias(str);
-            break;
-        case LengthBias:
-            _track->printLengthBias(str);
-            break;
-        case NoteProbabilityBias:
-            _track->printNoteProbabilityBias(str);
             break;
         case PatternFollow:
             _track->printPatternFollow(str);
@@ -158,17 +130,17 @@ private:
 
         case TrackName:
             break;
-        case PlayMode:
-            _track->editPlayMode(value, shift);
-            break;
         case FillMode:
             _track->editFillMode(value, shift);
             break;
         case FillMuted:
             _track->editFillMuted(value, shift);
             break;
-        case CvUpdateMode:
-            _track->editCvUpdateMode(value, shift);
+        case GateMode:
+            _track->editGateMode(value, shift);
+            break;
+        case SlideType:
+            _track->editSlideType(value, shift);
             break;
         case SlideTime:
             _track->editSlideTime(value, shift);
@@ -181,18 +153,6 @@ private:
             break;
         case Rotate:
             _track->editRotate(value, shift);
-            break;
-        case GateProbabilityBias:
-            _track->editGateProbabilityBias(value, shift);
-            break;
-        case RetriggerProbabilityBias:
-            _track->editRetriggerProbabilityBias(value, shift);
-            break;
-        case LengthBias:
-            _track->editLengthBias(value, shift);
-            break;
-        case NoteProbabilityBias:
-            _track->editNoteProbabilityBias(value, shift);
             break;
         case PatternFollow:
             _track->editPatternFollow(value, shift);

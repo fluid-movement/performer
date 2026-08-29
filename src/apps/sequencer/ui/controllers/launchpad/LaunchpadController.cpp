@@ -58,24 +58,16 @@ enum class PerforModeLayers {
     };
 
 static const LayerMapItem noteSequenceLayerMap[] = {
-    [int(NoteSequence::Layer::Gate)]                        =  { 0, 0 },
-    [int(NoteSequence::Layer::GateProbability)]             =  { 1, 0 },
-    [int(NoteSequence::Layer::GateOffset)]                  =  { 2, 0 },
-    [int(NoteSequence::Layer::Retrigger)]                   =  { 0, 1 },
-    [int(NoteSequence::Layer::RetriggerProbability)]        =  { 1, 1 },
-    [int(NoteSequence::Layer::StageRepeats)]                =  { 2, 1 },
-    [int(NoteSequence::Layer::StageRepeatsMode)]            =  { 3, 1 },
-    [int(NoteSequence::Layer::Length)]                      =  { 0, 2 },
-    [int(NoteSequence::Layer::LengthVariationRange)]        =  { 1, 2 },
-    [int(NoteSequence::Layer::LengthVariationProbability)]  =  { 2, 2 },
-    [int(NoteSequence::Layer::Note)]                        =  { 0, 3 },
-    [int(NoteSequence::Layer::NoteVariationRange)]          =  { 1, 3 },
-    [int(NoteSequence::Layer::NoteVariationProbability)]    =  { 2, 3 },
-    [int(NoteSequence::Layer::Slide)]                       =  { 3, 3 },
-    [int(NoteSequence::Layer::BypassScale)]                 =  { 4, 3 },
-    [int(NoteSequence::Layer::Condition)]                   =  { 0, 4 },
-
-
+    [int(NoteSequence::Layer::Gate)]               =  { 0, 0 },
+    [int(NoteSequence::Layer::StepLength)]         =  { 1, 0 },
+    [int(NoteSequence::Layer::GateLength)]         =  { 2, 0 },
+    [int(NoteSequence::Layer::Retrigger)]          =  { 0, 1 },
+    [int(NoteSequence::Layer::ArpRetrigger)]       =  { 1, 1 },
+    [int(NoteSequence::Layer::Repeat)]             =  { 0, 2 },
+    [int(NoteSequence::Layer::Note)]               =  { 0, 3 },
+    [int(NoteSequence::Layer::Slide)]              =  { 1, 3 },
+    [int(NoteSequence::Layer::Condition)]          =  { 0, 4 },
+    [int(NoteSequence::Layer::RetriggerCondition)] =  { 1, 4 },
 };
 
 static constexpr int noteSequenceLayerMapSize = sizeof(noteSequenceLayerMap) / sizeof(noteSequenceLayerMap[0]);
@@ -536,12 +528,7 @@ void LaunchpadController::manageCircuitKeyboard(const Button &button) {
                 int linearIndex = button.col + ofs + (button.row*8);
                 if (isNoteKeyboardPressed(scale)) { 
 
-                    auto step = sequence.step(linearIndex);
-                    if (step.bypassScale()) {
-                        sequence.step(linearIndex).setLayerValue(layer, fullSelectedNote);
-                    } else {
-                        sequence.step(linearIndex).setLayerValue(layer, selectedNote);
-                    }
+                    sequence.step(linearIndex).setLayerValue(layer, selectedNote);
                     if (!sequence.step(linearIndex).gate()) {
                         sequence.step(linearIndex).toggleGate();    
                     }
@@ -941,11 +928,6 @@ void LaunchpadController::sequenceDrawLayer() {
         for (int i = 0; i < noteSequenceLayerMapSize; ++i) {
             const auto &item = noteSequenceLayerMap[i];
             bool selected = i == int(_project.selectedNoteSequenceLayer());
-
-            auto playMode = _engine.selectedTrackEngine().as<NoteTrackEngine>().playMode();
-            if (playMode == Types::PlayMode::Aligned && (i == 5 || i == 6)) {
-                continue;
-            } 
             setGridLed(item.row, item.col, selected ? colorYellow() : colorGreen());
         }
         break;
@@ -1851,12 +1833,7 @@ void LaunchpadController::drawNoteSequenceNotes(const NoteSequence &sequence, No
                 }
                 if (_engine.state().running()) {
                     const auto &step = sequence.step(currentStep);
-
-                    if (step.bypassScale()) {
-                        drawRunningKeyboardCircuit(row, col, step, bypassScale, rootNote);
-                    } else {
-                        drawRunningKeyboardCircuit(row, col, step, scale, rootNote);
-                    }
+                    drawRunningKeyboardCircuit(row, col, step, scale, rootNote);
                 }
             }
         }
@@ -1870,13 +1847,7 @@ void LaunchpadController::drawNoteSequenceNotes(const NoteSequence &sequence, No
                 const auto &step = sequence.step(currentStep);
                 int s = step.note();
 
-                int octave = 0;
-                if (step.bypassScale()) {
-                    const Scale &bypassScale = Scale::get(0);
-                    octave = s / bypassScale.notesPerOctave();
-                } else {
-                    octave = s / scale.notesPerOctave();
-                }
+                int octave = s / scale.notesPerOctave();
                 for (auto const& x : octaveMap)
                     {
                         if (step.gate() && octave == x.second) {

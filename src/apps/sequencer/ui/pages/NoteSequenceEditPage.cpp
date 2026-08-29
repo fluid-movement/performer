@@ -35,12 +35,12 @@ static const ContextMenuModel::Item contextMenuItems[] = {
 enum class Function {
     Gate        = 0,
     Retrigger   = 1,
-    Length      = 2,
+    Repeat      = 2,
     Note        = 3,
-    Condition     = 4,
+    Condition   = 4,
 };
 
-static const char *functionNames[] = { "GATE", "RETRIG", "LENGTH", "NOTE", "COND" };
+static const char *functionNames[] = { "GATE", "RETRIG", "REPEAT", "NOTE", "COND" };
 
 
 static const NoteSequenceListModel::Item quickEditItems[8] = {
@@ -68,19 +68,7 @@ void NoteSequenceEditPage::enter() {
     updateMonitorStep();
 
     _inMemorySequence = _project.selectedNoteSequence();
-
-    _showDetail = false;
-
-    if (_project.selectedTrack().noteTrack().playMode() == Types::PlayMode::Aligned) {
-            if (_project.selectedNoteSequenceLayer() == NoteSequence::Layer::StageRepeats || _project.selectedNoteSequenceLayer() == NoteSequence::Layer::StageRepeatsMode ) {
-                _project.setSelectedNoteSequenceLayer(NoteSequence::Layer::Retrigger); 
-            }
-        } else {
-            if (_project.selectedNoteSequenceLayer() == NoteSequence::Layer::Retrigger) {
-                _project.setSelectedNoteSequenceLayer(NoteSequence::Layer::StageRepeats);
-            }
-        }
-    }
+}
 
 void NoteSequenceEditPage::exit() {
     _engine.selectedTrackEngine().as<NoteTrackEngine>().setMonitorStep(-1);
@@ -173,70 +161,46 @@ void NoteSequenceEditPage::draw(Canvas &canvas) {
         switch (layer()) {
         case Layer::Gate:
             break;
-        case Layer::GateProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.gateProbability() + 1, NoteSequence::GateProbability::Range
-            );
+        case Layer::StepLength: {
+            canvas.setColor(Color::Bright);
+            FixedStringBuilder<8> str;
+            NoteSequence::printStepLength(str, step.stepLength());
+            canvas.setFont(Font::Tiny);
+            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 24, str);
+            canvas.setFont(Font::Small);
             break;
-        case Layer::GateOffset:
-            SequencePainter::drawOffset(
+        }
+        case Layer::GateLength:
+            SequencePainter::drawLength(
                 canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.gateOffset(), NoteSequence::GateOffset::Min - 1, NoteSequence::GateOffset::Max + 1
+                x + 2, y + 18, stepWidth - 4, 6,
+                step.gateLength(), 100
             );
             break;
         case Layer::Retrigger:
             SequencePainter::drawRetrigger(
                 canvas,
                 x, y + 18, stepWidth, 2,
-                step.retrigger() + 1, NoteSequence::Retrigger::Range
+                step.retrigger(), NoteSequence::Retrigger::Range
             );
             break;
-        case Layer::RetriggerProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.retriggerProbability() + 1, NoteSequence::RetriggerProbability::Range
-            );
+        case Layer::ArpRetrigger: {
+            canvas.setColor(Color::Bright);
+            FixedStringBuilder<8> str("%+d", step.arpRetrigger());
+            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
             break;
-        case Layer::Length:
-            SequencePainter::drawLength(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 6,
-                step.length() + 1, NoteSequence::Length::Range
-            );
+        }
+        case Layer::Repeat: {
+            canvas.setColor(Color::Bright);
+            FixedStringBuilder<8> str("x%d", step.repeat());
+            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
             break;
-        case Layer::LengthVariationRange:
-            SequencePainter::drawLengthRange(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 6,
-                step.length() + 1, step.lengthVariationRange(), NoteSequence::Length::Range
-            );
-            break;
-        case Layer::LengthVariationProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.lengthVariationProbability() + 1, NoteSequence::LengthVariationProbability::Range
-            );
-            break;
+        }
         case Layer::Note: {
             int rootNote = _project.rootNote();
             canvas.setColor(Color::Bright);
             FixedStringBuilder<8> str;
 
-            if (step.bypassScale()) {
-                const Scale &bypassScale = std::ref(Scale::get(0));
-                bypassScale.noteName(str, step.note(), rootNote, Scale::Short1);
-            
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-                str.reset();
-                bypassScale.noteName(str, step.note(), rootNote, Scale::Short2);
-                canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-                break;
-            } 
             if (scale.isChromatic() && scale.notesPerOctave() < 12) {
                 int note = step.note();
                 int npo = scale.notesPerOctave();
@@ -256,19 +220,6 @@ void NoteSequenceEditPage::draw(Canvas &canvas) {
             }
             break;
         }
-        case Layer::NoteVariationRange: {
-            canvas.setColor(Color::Bright);
-            FixedStringBuilder<8> str("%d", step.noteVariationRange());
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-            break;
-        }
-        case Layer::NoteVariationProbability:
-            SequencePainter::drawProbability(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 2,
-                step.noteVariationProbability() + 1, NoteSequence::NoteVariationProbability::Range
-            );
-            break;
         case Layer::Slide:
             SequencePainter::drawSlide(
                 canvas,
@@ -276,60 +227,25 @@ void NoteSequenceEditPage::draw(Canvas &canvas) {
                 step.slide()
             );
             break;
-        case Layer::BypassScale:
-            SequencePainter::drawBypassScale(
-                canvas,
-                x + 4, y + 18, stepWidth - 8, 4,
-                step.bypassScale()
-            );
-            break;
-        case Layer::Condition: {
+        case Layer::Condition:
+        case Layer::RetriggerCondition: {
+            auto condition = layer() == Layer::Condition ? step.condition() : step.retriggerCondition();
             canvas.setColor(Color::Bright);
             FixedStringBuilder<8> str;
-            Types::printCondition(str, step.condition(), Types::ConditionFormat::Short1);
+            Types::printCondition(str, condition, Types::ConditionFormat::Short1);
             canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
             str.reset();
-            Types::printCondition(str, step.condition(), Types::ConditionFormat::Short2);
+            Types::printCondition(str, condition, Types::ConditionFormat::Short2);
             canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 27, str);
-            break;
-        }
-        case Layer::StageRepeats: {
-            canvas.setColor(Bright);
-            FixedStringBuilder<8> str("x%d", step.stageRepeats()+1);
-            canvas.drawText(x + (stepWidth - canvas.textWidth(str) + 1) / 2, y + 20, str);
-            break;
-        }
-        case Layer::StageRepeatsMode: {
-            SequencePainter::drawStageRepeatMode(
-                canvas,
-                x + 2, y + 18, stepWidth - 4, 6,
-                step.stageRepeatMode()
-            );
             break;
         }
         case Layer::Last:
             break;
         }
     }
+}
 
     // handle detail display
-
-    if (_showDetail) {
-        if (layer() == Layer::Gate || layer() == Layer::Slide || _stepSelection.none() || layer() == Layer::BypassScale) {
-            _showDetail = false;
-        }
-        if (_stepSelection.isPersisted() && os::ticks() > _showDetailTicks + os::time::ms(500)) {
-            _showDetail = false;
-        }
-    }
-
-    if (_showDetail) {
-        drawDetail(canvas, sequence.step(_stepSelection.first()));
-    }
-
-
-
-}
 
 void NoteSequenceEditPage::updateLeds(Leds &leds) {
     const auto &trackEngine = _engine.selectedTrackEngine().as<NoteTrackEngine>();
@@ -481,7 +397,7 @@ void NoteSequenceEditPage::keyPress(KeyPressEvent &event) {
     if (key.isEncoder()) {
         track.setPatternFollowDisplay(false);
         _inMemorySequence = _project.selectedNoteSequence();
-        if (!_showDetail && _stepSelection.any() && allSelectedStepsActive()) {
+        if (_stepSelection.any() && allSelectedStepsActive()) {
             setSelectedStepsGate(false);
         } else {
             setSelectedStepsGate(true);
@@ -537,61 +453,42 @@ void NoteSequenceEditPage::encoder(EncoderEvent &event) {
 
     if (!_stepSelection.any())
     {
+        // with nothing selected the encoder walks within the current tab's family
         switch (layer())
         {
         case Layer::Gate:
-            setLayer(event.value() > 0 ? Layer::GateOffset : Layer::GateProbability);
+            setLayer(event.value() > 0 ? Layer::StepLength : Layer::GateLength);
             break;
-        case Layer::GateOffset:
-            setLayer(event.value() > 0 ? Layer::GateProbability : Layer::Gate);
+        case Layer::StepLength:
+            setLayer(event.value() > 0 ? Layer::GateLength : Layer::Gate);
             break;
-        case Layer::GateProbability:
-            setLayer(event.value() > 0 ? Layer::Gate : Layer::GateOffset);
+        case Layer::GateLength:
+            setLayer(event.value() > 0 ? Layer::Gate : Layer::StepLength);
             break;
         case Layer::Retrigger:
-            setLayer(event.value() > 0 ? Layer::RetriggerProbability : Layer::StageRepeatsMode);
+            setLayer(Layer::ArpRetrigger);
             break;
-        case Layer::RetriggerProbability:
-            setLayer(event.value() > 0 ? Layer::StageRepeats : Layer::Retrigger);
+        case Layer::ArpRetrigger:
+            setLayer(Layer::Retrigger);
             break;
-        case Layer::StageRepeats:
-            setLayer(event.value() > 0 ? Layer::StageRepeatsMode : Layer::RetriggerProbability);
-            break;
-        case Layer::StageRepeatsMode:
-            setLayer(event.value() > 0 ? Layer::Retrigger : Layer::StageRepeats);
-            break;
-        case Layer::Length:
-            setLayer(event.value() > 0 ? Layer::LengthVariationRange : Layer::LengthVariationProbability);
-            break;
-        case Layer::LengthVariationRange:
-            setLayer(event.value() > 0 ? Layer::LengthVariationProbability : Layer::Length);
-            break;
-        case Layer::LengthVariationProbability:
-            setLayer(event.value() > 0 ? Layer::Length : Layer::LengthVariationRange);
+        case Layer::Repeat:
             break;
         case Layer::Note:
-            setLayer(event.value() > 0 ? Layer::NoteVariationRange : Layer::BypassScale);
-            break;
-        case Layer::NoteVariationRange:
-            setLayer(event.value() > 0 ? Layer::NoteVariationProbability : Layer::Note);
-            break;
-        case Layer::NoteVariationProbability:
-            setLayer(event.value() > 0 ? Layer::Slide : Layer::NoteVariationRange);
+            setLayer(Layer::Slide);
             break;
         case Layer::Slide:
-            setLayer(event.value() > 0 ? Layer::BypassScale : Layer::NoteVariationProbability);
+            setLayer(Layer::Note);
             break;
-        case Layer::BypassScale:
-            setLayer(event.value() > 0 ? Layer::Note : Layer::Slide);
+        case Layer::Condition:
+            setLayer(Layer::RetriggerCondition);
+            break;
+        case Layer::RetriggerCondition:
+            setLayer(Layer::Condition);
+            break;
         default:
             break;
         }
         return;
-    }
-    else
-    {
-        _showDetail = true;
-        _showDetailTicks = os::ticks();
     }
 
     for (size_t stepIndex = 0; stepIndex < sequence.steps().size(); ++stepIndex) {
@@ -602,56 +499,34 @@ void NoteSequenceEditPage::encoder(EncoderEvent &event) {
             case Layer::Gate:
                 step.setGate(event.value() > 0);
                 break;
-            case Layer::GateProbability:
-                step.setGateProbability(step.gateProbability() + event.value());
+            case Layer::StepLength:
+                step.setStepLength(step.stepLength() + event.value());
                 break;
-            case Layer::GateOffset:
-                step.setGateOffset(step.gateOffset() + event.value());
+            case Layer::GateLength:
+                // 1 per detent, 10 with shift
+                step.setGateLength(step.gateLength() + event.value() * (shift ? 10 : 1));
                 break;
             case Layer::Retrigger:
                 step.setRetrigger(step.retrigger() + event.value());
                 break;
-            case Layer::RetriggerProbability:
-                step.setRetriggerProbability(step.retriggerProbability() + event.value());
+            case Layer::ArpRetrigger:
+                step.setArpRetrigger(step.arpRetrigger() + event.value());
                 break;
-            case Layer::Length:
-                step.setLength(step.length() + event.value());
-                break;
-            case Layer::LengthVariationRange:
-                step.setLengthVariationRange(step.lengthVariationRange() + event.value());
-                break;
-            case Layer::LengthVariationProbability:
-                step.setLengthVariationProbability(step.lengthVariationProbability() + event.value());
+            case Layer::Repeat:
+                step.setRepeat(step.repeat() + event.value());
                 break;
             case Layer::Note:
                 step.setNote(step.note() + event.value() * ((shift && scale.isChromatic()) ? scale.notesPerOctave() : 1));
                 updateMonitorStep();
                 break;
-            case Layer::NoteVariationRange:
-                step.setNoteVariationRange(step.noteVariationRange() + event.value() * ((shift && scale.isChromatic()) ? scale.notesPerOctave() : 1));
-                updateMonitorStep();
-                break;
-            case Layer::NoteVariationProbability:
-                step.setNoteVariationProbability(step.noteVariationProbability() + event.value());
-                break;
             case Layer::Slide:
                 step.setSlide(event.value() > 0);
-                break;
-            case Layer::BypassScale:
-                step.setBypassScale(event.value() > 0);
                 break;
             case Layer::Condition:
                 step.setCondition(ModelUtils::adjustedEnum(step.condition(), event.value()));
                 break;
-            case Layer::StageRepeats:
-                step.setStageRepeats(step.stageRepeats() + event.value());
-                break;
-            case Layer::StageRepeatsMode:
-                step.setStageRepeatsMode(
-                    static_cast<Types::StageRepeatMode>(
-                        step.stageRepeatMode() + event.value()
-                    )
-                );
+            case Layer::RetriggerCondition:
+                step.setRetriggerCondition(ModelUtils::adjustedEnum(step.retriggerCondition(), event.value()));
                 break;
             case Layer::Last:
                 break;
@@ -691,110 +566,57 @@ void NoteSequenceEditPage::midi(MidiEvent &event) {
 }
 
 void NoteSequenceEditPage::switchLayer(int functionKey, bool shift) {
-
-    auto engine = _engine.selectedTrackEngine().as<NoteTrackEngine>();
-
+    // shift jumps straight to the tab's secondary layer
     if (shift) {
         switch (Function(functionKey)) {
         case Function::Gate:
-            setLayer(Layer::Gate);
+            setLayer(Layer::GateLength);
             break;
         case Function::Retrigger:
-            if (engine.playMode() == Types::PlayMode::Free) {
-                setLayer(Layer::StageRepeats);
-            }
+            setLayer(Layer::ArpRetrigger);
             break;
-        case Function::Length:
-            if (engine.playMode() == Types::PlayMode::Free) {
-                setLayer(Layer::StageRepeatsMode);
-            }
+        case Function::Repeat:
+            setLayer(Layer::Repeat);
             break;
         case Function::Note:
             setLayer(Layer::Slide);
             break;
         case Function::Condition:
-            setLayer(Layer::Condition);
+            setLayer(Layer::RetriggerCondition);
             break;
         }
         return;
     }
 
+    // repeated presses cycle within the tab
     switch (Function(functionKey)) {
     case Function::Gate:
         switch (layer()) {
-        case Layer::Gate:
-            setLayer(Layer::GateOffset);
-            break;
-        case Layer::GateOffset:
-            setLayer(Layer::GateProbability);
-            break;
-        default:
-            setLayer(Layer::Gate);
-            break;
+        case Layer::Gate:       setLayer(Layer::StepLength); break;
+        case Layer::StepLength: setLayer(Layer::GateLength); break;
+        default:                setLayer(Layer::Gate); break;
         }
         break;
     case Function::Retrigger:
         switch (layer()) {
-        case Layer::Retrigger:
-            setLayer(Layer::RetriggerProbability);
-            break;
-        case Layer::RetriggerProbability:
-            if (engine.playMode() == Types::PlayMode::Free) {
-                setLayer(Layer::StageRepeats);
-                break;
-            }
-
-        case Layer::StageRepeats:
-            if (engine.playMode() == Types::PlayMode::Free) {
-                setLayer(Layer::StageRepeatsMode);
-                break;
-            }
-        case Layer::StageRepeatsMode:         
-            setLayer(Layer::Retrigger);
-            break;
-        default:
-            if (engine.playMode() == Types::PlayMode::Free) {
-                setLayer(Layer::StageRepeats);
-                break;
-            }
-            setLayer(Layer::Retrigger);
-            break;
+        case Layer::Retrigger:  setLayer(Layer::ArpRetrigger); break;
+        default:                setLayer(Layer::Retrigger); break;
         }
         break;
-    case Function::Length:
-        switch (layer()) {
-        case Layer::Length:
-            setLayer(Layer::LengthVariationRange);
-            break;
-        case Layer::LengthVariationRange:
-            setLayer(Layer::LengthVariationProbability);
-            break;
-        default:
-            setLayer(Layer::Length);
-            break;
-        }
+    case Function::Repeat:
+        setLayer(Layer::Repeat);
         break;
     case Function::Note:
         switch (layer()) {
-        case Layer::Note:
-            setLayer(Layer::NoteVariationRange);
-            break;
-        case Layer::NoteVariationRange:
-            setLayer(Layer::NoteVariationProbability);
-            break;
-        case Layer::NoteVariationProbability:
-            setLayer(Layer::Slide);
-            break;
-        case Layer::Slide:
-            setLayer(Layer::BypassScale);
-            break;
-        default:
-            setLayer(Layer::Note);
-            break;
+        case Layer::Note:       setLayer(Layer::Slide); break;
+        default:                setLayer(Layer::Note); break;
         }
         break;
     case Function::Condition:
-        setLayer(Layer::Condition);
+        switch (layer()) {
+        case Layer::Condition:  setLayer(Layer::RetriggerCondition); break;
+        default:                setLayer(Layer::Condition); break;
+        }
         break;
     }
 }
@@ -802,25 +624,19 @@ void NoteSequenceEditPage::switchLayer(int functionKey, bool shift) {
 int NoteSequenceEditPage::activeFunctionKey() {
     switch (layer()) {
     case Layer::Gate:
-    case Layer::GateProbability:
-    case Layer::GateOffset:
+    case Layer::StepLength:
+    case Layer::GateLength:
         return 0;
     case Layer::Retrigger:
-    case Layer::RetriggerProbability:
-    case Layer::StageRepeats:
-    case Layer::StageRepeatsMode:
+    case Layer::ArpRetrigger:
         return 1;
-    case Layer::Length:
-    case Layer::LengthVariationRange:
-    case Layer::LengthVariationProbability:
+    case Layer::Repeat:
         return 2;
     case Layer::Note:
-    case Layer::NoteVariationRange:
-    case Layer::NoteVariationProbability:
     case Layer::Slide:
-    case Layer::BypassScale:
         return 3;
     case Layer::Condition:
+    case Layer::RetriggerCondition:
         return 4;
     case Layer::Last:
         break;
@@ -837,184 +653,6 @@ void NoteSequenceEditPage::updateMonitorStep() {
         trackEngine.setMonitorStep(_stepSelection.first());
     } else {
         trackEngine.setMonitorStep(-1);
-    }
-}
-
-void NoteSequenceEditPage::drawDetail(Canvas &canvas, const NoteSequence::Step &step) {
-
-    const auto &sequence = _project.selectedNoteSequence();
-    const auto &scale = _project.selectedScale();
-
-    FixedStringBuilder<16> str;
-
-    WindowPainter::drawFrame(canvas, 64, 16, 128, 32);
-
-    canvas.setBlendMode(BlendMode::Set);
-    canvas.setColor(Color::Bright);
-    canvas.vline(64 + 32, 16, 32);
-
-    canvas.setFont(Font::Small);
-    str("%d", _stepSelection.first() + 1);
-    if (_stepSelection.count() > 1) {
-        str("*");
-    }
-    canvas.drawTextCentered(64, 16, 32, 32, str);
-
-    canvas.setFont(Font::Tiny);
-
-    switch (layer()) {
-    case Layer::Gate:
-    case Layer::Slide:
-    case Layer::BypassScale:
-        break;
-    case Layer::GateProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.gateProbability(), NoteSequence::GateProbability::Range-1
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.gateProbability()) / (NoteSequence::GateProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::GateOffset:
-        SequencePainter::drawOffset(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.gateOffset(), NoteSequence::GateOffset::Min - 1, NoteSequence::GateOffset::Max + 1
-        );
-        str.reset();
-        str("%.1f%%", 100.f * step.gateOffset() / float(NoteSequence::GateOffset::Max + 1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Retrigger:
-        SequencePainter::drawRetrigger(
-            canvas,
-            64+ 32 + 8, 32 - 4, 64 - 16, 8,
-            step.retrigger() + 1, NoteSequence::Retrigger::Range
-        );
-        str.reset();
-        str("%d", step.retrigger() + 1);
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::RetriggerProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.retriggerProbability(), NoteSequence::RetriggerProbability::Range-1
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.retriggerProbability()) / (NoteSequence::RetriggerProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Length:
-        SequencePainter::drawLength(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.length() + 1, NoteSequence::Length::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.length() + 1.f) / NoteSequence::Length::Range);
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::LengthVariationRange:
-        SequencePainter::drawLengthRange(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.length() + 1, step.lengthVariationRange(), NoteSequence::Length::Range
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.lengthVariationRange()) / NoteSequence::Length::Range);
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::LengthVariationProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.lengthVariationProbability(), NoteSequence::LengthVariationProbability::Range-1
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.lengthVariationProbability()) / (NoteSequence::LengthVariationProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Note:
-        str.reset();
-        scale.noteName(str, step.note(), _project.rootNote(), Scale::Long);
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-        break;
-    case Layer::NoteVariationRange:
-        str.reset();
-        str("%d", step.noteVariationRange());
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-        break;
-    case Layer::NoteVariationProbability:
-        SequencePainter::drawProbability(
-            canvas,
-            64 + 32 + 8, 32 - 4, 64 - 16, 8,
-            step.noteVariationProbability(), NoteSequence::NoteVariationProbability::Range-1
-        );
-        str.reset();
-        str("%.1f%%", 100.f * (step.noteVariationProbability()) / (NoteSequence::NoteVariationProbability::Range-1));
-        canvas.setColor(Color::Bright);
-        canvas.drawTextCentered(64 + 32 + 64, 32 - 4, 32, 8, str);
-        break;
-    case Layer::Condition:
-        str.reset();
-        Types::printCondition(str, step.condition(), Types::ConditionFormat::Long);
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 96, 32, str);
-        break;
-    case Layer::StageRepeats:
-        str.reset();
-        str("x%d", step.stageRepeats()+1);
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-        break;
-     case Layer::StageRepeatsMode:
-        str.reset();
-        switch (step.stageRepeatMode()) {
-            case Types::Each:
-                str("EACH");
-                break;
-            case Types::First:
-                str("FIRST");
-                break;
-            case Types::Middle:
-                str("MIDDLE");
-                break;
-            case Types::Last:
-                str("LAST");
-                break;
-            case Types::Odd:
-                str("ODD");
-                break;
-            case Types::Even:
-                str("EVEN");
-                break;
-            case Types::Triplets:
-                str("TRIPLET");
-                break;
-            case Types::Random:
-                str("RANDOM");
-                break;
-
-            default:
-                break;
-        }
-        canvas.setFont(Font::Small);
-        canvas.drawTextCentered(64 + 32, 16, 64, 32, str);
-        break;
-    case Layer::Last:
-        break;
     }
 }
 
@@ -1098,7 +736,7 @@ void NoteSequenceEditPage::tieNotes() {
         for (int i = first; i <= last; i++) {
             sequence.step(i).setGate(true);
             if (i != last) {
-                sequence.step(i).setLength(NoteSequence::Length::Max);
+                sequence.step(i).setGateLength(100);
                 showMessage("NOTES TIED");
             }
             sequence.step(i).setNote(sequence.step(first).note());

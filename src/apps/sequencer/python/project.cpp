@@ -146,6 +146,13 @@ void register_project(py::module &m) {
         .export_values()
     ;
 
+    py::enum_<Types::SlideType>(types, "SlideType")
+        .value("Linear", Types::SlideType::Linear)
+        .value("Exponential", Types::SlideType::Exponential)
+        .value("Logarithmic", Types::SlideType::Logarithmic)
+        .export_values()
+    ;
+
     py::enum_<Types::RunMode>(types, "RunMode")
         .value("Forward", Types::RunMode::Forward)
         .value("Backward", Types::RunMode::Backward)
@@ -281,17 +288,14 @@ void register_project(py::module &m) {
 
     py::class_<NoteTrack> noteTrack(m, "NoteTrack");
     noteTrack
-        .def_property("playMode", &NoteTrack::playMode, &NoteTrack::setPlayMode)
         .def_property("fillMode", &NoteTrack::fillMode, &NoteTrack::setFillMode)
-        .def_property("cvUpdateMode", &NoteTrack::cvUpdateMode, &NoteTrack::setCvUpdateMode)
-        .def_property("slideTime", &NoteTrack::slideTime, &NoteTrack::setSlideTime)
-        .def_property("octave", &NoteTrack::octave, &NoteTrack::setOctave)
-        .def_property("transpose", &NoteTrack::transpose, &NoteTrack::setTranspose)
-        .def_property("rotate", &NoteTrack::rotate, &NoteTrack::setRotate)
-        .def_property("gateProbabilityBias", &NoteTrack::gateProbabilityBias, &NoteTrack::setGateProbabilityBias)
-        .def_property("retriggerProbabilityBias", &NoteTrack::retriggerProbabilityBias, &NoteTrack::setRetriggerProbabilityBias)
-        .def_property("lengthBias", &NoteTrack::lengthBias, &NoteTrack::setLengthBias)
-        .def_property("noteProbabilityBias", &NoteTrack::noteProbabilityBias, &NoteTrack::setNoteProbabilityBias)
+        .def_property("gateMode", &NoteTrack::gateMode, &NoteTrack::setGateMode)
+        .def_property("slideType", &NoteTrack::slideType, &NoteTrack::setSlideType)
+        .def_property("slideTime", &NoteTrack::slideTime, [] (NoteTrack &t, int v) { t.setSlideTime(v); })
+        .def_property_readonly("slideTimeMs", &NoteTrack::slideTimeMs)
+        .def_property("octave", &NoteTrack::octave, [] (NoteTrack &t, int v) { t.setOctave(v); })
+        .def_property("transpose", &NoteTrack::transpose, [] (NoteTrack &t, int v) { t.setTranspose(v); })
+        .def_property("rotate", &NoteTrack::rotate, [] (NoteTrack &t, int v) { t.setRotate(v); })
         .def_property_readonly("sequences", [] (NoteTrack &noteTrack) {
             py::list result;
             for (int i = 0; i < CONFIG_PATTERN_COUNT; ++i) {
@@ -310,9 +314,9 @@ void register_project(py::module &m) {
         .export_values()
     ;
 
-    py::enum_<NoteTrack::CvUpdateMode>(noteTrack, "CvUpdateMode")
-        .value("Gate", NoteTrack::CvUpdateMode::Gate)
-        .value("Always", NoteTrack::CvUpdateMode::Always)
+    py::enum_<NoteTrack::GateMode>(noteTrack, "GateMode")
+        .value("Retrigger", NoteTrack::GateMode::Retrigger)
+        .value("Legato", NoteTrack::GateMode::Legato)
         .export_values()
     ;
 
@@ -602,36 +606,30 @@ void register_project(py::module &m) {
 
     py::enum_<NoteSequence::Layer>(noteSequence, "Layer")
         .value("Gate", NoteSequence::Layer::Gate)
-        .value("GateProbability", NoteSequence::Layer::GateProbability)
-        .value("GateOffset", NoteSequence::Layer::GateOffset)
-        .value("Slide", NoteSequence::Layer::Slide)
+        .value("StepLength", NoteSequence::Layer::StepLength)
+        .value("GateLength", NoteSequence::Layer::GateLength)
         .value("Retrigger", NoteSequence::Layer::Retrigger)
-        .value("RetriggerProbability", NoteSequence::Layer::RetriggerProbability)
-        .value("Length", NoteSequence::Layer::Length)
-        .value("LengthVariationRange", NoteSequence::Layer::LengthVariationRange)
-        .value("LengthVariationProbability", NoteSequence::Layer::LengthVariationProbability)
+        .value("ArpRetrigger", NoteSequence::Layer::ArpRetrigger)
+        .value("Repeat", NoteSequence::Layer::Repeat)
         .value("Note", NoteSequence::Layer::Note)
-        .value("NoteVariationRange", NoteSequence::Layer::NoteVariationRange)
-        .value("NoteVariationProbability", NoteSequence::Layer::NoteVariationProbability)
+        .value("Slide", NoteSequence::Layer::Slide)
         .value("Condition", NoteSequence::Layer::Condition)
+        .value("RetriggerCondition", NoteSequence::Layer::RetriggerCondition)
         .export_values()
     ;
 
     py::class_<NoteSequence::Step> noteSequenceStep(noteSequence, "Step");
     noteSequenceStep
         .def_property("gate", &NoteSequence::Step::gate, &NoteSequence::Step::setGate)
-        .def_property("gateProbability", &NoteSequence::Step::gateProbability, &NoteSequence::Step::setGateProbability)
-        .def_property("gateOffset", &NoteSequence::Step::gateOffset, &NoteSequence::Step::setGateOffset)
         .def_property("slide", &NoteSequence::Step::slide, &NoteSequence::Step::setSlide)
+        .def_property("stepLength", &NoteSequence::Step::stepLength, &NoteSequence::Step::setStepLength)
+        .def_property("gateLength", &NoteSequence::Step::gateLength, &NoteSequence::Step::setGateLength)
         .def_property("retrigger", &NoteSequence::Step::retrigger, &NoteSequence::Step::setRetrigger)
-        .def_property("retriggerProbability", &NoteSequence::Step::retriggerProbability, &NoteSequence::Step::setRetriggerProbability)
-        .def_property("length", &NoteSequence::Step::length, &NoteSequence::Step::setLength)
-        .def_property("lengthVariationRange", &NoteSequence::Step::lengthVariationRange, &NoteSequence::Step::setLengthVariationRange)
-        .def_property("lengthVariationProbability", &NoteSequence::Step::lengthVariationProbability, &NoteSequence::Step::setLengthVariationProbability)
+        .def_property("arpRetrigger", &NoteSequence::Step::arpRetrigger, &NoteSequence::Step::setArpRetrigger)
+        .def_property("repeat", &NoteSequence::Step::repeat, &NoteSequence::Step::setRepeat)
         .def_property("note", &NoteSequence::Step::note, &NoteSequence::Step::setNote)
-        .def_property("noteVariationRange", &NoteSequence::Step::noteVariationRange, &NoteSequence::Step::setNoteVariationRange)
-        .def_property("noteVariationProbability", &NoteSequence::Step::noteVariationProbability, &NoteSequence::Step::setNoteVariationProbability)
         .def_property("condition", &NoteSequence::Step::condition, &NoteSequence::Step::setCondition)
+        .def_property("retriggerCondition", &NoteSequence::Step::retriggerCondition, &NoteSequence::Step::setRetriggerCondition)
         .def("clear", &NoteSequence::Step::clear)
     ;
 

@@ -47,11 +47,10 @@ p = e.sequencer.model.project
 p.setTrackMode(0, tsseq.Track.TrackMode.Note)
 
 seq = p.tracks[0].noteTrack.sequences[0]
-seq.scale = 0        # 0 = Semitones, 1 = Major, etc.
 seq.firstStep = 0
 seq.lastStep = 3
 seq.steps[0].gate = True
-seq.steps[0].note = 12   # stored as scale-degree index
+seq.steps[0].note = 7    # stored as scale-degree index
 
 c.press("play")
 e.simulator.wait(100)
@@ -63,8 +62,11 @@ e.sim.screenshot("/tmp/out.png")
 
 ## Note encoding
 
-`step.note` stores a **scale-degree index**, not a semitone offset:
-- Semitones (index 0, 12 degrees): note 12 → C5 (1.0 V)
-- Major (index 1, 7 degrees): note 7 → C5 (1.0 V), note 12 → A5 (1.75 V)
+Scale and root note are **project-global** (`project.scale` / `project.rootNote`), not per-sequence.
 
-Use `Scale::noteToVolts` / `noteFromVolts` to convert between scales — `setScale()` on `NoteSequence` and `ArpSequence` does this automatically.
+`step.note` stores a **scale-degree index**, not a semitone offset. There is **no chromatic scale**
+in `model/Scale.cpp` — every entry is a 7-note mode, and index 0 is "Maj: Ionian":
+
+- Ionian (index 0, 7 degrees): degrees 0..6 = 0, 2, 4, 5, 7, 9, 11 semitones; degree 7 → C5 (1.0 V)
+
+So a step's degree 1 is **2 semitones**, not 1. Use `Scale::noteToVolts` / `noteFromVolts` to convert.

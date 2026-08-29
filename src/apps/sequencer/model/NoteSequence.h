@@ -27,61 +27,79 @@ public:
     // Types
     //----------------------------------------
 
-    typedef UnsignedValue<4> GateProbability;
-    typedef SignedValue<4> GateOffset;
-    typedef UnsignedValue<3> Retrigger;
-    typedef UnsignedValue<4> RetriggerProbability;
-    typedef UnsignedValue<4> Length;
-    typedef SignedValue<4> LengthVariationRange;
-    typedef UnsignedValue<4> LengthVariationProbability;
+    typedef UnsignedValue<5> StepLength;    // index into StepLengthRatios
+    typedef UnsignedValue<7> GateLength;    // 1..100 percent of the retrigger slice
+    typedef UnsignedValue<3> Retrigger;     // stored 0..7 -> 1..8 slices
+    typedef UnsignedValue<3> Repeat;        // stored 0..7 -> 1..8 repeats
+    typedef SignedValue<5> ArpRetrigger;    // -15..+15 scale degrees per slice
     typedef SignedValue<7> Note;
-    typedef SignedValue<7> NoteVariationRange;
-    typedef UnsignedValue<4> NoteVariationProbability;
     typedef UnsignedValue<7> Condition;
-    typedef UnsignedValue<3> StageRepeats;
-    typedef UnsignedValue<3> StageRepeatsMode;
 
     static_assert(int(Types::Condition::Last) <= Condition::Max + 1, "Condition enum does not fit");
 
+    // Step length expressed as a ratio against the sequence divisor. Sub-pulse
+    // entries give triplets/rolls, multiples give steps spanning several pulses.
+    struct StepLengthRatio {
+        uint8_t num;
+        uint8_t den;
+    };
+
+    static constexpr int StepLengthCount = 20;
+    static constexpr int StepLengthDefault = 7;     // ratio 1/1
+
+    static const StepLengthRatio &stepLengthRatio(int index) {
+        static const StepLengthRatio ratios[StepLengthCount] = {
+            { 1, 8 }, { 1, 6 }, { 1, 4 }, { 1, 3 }, { 1, 2 }, { 2, 3 }, { 3, 4 },
+            { 1, 1 },
+            { 5, 4 }, { 4, 3 }, { 3, 2 }, { 2, 1 }, { 5, 2 }, { 3, 1 }, { 4, 1 },
+            { 5, 1 }, { 6, 1 }, { 8, 1 }, { 12, 1 }, { 16, 1 },
+        };
+        return ratios[clamp(index, 0, StepLengthCount - 1)];
+    }
+
+    // step duration in engine ticks for the given divisor
+    static uint32_t stepLengthTicks(int index, uint32_t divisor) {
+        const auto &r = stepLengthRatio(index);
+        uint32_t ticks = (divisor * r.num) / r.den;
+        return ticks < 2 ? 2 : ticks;
+    }
+
+    static void printStepLength(StringBuilder &str, int index) {
+        const auto &r = stepLengthRatio(index);
+        if (r.den == 1) {
+            str("%d", r.num);
+        } else {
+            str("%d/%d", r.num, r.den);
+        }
+    }
+
     enum class Layer {
         Gate,
-        GateProbability,
-        GateOffset,
+        StepLength,
+        GateLength,
         Retrigger,
-        RetriggerProbability,
-        StageRepeats,
-        StageRepeatsMode,
-        Length,
-        LengthVariationRange,
-        LengthVariationProbability,
+        ArpRetrigger,
+        Repeat,
         Note,
-        NoteVariationRange,
-        NoteVariationProbability,
         Slide,
-        BypassScale,
         Condition,
+        RetriggerCondition,
         Last
     };
 
     static const char *layerName(Layer layer) {
         switch (layer) {
-        case Layer::Gate:                       return "GATE";
-        case Layer::GateProbability:            return "GATE PROB";
-        case Layer::GateOffset:                 return "GATE OFFSET";
-        case Layer::Slide:                      return "SLIDE";
-        case Layer::BypassScale:                 return "BYPASS SCALE";
-        case Layer::Retrigger:                  return "RETRIG";
-        case Layer::RetriggerProbability:       return "RETRIG PROB";
-        case Layer::Length:                     return "LENGTH";
-        case Layer::LengthVariationRange:       return "LENGTH RANGE";
-        case Layer::LengthVariationProbability: return "LENGTH PROB";
-        case Layer::Note:                       return "NOTE";
-        case Layer::NoteVariationRange:         return "NOTE RANGE";
-        case Layer::NoteVariationProbability:   return "NOTE PROB";
-        case Layer::Condition:                  return "CONDITION";
-        case Layer::StageRepeats:               return "REPEAT";
-        case Layer::StageRepeatsMode:           return "REPEAT MODE";
-        case Layer::Last:                       break;
+        case Layer::Gate:               return "GATE";
+        case Layer::StepLength:         return "STEP LENGTH";
+        case Layer::GateLength:         return "GATE LENGTH";
+        case Layer::Retrigger:          return "RETRIG";
+        case Layer::ArpRetrigger:       return "ARP RETRIG";
+        case Layer::Repeat:             return "REPEAT";
+        case Layer::Note:               return "NOTE";
+        case Layer::Slide:              return "SLIDE";
+        case Layer::Condition:          return "CONDITION";
+        case Layer::RetriggerCondition: return "RETRIG COND";
+        case Layer::Last:               break;
         }
         return nullptr;
     }
@@ -99,84 +117,51 @@ public:
         // Properties
         //----------------------------------------
 
-        // stage
-        void setStageRepeats(int repeats) {
-            _data1.stageRepeats = StageRepeats::clamp(repeats);
-        }
-        unsigned int stageRepeats() const { return _data1.stageRepeats; }
-
-        void setStageRepeatsMode(Types::StageRepeatMode mode) {
-            _data1.stageRepeatMode = mode;
-        }
-
-        Types::StageRepeatMode stageRepeatMode() const {
-            int value = _data1.stageRepeatMode;
-            return static_cast<Types::StageRepeatMode>(value);
-        }
-
         // gate
 
         bool gate() const { return _data0.gate ? true : false; }
         void setGate(bool gate) { _data0.gate = gate; }
         void toggleGate() { setGate(!gate()); }
 
-        // gateProbability
-
-        int gateProbability() const { return _data1.gateProbability; }
-        void setGateProbability(int gateProbability) {
-            _data1.gateProbability = GateProbability::clamp(gateProbability);
-        }
-
-        // gateOffset
-
-        int gateOffset() const { return GateOffset::Min + (int) _data1.gateOffset; }
-        void setGateOffset(int gateOffset) {
-            _data1.gateOffset = GateOffset::clamp(gateOffset) - GateOffset::Min;
-        }
-
         // slide
 
         bool slide() const { return _data0.slide ? true : false; }
-        void setSlide(bool slide) {
-            _data0.slide = slide;
-        }
-        void toggleSlide() {
-            setSlide(!slide());
+        void setSlide(bool slide) { _data0.slide = slide; }
+        void toggleSlide() { setSlide(!slide()); }
+
+        // stepLength (index into StepLengthRatios)
+
+        int stepLength() const { return _data0.stepLength; }
+        void setStepLength(int stepLength) {
+            _data0.stepLength = clamp(stepLength, 0, StepLengthCount - 1);
         }
 
-        // retrigger
+        // gateLength (1..100 percent of the retrigger slice)
 
-        int retrigger() const { return _data1.retrigger; }
+        int gateLength() const { return _data0.gateLength; }
+        void setGateLength(int gateLength) {
+            _data0.gateLength = clamp(gateLength, 1, 100);
+        }
+
+        // retrigger (1..8 slices per step)
+
+        int retrigger() const { return _data0.retrigger + 1; }
         void setRetrigger(int retrigger) {
-            _data1.retrigger = Retrigger::clamp(retrigger);
+            _data0.retrigger = Retrigger::clamp(retrigger - 1);
         }
 
-        // retriggerProbability
+        // repeat (1..8 replays of the whole step body)
 
-        int retriggerProbability() const { return _data1.retriggerProbability; }
-        void setRetriggerProbability(int retriggerProbability) {
-            _data1.retriggerProbability = RetriggerProbability::clamp(retriggerProbability);
+        int repeat() const { return _data0.repeat + 1; }
+        void setRepeat(int repeat) {
+            _data0.repeat = Repeat::clamp(repeat - 1);
         }
 
-        // length
+        // arpRetrigger (scale degrees added per retrigger slice)
 
-        int length() const { return _data0.length; }
-        void setLength(int length) {
-            _data0.length = Length::clamp(length);
-        }
-
-        // lengthVariationRange
-
-        int lengthVariationRange() const { return LengthVariationRange::Min + _data0.lengthVariationRange; }
-        void setLengthVariationRange(int lengthVariationRange) {
-            _data0.lengthVariationRange = LengthVariationRange::clamp(lengthVariationRange) - LengthVariationRange::Min;
-        }
-
-        // lengthVariationProbability
-
-        int lengthVariationProbability() const { return _data0.lengthVariationProbability; }
-        void setLengthVariationProbability(int lengthVariationProbability) {
-            _data0.lengthVariationProbability = LengthVariationProbability::clamp(lengthVariationProbability);
+        int arpRetrigger() const { return ArpRetrigger::Min + _data0.arpRetrigger; }
+        void setArpRetrigger(int arpRetrigger) {
+            _data0.arpRetrigger = ArpRetrigger::clamp(arpRetrigger) - ArpRetrigger::Min;
         }
 
         // note
@@ -186,37 +171,22 @@ public:
             _data0.note = Note::clamp(note) - Note::Min;
         }
 
-        // noteVariationRange
-
-        int noteVariationRange() const { return NoteVariationRange::Min + _data0.noteVariationRange; }
-        void setNoteVariationRange(int noteVariationRange) {
-            _data0.noteVariationRange = NoteVariationRange::clamp(noteVariationRange) - NoteVariationRange::Min;
-        }
-
-        // noteVariationProbability
-
-        int noteVariationProbability() const { return _data0.noteVariationProbability; }
-        void setNoteVariationProbability(int noteVariationProbability) {
-            _data0.noteVariationProbability = NoteVariationProbability::clamp(noteVariationProbability);
-        }
-
-        // condition
+        // condition (gates the whole step)
 
         Types::Condition condition() const { return Types::Condition(int(_data1.condition)); }
         void setCondition(Types::Condition condition) {
             _data1.condition = int(ModelUtils::clampedEnum(condition));
         }
 
+        // retriggerCondition (gates whether retrigger fires at all)
+
+        Types::Condition retriggerCondition() const { return Types::Condition(int(_data1.retriggerCondition)); }
+        void setRetriggerCondition(Types::Condition condition) {
+            _data1.retriggerCondition = int(ModelUtils::clampedEnum(condition));
+        }
+
         int layerValue(Layer layer) const;
         void setLayerValue(Layer layer, int value);
-
-        bool bypassScale() const { return _data1.bypassScale ? true : false; }
-        void setBypassScale(bool bypass) {
-            _data1.bypassScale = bypass;
-        }
-        void toggleBypassScale() {
-            setBypassScale(!bypassScale());
-        }
 
         //----------------------------------------
         // Methods
@@ -242,24 +212,19 @@ public:
             uint32_t raw;
             BitField<uint32_t, 0, 1> gate;
             BitField<uint32_t, 1, 1> slide;
-            BitField<uint32_t, 2, Length::Bits> length;
-            BitField<uint32_t, 6, LengthVariationRange::Bits> lengthVariationRange;
-            BitField<uint32_t, 10, LengthVariationProbability::Bits> lengthVariationProbability;
+            BitField<uint32_t, 2, StepLength::Bits> stepLength;
+            BitField<uint32_t, 7, GateLength::Bits> gateLength;
             BitField<uint32_t, 14, Note::Bits> note;
-            BitField<uint32_t, 21, NoteVariationRange::Bits> noteVariationRange;
-            BitField<uint32_t, 28, NoteVariationProbability::Bits> noteVariationProbability;
+            BitField<uint32_t, 21, Retrigger::Bits> retrigger;
+            BitField<uint32_t, 24, Repeat::Bits> repeat;
+            BitField<uint32_t, 27, ArpRetrigger::Bits> arpRetrigger;
+            // full
         } _data0;
         union {
             uint32_t raw;
-            BitField<uint32_t, 0, 1> bypassScale;
-            BitField<uint32_t, 1, Retrigger::Bits> retrigger;
-            BitField<uint32_t, 4, GateProbability::Bits> gateProbability;
-            BitField<uint32_t, 8, RetriggerProbability::Bits> retriggerProbability;
-            BitField<uint32_t, 12, GateOffset::Bits> gateOffset;
-            BitField<uint32_t, 16, Condition::Bits> condition;
-            BitField<uint32_t, 23, StageRepeats::Bits> stageRepeats;
-            BitField<uint32_t, 26, StageRepeatsMode::Bits> stageRepeatMode;
-            // 4 bits left
+            BitField<uint32_t, 0, Condition::Bits> condition;
+            BitField<uint32_t, 7, Condition::Bits> retriggerCondition;
+            // 18 bits left
         } _data1;
     };
 

@@ -41,19 +41,19 @@ public:
         return nullptr;
     }
 
-    // CvUpdateMode
+    // GateMode -- what a 100% gate length means at a slot boundary
 
-    enum class CvUpdateMode : uint8_t {
-        Gate,
-        Always,
+    enum class GateMode : uint8_t {
+        Retrigger,  // gate closes on the boundary, next slot re-opens it
+        Legato,     // gate is held across the boundary, next slot does not re-fire
         Last
     };
 
-    static const char *cvUpdateModeName(CvUpdateMode mode) {
+    static const char *gateModeName(GateMode mode) {
         switch (mode) {
-        case CvUpdateMode::Gate:    return "Gate";
-        case CvUpdateMode::Always:  return "Always";
-        case CvUpdateMode::Last:    break;
+        case GateMode::Retrigger:   return "Retrigger";
+        case GateMode::Legato:      return "Legato";
+        case GateMode::Last:        break;
         }
         return nullptr;
     }
@@ -63,21 +63,6 @@ public:
     //----------------------------------------
 
     const int trackIndex() const { return _trackIndex;}
-
-    // playMode
-
-    Types::PlayMode playMode() const { return _playMode; }
-    void setPlayMode(Types::PlayMode playMode) {
-        _playMode = ModelUtils::clampedEnum(playMode);
-    }
-
-    void editPlayMode(int value, bool shift) {
-        setPlayMode(ModelUtils::adjustedEnum(playMode(), value));
-    }
-
-    void printPlayMode(StringBuilder &str) const {
-        str(Types::playModeName(playMode()));
-    }
 
     // fillMode
 
@@ -109,27 +94,48 @@ public:
         ModelUtils::printYesNo(str, fillMuted());
     }
 
-    // cvUpdateMode
+    // gateMode
 
-    CvUpdateMode cvUpdateMode() const { return _cvUpdateMode; }
-    void setCvUpdateMode(CvUpdateMode cvUpdateMode) {
-        _cvUpdateMode = ModelUtils::clampedEnum(cvUpdateMode);
+    GateMode gateMode() const { return _gateMode; }
+    void setGateMode(GateMode gateMode) {
+        _gateMode = ModelUtils::clampedEnum(gateMode);
     }
 
-    void editCvUpdateMode(int value, bool shift) {
-        setCvUpdateMode(ModelUtils::adjustedEnum(cvUpdateMode(), value));
+    void editGateMode(int value, bool shift) {
+        setGateMode(ModelUtils::adjustedEnum(gateMode(), value));
     }
 
-    void printCvUpdateMode(StringBuilder &str) const {
-        str(cvUpdateModeName(cvUpdateMode()));
+    void printGateMode(StringBuilder &str) const {
+        str(gateModeName(gateMode()));
+    }
+
+    // slideType
+
+    Types::SlideType slideType() const { return _slideType; }
+    void setSlideType(Types::SlideType slideType) {
+        _slideType = ModelUtils::clampedEnum(slideType);
+    }
+
+    void editSlideType(int value, bool shift) {
+        setSlideType(ModelUtils::adjustedEnum(slideType(), value));
+    }
+
+    void printSlideType(StringBuilder &str) const {
+        str(Types::slideTypeName(slideType()));
     }
 
     // slideTime
 
+    // stored 1..100, interpreted as 5..500 ms. Default 12 -> 60 ms (TB-303-ish).
+    static constexpr int SlideTimeDefault = 12;
+    static constexpr int SlideTimeMsPerUnit = 5;
+
     int slideTime() const { return _slideTime.get(isRouted(Routing::Target::SlideTime)); }
     void setSlideTime(int slideTime, bool routed = false) {
-        _slideTime.set(clamp(slideTime, 0, 100), routed);
+        _slideTime.set(clamp(slideTime, 1, 100), routed);
     }
+
+    int slideTimeMs() const { return slideTime() * SlideTimeMsPerUnit; }
 
     void editSlideTime(int value, bool shift) {
         if (!isRouted(Routing::Target::SlideTime)) {
@@ -139,7 +145,7 @@ public:
 
     void printSlideTime(StringBuilder &str) const {
         printRouted(str, Routing::Target::SlideTime);
-        str("%d%%", slideTime());
+        str("%dms", slideTimeMs());
     }
 
     // octave
@@ -196,81 +202,6 @@ public:
         str("%+d", rotate());
     }
 
-    // gateProbabilityBias
-
-    int gateProbabilityBias() const { return _gateProbabilityBias.get(isRouted(Routing::Target::GateProbabilityBias)); }
-    void setGateProbabilityBias(int gateProbabilityBias, bool routed = false) {
-        _gateProbabilityBias.set(clamp(gateProbabilityBias, -NoteSequence::GateProbability::Range, NoteSequence::GateProbability::Range), routed);
-    }
-
-    void editGateProbabilityBias(int value, bool shift) {
-        if (!isRouted(Routing::Target::GateProbabilityBias)) {
-            setGateProbabilityBias(gateProbabilityBias() + value);
-        }
-    }
-
-    void printGateProbabilityBias(StringBuilder &str) const {
-        printRouted(str, Routing::Target::GateProbabilityBias);
-        str("%+.1f%%", gateProbabilityBias() * 12.5f);
-    }
-
-    // retriggerProbabilityBias
-
-    int retriggerProbabilityBias() const { return _retriggerProbabilityBias.get(isRouted(Routing::Target::RetriggerProbabilityBias)); }
-    void setRetriggerProbabilityBias(int retriggerProbabilityBias, bool routed = false) {
-        _retriggerProbabilityBias.set(clamp(retriggerProbabilityBias, -NoteSequence::RetriggerProbability::Range, NoteSequence::RetriggerProbability::Range), routed);
-    }
-
-    void editRetriggerProbabilityBias(int value, bool shift) {
-        if (!isRouted(Routing::Target::RetriggerProbabilityBias)) {
-            setRetriggerProbabilityBias(retriggerProbabilityBias() + value);
-        }
-    }
-
-    void printRetriggerProbabilityBias(StringBuilder &str) const {
-        printRouted(str, Routing::Target::RetriggerProbabilityBias);
-        str("%+.1f%%", retriggerProbabilityBias() * 12.5f);
-    }
-
-    // lengthBias
-
-    int lengthBias() const { return _lengthBias.get(isRouted(Routing::Target::LengthBias)); }
-    void setLengthBias(int lengthBias, bool routed = false) {
-        _lengthBias.set(clamp(lengthBias, -NoteSequence::Length::Range, NoteSequence::Length::Range), routed);
-    }
-
-    void editLengthBias(int value, bool shift) {
-        if (!isRouted(Routing::Target::LengthBias)) {
-            setLengthBias(lengthBias() + value);
-        }
-    }
-
-    void printLengthBias(StringBuilder &str) const {
-        printRouted(str, Routing::Target::LengthBias);
-        str("%+.1f%%", lengthBias() * 12.5f);
-    }
-
-    // noteProbabilityBias
-
-    int noteProbabilityBias() const { return _noteProbabilityBias.get(isRouted(Routing::Target::NoteProbabilityBias)); }
-    void setNoteProbabilityBias(int noteProbabilityBias, bool routed = false) {
-        _noteProbabilityBias.set(clamp(noteProbabilityBias, -NoteSequence::NoteVariationProbability::Range, NoteSequence::NoteVariationProbability::Range), routed);
-    }
-
-    void editNoteProbabilityBias(int value, bool shift) {
-        if (!isRouted(Routing::Target::NoteProbabilityBias)) {
-            setNoteProbabilityBias(noteProbabilityBias() + value);
-        }
-    }
-
-    void printNoteProbabilityBias(StringBuilder &str) const {
-        printRouted(str, Routing::Target::NoteProbabilityBias);
-        str("%+.1f%%", noteProbabilityBias() * 12.5f);
-    }
-
-    // sequences
-
-    const NoteSequenceArray &sequences() const { return _sequences; }
           NoteSequenceArray &sequences()       { return _sequences; }
 
     const NoteSequence &sequence(int index) const { return _sequences[index]; }
@@ -308,18 +239,14 @@ private:
     }
 
     int8_t _trackIndex = -1;
-    Types::PlayMode _playMode;
     FillMode _fillMode;
     bool _fillMuted;
-    CvUpdateMode _cvUpdateMode;
+    GateMode _gateMode;
+    Types::SlideType _slideType;
     Routable<uint8_t> _slideTime;
     Routable<int8_t> _octave;
     Routable<int8_t> _transpose;
     Routable<int8_t> _rotate;
-    Routable<int8_t> _gateProbabilityBias;
-    Routable<int8_t> _retriggerProbabilityBias;
-    Routable<int8_t> _lengthBias;
-    Routable<int8_t> _noteProbabilityBias;
 
     NoteSequenceArray _sequences;
 

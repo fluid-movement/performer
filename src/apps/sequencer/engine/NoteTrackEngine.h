@@ -2,6 +2,7 @@
 
 #include "TrackEngine.h"
 #include "SequenceState.h"
+#include "Slide.h"
 #include "SortedQueue.h"
 #include "Groove.h"
 #include "RecordHistory.h"
@@ -47,16 +48,17 @@ public:
 
     void setMonitorStep(int index);
 
-    Types::PlayMode playMode() const { return _noteTrack.playMode(); }
-
     SequenceState sequenceState() {
         return _sequenceState;
     }
 
 
 private:
-    void triggerStep(uint32_t tick, uint32_t divisor, bool nextStep);
-    void triggerStep(uint32_t tick, uint32_t divisor);
+    // Schedule the events for one retrigger slice; begins a new step when the
+    // slot index wraps back to zero.
+    void advanceSlot(uint32_t tick, uint32_t divisor);
+    void beginStep(uint32_t tick, uint32_t divisor);
+    uint32_t slotOnset(int slot) const;
     void recordStep(uint32_t tick, uint32_t divisor);
     int noteFromMidiNote(uint8_t midiNote) const;
 
@@ -69,10 +71,27 @@ private:
     NoteSequence *_sequence;
     const NoteSequence *_fillSequence;
 
-    uint32_t _freeRelativeTick;
     SequenceState _sequenceState;
     int _currentStep;
     bool _prevCondition;
+
+    // --- slot scheduler ---------------------------------------------------
+    // A step is divided into repeat x retrigger equally spaced slots. Onsets are
+    // derived from the step start rather than accumulated, so rounding error
+    // stays bounded and the final slot lands exactly on the step end.
+    uint32_t _stepStartTick = 0;
+    uint32_t _stepTotalTicks = 0;
+    uint32_t _nextSlotTick = 0;
+    int _slotIndex = 0;
+    int _totalSlots = 1;
+    int _retrigCount = 1;
+    int _baseNote = 0;
+    int _arpRetrigger = 0;
+    int _gateLength = 100;
+    bool _stepGate = false;
+    bool _stepSlide = false;
+    bool _legatoHeld = false;
+    bool _started = false;
 
     int _monitorStepIndex = -1;
 
@@ -84,8 +103,7 @@ private:
     bool _gateOutput;
     float _cvOutput;
     float _cvOutputTarget;
-    bool _slideActive;
-    unsigned int _currentStageRepeat;
+    Slide::Ramp _slideRamp;
 
     struct Gate {
         uint32_t tick;

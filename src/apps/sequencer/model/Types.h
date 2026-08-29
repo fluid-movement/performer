@@ -82,17 +82,24 @@ public:
         Last
     };
 
-    enum StageRepeatMode {
-        Each,
-        First,
-        Middle,
-        Last,
-        Odd,
-        Even,
-        Triplets,
-        Random,
+    // SlideType -- shaping curve used by the note track portamento
 
+    enum class SlideType : uint8_t {
+        Linear,         // constant rate
+        Exponential,    // RC / TB-303: fast start, decelerating into the target
+        Logarithmic,    // slow start, accelerating into the target
+        Last
     };
+
+    static const char *slideTypeName(SlideType slideType) {
+        switch (slideType) {
+        case SlideType::Linear:      return "Linear";
+        case SlideType::Exponential: return "Exponential";
+        case SlideType::Logarithmic: return "Logarithmic";
+        case SlideType::Last:        break;
+        }
+        return nullptr;
+    }
 
     static const char *cvGateInputName(CvGateInput cvGateInput) {
         switch (cvGateInput) {

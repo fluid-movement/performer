@@ -20,52 +20,37 @@
 static Random rng;
 
 // evaluate if step gate is active
-static bool evalStepGate(const NoteSequence::Step &step, int probabilityBias) {
-    int probability = clamp(step.gateProbability() + probabilityBias, -1, NoteSequence::GateProbability::Max);
-    return step.gate() && int(rng.nextRange(NoteSequence::GateProbability::Range)) <= probability;
+static bool evalStepGate(const NoteSequence::Step &step) {
+    return step.gate();
 }
 
-// evaluate step condition
-static bool evalStepCondition(const NoteSequence::Step &step, int iteration, bool fill, bool &prevCondition) {
-    auto condition = step.condition();
+// evaluate a step condition. Only the gate condition advances the Pre/NotPre
+// chain -- the retrigger condition reads it without writing, otherwise two
+// writers per step would make Pre meaningless.
+static bool evalStepCondition(Types::Condition condition, int iteration, bool fill, bool &prevCondition, bool writeChain) {
+    bool result = true;
     switch (condition) {
-    case Types::Condition::Off:                                         return true;
-    case Types::Condition::Fill:        prevCondition = fill;           return prevCondition;
-    case Types::Condition::NotFill:     prevCondition = !fill;          return prevCondition;
-    case Types::Condition::Pre:                                         return prevCondition;
-    case Types::Condition::NotPre:                                      return !prevCondition;
-    case Types::Condition::First:       prevCondition = iteration == 0; return prevCondition;
-    case Types::Condition::NotFirst:    prevCondition = iteration != 0; return prevCondition;
-    default:
+    case Types::Condition::Off:                             return true;
+    case Types::Condition::Fill:        result = fill;      break;
+    case Types::Condition::NotFill:     result = !fill;     break;
+    case Types::Condition::Pre:                             return prevCondition;
+    case Types::Condition::NotPre:                          return !prevCondition;
+    case Types::Condition::First:       result = iteration == 0; break;
+    case Types::Condition::NotFirst:    result = iteration != 0; break;
+    default: {
         int index = int(condition);
         if (index >= int(Types::Condition::Loop) && index < int(Types::Condition::Last)) {
             auto loop = Types::conditionLoop(condition);
-            prevCondition = iteration % loop.base == loop.offset;
-            if (loop.invert) prevCondition = !prevCondition;
-            return prevCondition;
+            result = iteration % loop.base == loop.offset;
+            if (loop.invert) result = !result;
         }
+        break;
     }
-    return true;
-}
-
-// evaluate step retrigger count
-static int evalStepRetrigger(const NoteSequence::Step &step, int probabilityBias) {
-    int probability = clamp(step.retriggerProbability() + probabilityBias, -1, NoteSequence::RetriggerProbability::Max);
-    return int(rng.nextRange(NoteSequence::RetriggerProbability::Range)) <= probability ? step.retrigger() + 1 : 1;
-}
-
-// evaluate step length
-static int evalStepLength(const NoteSequence::Step &step, int lengthBias) {
-    int length = NoteSequence::Length::clamp(step.length() + lengthBias) + 1;
-    int probability = step.lengthVariationProbability();
-    if (int(rng.nextRange(NoteSequence::LengthVariationProbability::Range)) <= probability) {
-        int offset = step.lengthVariationRange() == 0 ? 0 : rng.nextRange(std::abs(step.lengthVariationRange()) + 1);
-        if (step.lengthVariationRange() < 0) {
-            offset = -offset;
-        }
-        length = clamp(length + offset, 0, NoteSequence::Length::Range);
     }
-    return length;
+    if (writeChain) {
+        prevCondition = result;
+    }
+    return result;
 }
 
 // evaluate transposition
@@ -73,37 +58,19 @@ static int evalTransposition(const Scale &scale, int octave, int transpose) {
     return octave * scale.notesPerOctave() + transpose;
 }
 
-// evaluate note voltage
-static float evalStepNote(const NoteSequence::Step &step, int probabilityBias, const Scale &scale, int rootNote, int octave, int transpose, bool useVariation = true) {
-
-
-    if (step.bypassScale()) {
-        const Scale &bypassScale = Scale::get(0);
-        int note = step.note() + evalTransposition(bypassScale, octave, transpose);
-        int probability = clamp(step.noteVariationProbability() + probabilityBias, -1, NoteSequence::NoteVariationProbability::Max);
-        if (useVariation && int(rng.nextRange(NoteSequence::NoteVariationProbability::Range)) <= probability) {
-            int offset = step.noteVariationRange() == 0 ? 0 : rng.nextRange(std::abs(step.noteVariationRange()) + 1);
-            if (step.noteVariationRange() < 0) {
-                offset = -offset;
-            }
-            note = NoteSequence::Note::clamp(note + offset);
-        }
-        return bypassScale.noteToVolts(note) + (bypassScale.isChromatic() ? rootNote : 0) * (1.f / 12.f);
-    }
-    int note = step.note() + evalTransposition(scale, octave, transpose);
-    int probability = clamp(step.noteVariationProbability() + probabilityBias, -1, NoteSequence::NoteVariationProbability::Max);
-    if (useVariation && int(rng.nextRange(NoteSequence::NoteVariationProbability::Range)) <= probability) {
-        int offset = step.noteVariationRange() == 0 ? 0 : rng.nextRange(std::abs(step.noteVariationRange()) + 1);
-        if (step.noteVariationRange() < 0) {
-            offset = -offset;
-        }
-        note = NoteSequence::Note::clamp(note + offset);
-    }
+// evaluate note voltage for a given scale-degree index
+static float noteToVolts(int note, const Scale &scale, int rootNote) {
     return scale.noteToVolts(note) + (scale.isChromatic() ? rootNote : 0) * (1.f / 12.f);
 }
 
+// evaluate note voltage
+static float evalStepNote(const NoteSequence::Step &step, int probabilityBias, const Scale &scale, int rootNote, int octave, int transpose, bool useVariation = true) {
+    (void)probabilityBias;
+    (void)useVariation;
+    return noteToVolts(step.note() + evalTransposition(scale, octave, transpose), scale, rootNote);
+}
+
 void NoteTrackEngine::reset() {
-    _freeRelativeTick = 0;
     _sequenceState.reset();
     _currentStep = -1;
     _prevCondition = false;
@@ -113,7 +80,16 @@ void NoteTrackEngine::reset() {
         _cvOutput = 0.f;
         _cvOutputTarget = 0.f;
     }
-    _slideActive = false;
+    _slideRamp.reset();
+    _stepStartTick = 0;
+    _stepTotalTicks = 0;
+    _nextSlotTick = 0;
+    _slotIndex = 0;
+    _totalSlots = 1;
+    _retrigCount = 1;
+    _stepGate = false;
+    _legatoHeld = false;
+    _started = false;
     _gateQueue.clear();
     _cvQueue.clear();
     //_recordHistory.clear();
@@ -122,9 +98,11 @@ void NoteTrackEngine::reset() {
 }
 
 void NoteTrackEngine::restart() {
-    _freeRelativeTick = 0;
     _sequenceState.reset();
     _currentStep = -1;
+    _slotIndex = 0;
+    _legatoHeld = false;
+    _started = false;
 }
 
 TrackEngine::TickResult NoteTrackEngine::tick(uint32_t tick) {
@@ -133,16 +111,25 @@ TrackEngine::TickResult NoteTrackEngine::tick(uint32_t tick) {
     const auto *linkData = _linkedTrackEngine ? _linkedTrackEngine->linkData() : nullptr;
 
     if (linkData) {
+        // A linked track borrows the master's step boundaries. Its own step
+        // length and repeat are ignored -- variable step duration under a
+        // foreign clock has no well defined meaning -- but retrigger, arp
+        // retrigger and gate length still shape what happens inside the step.
         _linkData = *linkData;
         _sequenceState = *linkData->sequenceState;
 
         if (linkData->relativeTick % linkData->divisor == 0) {
-            int abstoluteStep = int(linkData->relativeTick / linkData->divisor);
-            recordStep(tick+1, linkData->divisor);
-            if (abstoluteStep == 0 ||abstoluteStep >= _model.project().recordDelay()+1) {
-                    recordStep(tick+1, linkData->divisor);
-                }
-            triggerStep(tick, linkData->divisor);
+            int absoluteStep = int(linkData->relativeTick / linkData->divisor);
+            if (absoluteStep == 0 || absoluteStep >= _model.project().recordDelay() + 1) {
+                recordStep(tick + 1, linkData->divisor);
+            }
+            _slotIndex = 0;
+            beginStep(tick, linkData->divisor);
+            _stepTotalTicks = linkData->divisor;
+            _totalSlots = _retrigCount;
+            advanceSlot(tick, linkData->divisor);
+        } else if (_started && tick >= _nextSlotTick && _slotIndex != 0) {
+            advanceSlot(tick, linkData->divisor);
         }
     } else {
         uint32_t divisor, relativeTick;
@@ -155,76 +142,14 @@ TrackEngine::TickResult NoteTrackEngine::tick(uint32_t tick) {
         // handle reset measure
         if (relativeTick == 0) {
             reset();
-            _currentStageRepeat = 1;
         }
-        auto &sequence = *_sequence;
 
-        // advance sequence
-        switch (_noteTrack.playMode()) {
-        case Types::PlayMode::Aligned:
-            if (relativeTick % divisor == 0) {
-                int abstoluteStep = int(relativeTick / divisor);
-                _sequenceState.advanceAligned(abstoluteStep, sequence.runMode(), sequence.firstStep(), sequence.lastStep(), rng);
-
-                if (abstoluteStep == 0 ||abstoluteStep >= _model.project().recordDelay()+1) {
-                    recordStep(tick+1, divisor);
-                }
-                triggerStep(tick, divisor);
-
-                const auto &step = sequence.step(_sequenceState.step());
-                if (step.gateOffset()<0) {
-                    _sequenceState.calculateNextStepAligned(
-                            (relativeTick + divisor) / divisor,
-                            sequence.runMode(),
-                            sequence.firstStep(),
-                            sequence.lastStep(),
-                            rng
-                        );
-                        
-                    triggerStep(tick + divisor, divisor, true);
-                }
-            }
-            break;
-        case Types::PlayMode::Free:
-            relativeTick = _freeRelativeTick;
-            if (++_freeRelativeTick >= divisor) {
-                _freeRelativeTick = 0;
-            }
-            if (relativeTick == 0) {
-
-                if (_currentStageRepeat == 1) {
-                     _sequenceState.advanceFree(sequence.runMode(), sequence.firstStep(), sequence.lastStep(), rng);
-                      _sequenceState.calculateNextStepFree(
-                        sequence.runMode(), sequence.firstStep(), sequence.lastStep(), rng);
-                }
-
-                recordStep(tick, divisor);
-                const auto &step = sequence.step(_sequenceState.step());
-                bool isLastStageStep = (static_cast<int>(step.stageRepeats()+1) - static_cast<int>(_currentStageRepeat)) <= 0;
-
-                if (step.gateOffset() >= 0) {
-                    triggerStep(tick, divisor);
-                }
-
-                if (!isLastStageStep && step.gateOffset() < 0) {
-                    triggerStep(tick + divisor, divisor, false);
-                }
-
-                if (isLastStageStep 
-                        && sequence.step(_sequenceState.nextStep()).gateOffset() < 0) {
-                    triggerStep(tick + divisor, divisor, true);
-                }
-
-                if (isLastStageStep) {
-                   _currentStageRepeat = 1;
-                } else {
-                    _currentStageRepeat++;
-                }
-
-            }
-            break;
-        case Types::PlayMode::Last:
-            break;
+        // Variable step length rules out PlayMode::Aligned -- advanceAligned
+        // derives the step index in closed form from relativeTick / divisor,
+        // which cannot express steps of differing duration. The engine always
+        // advances freely, as CurveTrackEngine does.
+        if (!_started || tick >= _nextSlotTick) {
+            advanceSlot(tick, divisor);
         }
 
         updateLinkData(divisor, relativeTick, &_sequenceState);
@@ -236,9 +161,9 @@ TrackEngine::TickResult NoteTrackEngine::tick(uint32_t tick) {
 
     drainGateQueue(tick, _gateQueue, _activity, _gateOutput,
         _monitorOverrideActive, mute(), fill(), midiOutputEngine, _track.trackIndex(), result);
-    drainCvQueue(tick, _cvQueue, _cvOutputTarget, _slideActive,
-        _monitorOverrideActive, mute(),
-        _noteTrack.cvUpdateMode() == NoteTrack::CvUpdateMode::Always,
+    drainCvQueue(tick, _cvQueue, _cvOutputTarget, _cvOutput, _slideRamp,
+        _monitorOverrideActive, mute(), false,
+        _noteTrack.slideTimeMs() * 0.001f,
         midiOutputEngine, _track.trackIndex(), result);
 
     return result;
@@ -312,7 +237,7 @@ void NoteTrackEngine::update(float dt) {
         clearOverride();
     }
 
-    applySlideUpdate(_cvOutput, _cvOutputTarget, _slideActive, _noteTrack.slideTime(), dt);
+    applySlideUpdate(_cvOutput, _cvOutputTarget, _slideRamp, _noteTrack.slideType(), dt);
 }
 
 void NoteTrackEngine::changePattern() {
@@ -346,10 +271,20 @@ void NoteTrackEngine::setMonitorStep(int index) {
         _stepRecorder.setStepIndex(index);
     }
 }
-void NoteTrackEngine::triggerStep(uint32_t tick, uint32_t divisor, bool forNextStep) {
+// Absolute tick of a slot onset, derived from the step start rather than
+// accumulated, so rounding error stays bounded and slot _totalSlots lands
+// exactly on the end of the step.
+uint32_t NoteTrackEngine::slotOnset(int slot) const {
+    return _stepStartTick + (_stepTotalTicks * uint32_t(slot)) / uint32_t(_totalSlots);
+}
+
+// Latch everything that is decided once per step: which step plays, whether it
+// gates at all, how long it lasts and how it is subdivided.
+void NoteTrackEngine::beginStep(uint32_t tick, uint32_t divisor) {
     int octave = _noteTrack.octave();
     int transpose = _noteTrack.transpose();
     int rotate = _noteTrack.rotate();
+
     bool fillStep = fill() && (rng.nextRange(100) < uint32_t(fillAmount()));
     bool useFillGates = fillStep && _noteTrack.fillMode() == NoteTrack::FillMode::Gates;
     bool useFillSequence = fillStep && _noteTrack.fillMode() == NoteTrack::FillMode::NextPattern;
@@ -358,103 +293,107 @@ void NoteTrackEngine::triggerStep(uint32_t tick, uint32_t divisor, bool forNextS
     const auto &sequence = *_sequence;
     const auto &evalSequence = useFillSequence ? *_fillSequence : *_sequence;
 
-    // TODO do we need to encounter rotate?
     _currentStep = SequenceUtils::rotateStep(_sequenceState.step(), sequence.firstStep(), sequence.lastStep(), rotate);
-
-    int stepIndex;
-
-    if (forNextStep) {
-        stepIndex = _sequenceState.nextStep();
-    } else {
-        stepIndex = _currentStep;
+    if (_currentStep < 0) {
+        _stepGate = false;
+        _stepSlide = false;
+        _retrigCount = 1;
+        _totalSlots = 1;
+        _stepTotalTicks = divisor;
+        _stepStartTick = tick;
+        return;
     }
 
-    if (stepIndex < 0) return;
+    const auto &step = evalSequence.step(_currentStep);
 
-    const auto &step = evalSequence.step(stepIndex);
-
-    int gateOffset = (static_cast<int>(divisor) * step.gateOffset()) / (NoteSequence::GateOffset::Max + 1);
-    uint32_t stepTick = static_cast<uint32_t>(static_cast<int>(tick) + gateOffset);
-
-    bool stepGate = evalStepGate(step, _noteTrack.gateProbabilityBias()) || useFillGates;
-    if (stepGate) {
-        stepGate = evalStepCondition(step, _sequenceState.iteration(), useFillCondition, _prevCondition);
-    }
-    switch (step.stageRepeatMode()) {
-        case Types::StageRepeatMode::Each:
-            break;
-        case Types::StageRepeatMode::First:
-            stepGate = stepGate && _currentStageRepeat == 1;
-            break;
-        case Types::StageRepeatMode::Last:
-            stepGate = stepGate && _currentStageRepeat == step.stageRepeats()+1;
-            break;
-        case Types::StageRepeatMode::Middle:
-            stepGate = stepGate && _currentStageRepeat == (step.stageRepeats()+1)/2;
-            break;
-        case Types::StageRepeatMode::Odd:
-            stepGate = stepGate && _currentStageRepeat % 2 != 0;
-            break;
-        case Types::StageRepeatMode::Even:
-            stepGate = stepGate && _currentStageRepeat % 2 == 0;
-            break;
-        case Types::StageRepeatMode::Triplets:
-            stepGate = stepGate && (_currentStageRepeat - 1) % 3 == 0;
-            break;
-        case Types::StageRepeatMode::Random:
-                int rndMode = rng.nextRange(6);
-                switch (rndMode) {
-                    case 0:
-                        break;
-                    case 1:
-                        stepGate = stepGate && _currentStageRepeat == 1;
-                        break;
-                    case 2:
-                        stepGate = stepGate && _currentStageRepeat == step.stageRepeats()+1;
-                        break;
-                    case 3:
-                        stepGate = stepGate && _currentStageRepeat % ((step.stageRepeats()+1)/2)+1 == 0;
-                        break;
-                    case 4:
-                        stepGate = stepGate && _currentStageRepeat % 2 != 0;
-                        break;
-                    case 5:
-                        stepGate = stepGate && _currentStageRepeat % 2 == 0;
-                        break;
-                    case 6:
-                        stepGate = stepGate && (_currentStageRepeat - 1) % 3 == 0;
-                        break;
-
-                }
-                break;
+    _stepGate = evalStepGate(step) || useFillGates;
+    if (_stepGate) {
+        _stepGate = evalStepCondition(step.condition(), _sequenceState.iteration(), useFillCondition, _prevCondition, true);
     }
 
-    if (stepGate) {
-        uint32_t stepLength = (divisor * evalStepLength(step, _noteTrack.lengthBias())) / NoteSequence::Length::Range;
-        int stepRetrigger = evalStepRetrigger(step, _noteTrack.retriggerProbabilityBias());
-        if (stepRetrigger > 1) {
-            uint32_t retriggerLength = divisor / stepRetrigger;
-            uint32_t retriggerOffset = 0;
-            while (stepRetrigger-- > 0 && retriggerOffset <= stepLength) {
-                _gateQueue.pushReplace({ Groove::applySwing(stepTick + retriggerOffset, swing()), true });
-                _gateQueue.pushReplace({ Groove::applySwing(stepTick + retriggerOffset + retriggerLength / 2, swing()), false });
-                retriggerOffset += retriggerLength;
-            }
-        } else {
-            _gateQueue.pushReplace({ Groove::applySwing(stepTick, swing()), true });
-            _gateQueue.pushReplace({ Groove::applySwing(stepTick + stepLength, swing()), false });
+    // A failing retrigger condition collapses the step to a single slice, so
+    // the arp offset never gets applied either.
+    bool retrigOn = evalStepCondition(step.retriggerCondition(), _sequenceState.iteration(), useFillCondition, _prevCondition, false);
+    _retrigCount = retrigOn ? step.retrigger() : 1;
+
+    int repeatCount = step.repeat();
+    _totalSlots = std::max(1, _retrigCount * repeatCount);
+
+    // repeats extend the step rather than subdividing it
+    _stepTotalTicks = NoteSequence::stepLengthTicks(step.stepLength(), divisor) * uint32_t(repeatCount);
+    _stepStartTick = tick;
+
+    _gateLength = step.gateLength();
+    _arpRetrigger = step.arpRetrigger();
+    _stepSlide = step.slide();
+
+    const auto &scale = _model.project().selectedScale();
+    _baseNote = step.note() + evalTransposition(scale, octave, transpose);
+}
+
+void NoteTrackEngine::advanceSlot(uint32_t tick, uint32_t divisor) {
+    if (_slotIndex == 0) {
+        if (!_linkedTrackEngine) {
+            const auto &sequence = *_sequence;
+            _sequenceState.advanceFree(sequence.runMode(), sequence.firstStep(), sequence.lastStep(), rng);
+            recordStep(tick, divisor);
+            beginStep(tick, divisor);
         }
     }
 
-    if (stepGate || _noteTrack.cvUpdateMode() == NoteTrack::CvUpdateMode::Always) {
+    _started = true;
+
+    uint32_t onset = slotOnset(_slotIndex);
+    uint32_t nextOnset = slotOnset(_slotIndex + 1);
+    uint32_t slotLen = nextOnset > onset ? nextOnset - onset : 1;
+
+    bool legato = _noteTrack.gateMode() == NoteTrack::GateMode::Legato && _gateLength >= 100;
+
+    if (_stepGate) {
+        // Gate length is a percentage of the retrigger slice, not of the whole
+        // step -- measured against the step it would make retriggered gates
+        // overlap each other.
+        uint32_t gateTicks = std::max(uint32_t(1), (slotLen * uint32_t(_gateLength)) / 100);
+        if (!legato) {
+            // The gate must close strictly before the next onset, otherwise the
+            // gate-off and the next gate-on land on the same tick and the queue
+            // collapses them into a permanently high gate.
+            gateTicks = std::min(gateTicks, slotLen > 1 ? slotLen - 1 : slotLen);
+        }
+
+        if (!_legatoHeld) {
+            _gateQueue.pushReplace({ Groove::applySwing(onset, swing()), true });
+        }
+        if (legato) {
+            _legatoHeld = true;
+        } else {
+            _gateQueue.pushReplace({ Groove::applySwing(onset + gateTicks, swing()), false });
+            _legatoHeld = false;
+        }
+
+        // Arp retrigger walks the scale once per repeat; the slide flag rides
+        // only on the first slot so intra-step arp jumps snap rather than glide.
+        int slice = _retrigCount > 0 ? (_slotIndex % _retrigCount) : 0;
         const auto &scale = _model.project().selectedScale();
         int rootNote = _model.project().rootNote();
-        _cvQueue.push({ Groove::applySwing(stepTick, swing()), evalStepNote(step, _noteTrack.noteProbabilityBias(), scale, rootNote, octave, transpose), step.slide() });
-    }
-}
+        int note = NoteSequence::Note::clamp(_baseNote + slice * _arpRetrigger);
+        bool slide = _stepSlide && _slotIndex == 0;
 
-void NoteTrackEngine::triggerStep(uint32_t tick, uint32_t divisor) {
-    triggerStep(tick, divisor, false);
+        _cvQueue.push({ Groove::applySwing(onset, swing()), noteToVolts(note, scale, rootNote), slide });
+    } else if (_legatoHeld) {
+        // a gate-off step ends any held legato and otherwise does nothing --
+        // no gate, no note change for the whole duration of the step
+        _gateQueue.pushReplace({ Groove::applySwing(onset, swing()), false });
+        _legatoHeld = false;
+    }
+
+    _slotIndex++;
+    if (_slotIndex >= _totalSlots) {
+        _slotIndex = 0;
+        _nextSlotTick = _stepStartTick + _stepTotalTicks;
+    } else {
+        _nextSlotTick = slotOnset(_slotIndex);
+    }
 }
 
 void NoteTrackEngine::recordStep(uint32_t tick, uint32_t divisor) {
@@ -467,20 +406,17 @@ void NoteTrackEngine::recordStep(uint32_t tick, uint32_t divisor) {
 
     auto writeStep = [this, divisor, &stepWritten] (int stepIndex, int note, int lengthTicks) {
         auto &step = _sequence->step(stepIndex);
-        int length = (lengthTicks * NoteSequence::Length::Range) / divisor;
+        int gateLength = clamp(int((lengthTicks * 100) / int(divisor)), 1, 100);
 
         step.setGate(true);
-        step.setGateProbability(NoteSequence::GateProbability::Max);
-        step.setRetrigger(0);
-        step.setRetriggerProbability(NoteSequence::RetriggerProbability::Max);
-        step.setLength(length);
-        step.setLengthVariationRange(0);
-        step.setLengthVariationProbability(NoteSequence::LengthVariationProbability::Max);
+        step.setStepLength(NoteSequence::StepLengthDefault);
+        step.setGateLength(gateLength);
+        step.setRetrigger(1);
+        step.setArpRetrigger(0);
+        step.setRepeat(1);
         step.setNote(noteFromMidiNote(note));
-        step.setNoteVariationRange(0);
-        step.setNoteVariationProbability(NoteSequence::NoteVariationProbability::Max);
         step.setCondition(Types::Condition::Off);
-
+        step.setRetriggerCondition(Types::Condition::Off);
 
         stepWritten = true;
     };

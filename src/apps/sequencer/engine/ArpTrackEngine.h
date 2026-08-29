@@ -2,6 +2,7 @@
 
 #include "TrackEngine.h"
 #include "SequenceState.h"
+#include "Slide.h"
 #include "SortedQueue.h"
 #include "Groove.h"
 #include "model/ArpSequence.h"
@@ -83,7 +84,7 @@ private:
     bool  _gateOutput = false;
     float _cvOutput   = 0.f;
     float _cvOutputTarget = 0.f;
-    bool  _slideActive = false;
+    Slide::Ramp _slideRamp;
 
     bool _monitorOverrideActive = false;
 

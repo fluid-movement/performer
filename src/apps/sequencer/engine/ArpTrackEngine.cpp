@@ -24,7 +24,7 @@ void ArpTrackEngine::reset() {
     _step = 0; _arpPhase = 0; _currentDegree = -1;
     _activity = false; _gateOutput = false;
     _cvOutput = _cvOutputTarget = 0.f;
-    _slideActive = false;
+    _slideRamp.reset();
     _gateQueue.clear(); _cvQueue.clear();
     if (_sequence) {
         recomputePatterns();
@@ -235,16 +235,17 @@ TrackEngine::TickResult ArpTrackEngine::tick(uint32_t tick) {
 
     drainGateQueue(tick, _gateQueue, _activity, _gateOutput,
         _monitorOverrideActive, mute(), fill(), midiOutputEngine, _track.trackIndex(), result);
-    drainCvQueue(tick, _cvQueue, _cvOutputTarget, _slideActive,
+    drainCvQueue(tick, _cvQueue, _cvOutputTarget, _cvOutput, _slideRamp,
         _monitorOverrideActive, mute(),
         _arpTrack.cvUpdateMode() == ArpTrack::CvUpdateMode::Always,
+        _arpTrack.slideTime() * 0.005f,
         midiOutputEngine, _track.trackIndex(), result);
 
     return result;
 }
 
 void ArpTrackEngine::update(float dt) {
-    applySlideUpdate(_cvOutput, _cvOutputTarget, _slideActive, _arpTrack.slideTime(), dt);
+    applySlideUpdate(_cvOutput, _cvOutputTarget, _slideRamp, Types::SlideType::Exponential, dt);
 }
 
 void ArpTrackEngine::changePattern() {

@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-**Stochastic V2, Arp V2, and Quantizer V2 C++ all shipped.** Stochastic (Version45): SIG-inspired 7-degree probability bars, OCT/LEN/LOOP tabs, Turing Machine loop mutation. Arp (Version46): euclidean + note-pool model, 4 tabs (NOTE/RHYTHM/MOD/ARP), UP/DOWN/UP-DN/DN-UP/RAND arp orders. Quantizer (Version47/48): 5 tabs (GATE/SRCE/TRIG/TUNE/LOOP), unified 13-position trigger source scroll, CvGate trigger mode, loop record/playback, always-on sequence clock.
+**Note V2, Stochastic V2, Arp V2, and Quantizer V2 C++ all shipped.** Note (Version54): 5 tabs (GATE/RETRIG/REPEAT/NOTE/COND), ratio-based step length, gate length as a real percentage, Metropolix repeats, arp retrigger, and a bounded 303-style slide that actually arrives. Stochastic (Version45): SIG-inspired 7-degree probability bars, OCT/LEN/LOOP tabs, Turing Machine loop mutation. Arp (Version46): euclidean + note-pool model, 4 tabs (NOTE/RHYTHM/MOD/ARP), UP/DOWN/UP-DN/DN-UP/RAND arp orders. Quantizer (Version47/48): 5 tabs (GATE/SRCE/TRIG/TUNE/LOOP), unified 13-position trigger source scroll, CvGate trigger mode, loop record/playback, always-on sequence clock.
 
 Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD1322 column coupling) remains an open visual issue.
 
@@ -13,7 +13,9 @@ Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD132
 - [ ] Arp — remove `playMode` from ArpTrack entirely: `Free`/`Last` are unimplemented, `Aligned` is the only behavior, and the edit case in `ArpTrackListModel` is already a no-op. Removing it touches `ArpTrack.h/cpp` (field + serialization), `ArpTrackListModel.h` (3 switch cases), and `ArpTrackEngine.cpp` (flatten the play mode switch in `tick()`). Breaking serialization change — bump project version.
 - [ ] Arp — version bump needed: euclidean canonical-rotation change (session 2025-06-04) altered the meaning of non-zero `rhythmR`/`modR`. Any Version46 project with non-zero rotation values will sound different. Bump to Version47 with migration that compensates for the `firstHit` offset, or accept the break and document it.
 - [ ] Arp — refactor: `computeEuclidean` (engine) and `buildPat` (display) are identical; extract to a shared inline header to prevent future drift.
-- [ ] G7 — Continue UI redesign: MidiCv (Quantizer done)
+- [ ] G7 — Continue UI redesign: MidiCv (Note, Curve, Stochastic, Arp, Quantizer done)
+- [ ] Note — `MidiCvTrackEngine` still uses the old unbounded `Slide::applySlide` for its legato-detected portamento; consider moving it to `Slide::Ramp` too
+- [ ] Note — Arp/Stochastic `slideTime` remains dead (both engines hard-code `slide = false` on every CV push); either wire the flag or remove the setting
 - [ ] Iterate — Run tastemaker iterations with consolidate cadence against each trunk
 
 ## Decisions made (Arp track V2) — DONE, C++ SHIPPED
@@ -30,11 +32,46 @@ Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD132
 - **Selected param cell inverted text**: `drawParamBar` uses `BlendMode::Sub` to knock text out of bright fill — `Color::None` was painting solid rectangles.
 - **Engine tests**: `src/apps/sequencer/tests/ui/arp_v2_test.py` — covers OFF / COMBINE / MASK modes and polyrhythmic overlap using rising-edge gate detection. `wait(N)` = N ms; 1 step = 125 ms at 120 BPM / divisor=12.
 
-## Decisions made (Note track Steps page) — DONE
+## Decisions made (Note track Steps page) — DONE, C++ SHIPPED (Version54)
 
-- User converged on TRUNK (firmware port) as the base. V1/V2/V3 experiments remain as alternatives.
-- Final tabs: GATE / RETRIG / LEN / NOTE / COND (matching firmware)
-- Sandbox has Note Track Edit tab with TRUNK + V1/V2/V3 variations
+- **V2 is the active model.** Tabs: **GATE / RETRIG / REPEAT / NOTE / COND** (10 layers).
+  - GATE: Gate, Step Length, Gate Length · RETRIG: Retrigger, Arp Retrigger · REPEAT: Repeat
+  - NOTE: Note, Slide · COND: Condition, Retrigger Condition
+- **Deterministic track.** All probability and variation parameters deleted (gate probability, gate
+  offset, retrigger probability, length/note variation range + probability). Randomness belongs to
+  the Stochastic track. Bypass Scale and Stage Repeat Mode also removed.
+- **Step Length is a ratio** against the divisor — a 20-entry table from `1/8` to `16`, default `1/1`.
+  So a step can be shorter *or* longer than a clock pulse.
+- **Gate Length is a percentage of the retrigger slice**, not of the whole step — measured against
+  the step, retriggered gates would overlap.
+- **Repeat extends, Retrigger subdivides.** Repeat (1–8) replays the whole step body including its
+  retrigger and arp offsets, so the step lasts `stepTicks * repeat` (Metropolix stage repeats).
+  Retrigger (1–8) slices that body. Arp Retrigger (−15…+15) adds scale degrees per slice, resetting
+  each repeat.
+- **Retrigger Condition** uses the same `Types::Condition` set; when it fails the step collapses to
+  retrigger = 1. Only the *gate* condition writes the `Pre`/`NotPre` chain — two writers would make
+  `Pre` meaningless.
+- **PlayMode::Aligned dropped** (`NoteTrack::_playMode` deleted). `advanceAligned()` derives the step
+  index in closed form from `relativeTick / divisor`, which variable step length cannot express —
+  the same trade the curve track made in Version53. `CvUpdateMode` deleted too: `Always` contradicts
+  "a gate-off step changes nothing".
+- **Engine is a slot scheduler.** A step is `repeat * retrigger` slots, scheduled one at a time,
+  onsets derived from the step start (`_stepStartTick + _stepTotalTicks * k / _totalSlots`) rather
+  than accumulated. This also makes the old `SortedQueue` overflow structurally impossible —
+  RETRIG 7 + LENGTH 15 used to push 16 events into a queue with usable capacity 15 and mute the step.
+- **Slide is a bounded ramp** (`Slide::Ramp` + `Slide::shape`), normalized so `shape(1) == 1` and
+  arrival is guaranteed. Types: Linear / Exponential (default, TB-303 RC character) / Logarithmic.
+  `slideTime` is now milliseconds (`value * 5`, 5–500 ms, default 60 ms). The old one-pole
+  (`tau = 2·(slideTime/100)²` seconds) never converged — it covered ~22% of the interval in a 1/16
+  step at 120 BPM. `Slide::applySlide` stays for CurveTrackEngine's slew-limiter use.
+- **Gate Mode** (track setting): at 100% gate length, `Legato` holds the gate across the boundary,
+  `Retrigger` (default) closes it one tick early so it can re-fire.
+- **Detail popup removed** — values are read from the per-step strip only.
+- **Version54** with migration; `NoteTrack::write`/`Step::write` gained `writerVersion()` branches so
+  the harness can still emit older formats.
+- **Engine tests**: `src/apps/sequencer/tests/ui/note_v2_test.py` — 36 checks, all pass.
+- Note: the default scale (index 0) is **Ionian**, not chromatic — there is no chromatic scale in
+  `Scale.cpp`, so `step.note()` is a degree in a 7-note scale. CLAUDE.md's "0 = Semitones" is stale.
 
 ## Decisions made (Curve track Steps page) — DONE, C++ SHIPPED
 
@@ -121,3 +158,8 @@ Next: **UI redesign** — MidiCv track. Stochastic hardware bar ghosting (SSD132
 | Arp UI page | `src/apps/sequencer/ui/pages/ArpSequenceEditPage.cpp` |
 | Arp engine tests | `src/apps/sequencer/tests/ui/arp_v2_test.py` |
 | Quantizer UI page | `src/apps/sequencer/ui/pages/QuantizerSequenceEditPage.cpp` |
+| Note engine (slot scheduler) | `src/apps/sequencer/engine/NoteTrackEngine.cpp` |
+| Note model | `src/apps/sequencer/model/NoteSequence.h/.cpp` |
+| Note UI page | `src/apps/sequencer/ui/pages/NoteSequenceEditPage.cpp` |
+| Slide ramp + shapes | `src/apps/sequencer/engine/Slide.h` |
+| Note engine tests | `src/apps/sequencer/tests/ui/note_v2_test.py` |

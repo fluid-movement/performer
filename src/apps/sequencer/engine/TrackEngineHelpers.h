@@ -53,20 +53,29 @@ inline void drainGateQueue(uint32_t tick, GateQueue &q,
 
 // Drain one CV queue entry per tick. cvAlways = (track.cvUpdateMode() == Always),
 // evaluated at the call site so no track-type dependency bleeds into this helper.
+//
+// A slide-flagged event arms the ramp from wherever the output currently sits;
+// an unflagged event disarms it so the new note lands immediately. slideSeconds
+// is the track's configured glide duration, evaluated at the call site.
 template<typename CvQueue>
 inline void drainCvQueue(uint32_t tick, CvQueue &q,
-    float &cvOutputTarget, bool &slideActive,
-    bool monitorOverrideActive, bool muted, bool cvAlways,
+    float &cvOutputTarget, float cvOutput, Slide::Ramp &slideRamp,
+    bool monitorOverrideActive, bool muted, bool cvAlways, float slideSeconds,
     MidiOutputEngine &midi, int trackIndex,
     TrackEngine::TickResult &result) {
     while (!q.empty() && tick >= q.front().tick) {
         if (!muted || cvAlways) {
             if (!monitorOverrideActive) {
                 result |= TrackEngine::TickResult::CvUpdate;
+                bool slide = q.front().slide;
                 cvOutputTarget = q.front().cv;
-                slideActive = q.front().slide;
+                if (slide && slideSeconds > 0.f) {
+                    slideRamp.start(cvOutput, slideSeconds);
+                } else {
+                    slideRamp.reset();
+                }
                 midi.sendCv(trackIndex, cvOutputTarget);
-                midi.sendSlide(trackIndex, slideActive);
+                midi.sendSlide(trackIndex, slide);
             }
         }
         q.pop();
@@ -77,14 +86,10 @@ inline void drainCvQueue(uint32_t tick, CvQueue &q,
 // Slide helper
 // ---------------------------------------------------------------------------
 
-// Apply per-sample slide interpolation. slideTime is in the engine's native
-// units (same as passed to Slide::applySlide). CurveTrackEngine is excluded —
-// it has different output semantics and stays inline.
+// Advance the portamento ramp by dt. When the ramp is inactive this snaps the
+// output to the target, so a non-sliding step lands immediately. CurveTrackEngine
+// is excluded — it slews a continuous signal and stays on Slide::applySlide.
 inline void applySlideUpdate(float &cvOutput, float cvOutputTarget,
-    bool slideActive, int slideTime, float dt) {
-    if (slideActive && slideTime > 0) {
-        cvOutput = Slide::applySlide(cvOutput, cvOutputTarget, slideTime, dt);
-    } else {
-        cvOutput = cvOutputTarget;
-    }
+    Slide::Ramp &slideRamp, Types::SlideType slideType, float dt) {
+    cvOutput = slideRamp.eval(cvOutputTarget, dt, slideType);
 }

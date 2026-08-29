@@ -2,6 +2,7 @@
 
 #include "TrackEngine.h"
 #include "SequenceState.h"
+#include "Slide.h"
 #include "SortedQueue.h"
 #include "Groove.h"
 #include "RecordHistory.h"
@@ -112,7 +113,7 @@ private:
     bool _gateOutput;
     float _cvOutput;
     float _cvOutputTarget;
-    bool _slideActive;
+    Slide::Ramp _slideRamp;
     unsigned int _currentStageRepeat;
 
     std::vector<StochasticLoopStep> _lockedSteps;
