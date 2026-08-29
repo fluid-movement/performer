@@ -23,7 +23,9 @@ happen — you think you are scrolling, you are changing MIDI channel.
 - `_edit` is deleted. `encoder()` always calls `ListModel::edit()` for two-column models. For the
   three single-column models (`FileSelect`, `GeneratorSelect`, `Utilities`) the row *is* the value,
   so the encoder moves the cursor — `ListModel::columns()`, previously dead code, is the discriminant.
-- **Left/Right** always move the cursor. **F1–F5** jump between sections.
+- **Left/Right** always move the cursor. **F1–F5** jump between sections, and **pressing the tab
+  you are already on advances the cursor within that section, wrapping at the end** — your finger
+  is already on the button, so reaching a row costs no extra reach.
 - **Encoder press** is no longer consumed, so the pre-existing per-page handlers (name entry,
   calibration, picker confirm) became a clean one-way descent instead of fighting the toggle.
 - Layout: `Font::Tiny`, 7px rows, **6 visible rows instead of 4**, full-width rows with the value at
@@ -52,7 +54,7 @@ Hardware note discovered here: **the function keys have no LEDs.** The LED matri
 buttons, and `Key::F0` is already 32 — so lighting an F-key LED is an out-of-bounds write. The
 active section is communicated by the inverted footer tab instead.
 
-Tests: `src/apps/sequencer/tests/ui/config_nav_test.py` — 32 checks, all pass.
+Tests: `src/apps/sequencer/tests/ui/config_nav_test.py` — 36 checks, all pass.
 `curve_encoder_skew_test.py` was written against the old click-to-arm flow and was ported.
 
 ---

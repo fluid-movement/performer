@@ -131,7 +131,10 @@ Content: track number / track type glyph / page context on the left; record/play
 ## Encoder
 
 - **The encoder never navigates on config pages.** Every turn changes a value. There is no edit
-  mode. Cursor movement is Left/Right; F1-F5 jump between sections. (Shipped 2026-08-29.)
+  mode. (Shipped 2026-08-29.)
+  - **F1-F5 jump between sections; pressing the tab you are already on walks the cursor down that
+    section and wraps.** One finger does both jobs -- it is already on the button. Left/Right
+    remain as an alternative.
   - Exception: single-column models (pickers, where the row *is* the value) move the cursor,
     because that *is* changing the value. `ListModel::columns()` is the discriminant.
 - **Encoder press is never a mode toggle.** It may be a one-way descent into a sub-page (name

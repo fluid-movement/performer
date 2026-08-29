@@ -5,8 +5,10 @@
 **Note V2, Stochastic V2, Arp V2, and Quantizer V2 C++ all shipped.** Note (Version54): 5 tabs (GATE/RETRIG/REPEAT/NOTE/COND), ratio-based step length, gate length as a real percentage, Metropolix repeats, arp retrigger, and a bounded 303-style slide that actually arrives. Stochastic (Version45): SIG-inspired 7-degree probability bars, OCT/LEN/LOOP tabs, Turing Machine loop mutation. Arp (Version46): euclidean + note-pool model, 4 tabs (NOTE/RHYTHM/MOD/ARP), UP/DOWN/UP-DN/DN-UP/RAND arp orders. Quantizer (Version47/48): 5 tabs (GATE/SRCE/TRIG/TUNE/LOOP), unified 13-position trigger source scroll, CvGate trigger mode, loop record/playback, always-on sequence clock.
 
 **Config pages are modeless (2026-08-29).** All 15 `ListPage` subclasses: the encoder always edits
-the selected row and never navigates, Left/Right move the cursor, F1-F5 jump between sections on
-Track/Project/Clock. `Font::Tiny` at 7px gives 6 visible rows instead of 4. UI only, no version bump.
+the selected row and never navigates. F1-F5 jump between sections on Track/Project/Clock, and
+**pressing the active tab again walks the cursor down that section and wraps** — the finger is
+already there. Left/Right still move the cursor. `Font::Tiny` at 7px gives 6 visible rows instead
+of 4. UI only, no version bump.
 
 Next: **UI redesign** — MidiCv track, then live parameter previews on config pages. Stochastic
 hardware bar ghosting (SSD1322 column coupling) remains an open visual issue.

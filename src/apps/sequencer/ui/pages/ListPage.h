@@ -54,6 +54,7 @@ private:
     int sectionRowAt(int index) const;
     int indexInSection(int row) const;
 
+    void advanceSelection();
     void moveSelection(int delta);
     void scrollTo(int index);
 

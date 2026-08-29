@@ -144,7 +144,14 @@ void ListPage::keyPress(KeyPressEvent &event) {
     if (key.isFunction() && _listModel->sections() > 0) {
         int section = key.function();
         if (section < _listModel->sections()) {
-            setActiveSection(section);
+            if (section == _activeSection) {
+                // Pressing the tab you are already on walks the cursor down its
+                // rows and wraps. The finger is already on the button, so this
+                // is the cheapest way to reach a row once you are in a section.
+                advanceSelection();
+            } else {
+                setActiveSection(section);
+            }
         }
         event.consume();
         return;
@@ -190,6 +197,21 @@ void ListPage::setSelectedRow(int selectedRow) {
 
     _selectedRow = row;
     scrollTo(indexInSection(row));
+}
+
+void ListPage::advanceSelection() {
+    int count = rowsInSection();
+    if (count == 0) {
+        return;
+    }
+    // Wraps, unlike moveSelection -- a tab press that dead-ended on the last row
+    // would force you back to Left/Right, which is the reach this avoids.
+    int index = (indexInSection(_selectedRow) + 1) % count;
+    int row = sectionRowAt(index);
+    if (row >= 0) {
+        _selectedRow = row;
+        scrollTo(index);
+    }
 }
 
 void ListPage::moveSelection(int delta) {

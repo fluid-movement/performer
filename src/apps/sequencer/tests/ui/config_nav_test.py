@@ -129,6 +129,41 @@ def main():
     c.wait(20)
     check(track.transpose != before_tr, "Right within TUNE reaches Transpose")
 
+    # Pressing the tab you are already on walks the cursor down that section.
+    section(c, 1)               # TIME -> Gate Mode
+    c.wait(20)
+    section(c, 1)               # -> Slide Type
+    c.wait(20)
+    before_type = track.slideType
+    gate_before = track.gateMode
+    c.rotateEncoder(1)
+    c.wait(20)
+    if track.slideType == before_type:
+        c.rotateEncoder(-1)
+        c.wait(20)
+    check(track.slideType != before_type,
+          "pressing the active tab advanced the cursor to Slide Type")
+    check(track.gateMode == gate_before, "the tab press did not edit Gate Mode")
+
+    section(c, 1)               # -> Slide Time
+    c.wait(20)
+    st_before = track.slideTime
+    c.rotateEncoder(2)
+    c.wait(20)
+    check(track.slideTime != st_before, "a second active-tab press reached Slide Time")
+
+    # TIME has 3 rows, so one more press must wrap back to the top.
+    section(c, 1)               # wraps -> Gate Mode
+    c.wait(20)
+    gate_before = track.gateMode
+    c.rotateEncoder(1)
+    c.wait(20)
+    if track.gateMode == gate_before:
+        c.rotateEncoder(-1)
+        c.wait(20)
+    check(track.gateMode != gate_before,
+          "the active tab wraps from the last row back to the first")
+
     # Section 0 row 0 is the track name -- editing it must be a harmless no-op.
     section(c, 0)
     c.wait(20)
@@ -148,8 +183,6 @@ def main():
     c.selectPage("clock")
     c.wait(50)
 
-    section(c, 0)
-    c.wait(20)
     before_mode = cs.mode
     c.rotateEncoder(1)
     c.wait(20)
