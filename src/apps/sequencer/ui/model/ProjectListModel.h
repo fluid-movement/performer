@@ -4,6 +4,8 @@
 
 #include "RoutableListModel.h"
 
+#include "ui/painters/PreviewPainter.h"
+
 #include "model/Project.h"
 
 class ProjectListModel : public RoutableListModel {
@@ -69,6 +71,31 @@ public:
         }
     }
 
+    virtual bool hasPreview(int row) const override {
+        switch (Item(row)) {
+        case Swing: case Scale: case RootNote:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const override {
+        switch (Item(row)) {
+        case Swing:
+            PreviewPainter::drawSwingGrid(canvas, x, y, w, h, _project.swing());
+            break;
+        case Scale:
+            PreviewPainter::drawKeyboard(canvas, x, y, w, h, _project.rootNote(), -1, _project.scale());
+            break;
+        case RootNote:
+            PreviewPainter::drawKeyboard(canvas, x, y, w, h, 0, _project.rootNote(), -1);
+            break;
+        default:
+            break;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -123,23 +150,23 @@ public:
 
     static const char *itemName(Item item) {
         switch (item) {
-        case Name:              return "Name";
-        case Swing:             return "Swing";
-        case TimeSignature:     return "Time Signature";
-        case SyncMeasure:       return "Sync Measure";
-        case Scale:             return "Scale";
-        case RootNote:          return "Root Note";
-        case MonitorMode:       return "Monitor Mode";
-        case RecordMode:        return "Record Mode";
-        case MidiInput:         return "MIDI Input";
-        case MidiIntegrationMode:   return "MIDI Integr.";
-        case MidiProgramOffset:     return "MIDI Pgm Off.";
-        case CvGateInput:       return "CV/Gate Input";
-        case StepsToStop:       return "Steps to stop";
-        case RecordDelay:       return "Record Delay";
-        case ResetCvOnStop:     return "Reset CV";
-        case MultiCvRec:        return "Multi CV rec";
-        //case CurveCvInput:      return "Curve CV Input";
+        case Name:              return "NAME";
+        case Swing:             return "SWING";
+        case TimeSignature:     return "TIME SIG";
+        case SyncMeasure:       return "SYNC";
+        case Scale:             return "SCALE";
+        case RootNote:          return "ROOT";
+        case MonitorMode:       return "MONITOR";
+        case RecordMode:        return "RECORD";
+        case MidiInput:         return "MIDI IN";
+        case MidiIntegrationMode:   return "MIDI INT";
+        case MidiProgramOffset:     return "PGM OFFS";
+        case CvGateInput:       return "CV GATE";
+        case StepsToStop:       return "STOP STP";
+        case RecordDelay:       return "REC DLY";
+        case ResetCvOnStop:     return "RESET CV";
+        case MultiCvRec:        return "MULTI CV";
+        //case CurveCvInput:      return "CURVE CV";
         case Last:              break;
         }
         return nullptr;

@@ -4,6 +4,8 @@
 
 #include "RoutableListModel.h"
 
+#include "ui/painters/PreviewPainter.h"
+
 #include "model/StochasticTrack.h"
 
 class StochasticTrackListModel : public RoutableListModel {
@@ -59,6 +61,31 @@ public:
             return 3;
         default:
             return 0;
+        }
+    }
+
+    virtual bool hasPreview(int row) const override {
+        switch (Item(row)) {
+        case SlideTime: case Octave: case Transpose:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const override {
+        switch (Item(row)) {
+        case SlideTime:
+            PreviewPainter::drawSlideRamp(canvas, x, y, w, h, Types::SlideType::Linear, _track->slideTime() * 5);
+            break;
+        case Octave:
+            PreviewPainter::drawBipolarBar(canvas, x, y, w, h, float(_track->octave()), 10.f);
+            break;
+        case Transpose:
+            PreviewPainter::drawKeyboard(canvas, x, y, w, h, 0, _track->transpose(), -1);
+            break;
+        default:
+            break;
         }
     }
 
@@ -119,19 +146,19 @@ private:
 
     static const char *itemName(Item item) {
         switch (item) {
-        case TrackName: return "Name";
-        case PlayMode:  return "Play Mode";
-        case FillMode:  return "Fill Mode";
-        case FillMuted: return "Fill Muted";
-        case CvUpdateMode:  return "CV Update Mode";
-        case SlideTime: return "Slide Time";
-        case Octave:    return "Octave";
-        case Transpose: return "Transpose";
-        case Rotate:    return "Rotate";
-        case GateProbabilityBias: return "Gate P. Bias";
-        case RetriggerProbabilityBias: return "Retrig P. Bias";
-        case LengthBias: return "Length Bias";
-        case NoteProbabilityBias: return "Note P. Bias";
+        case TrackName: return "NAME";
+        case PlayMode:  return "PLAY";
+        case FillMode:  return "FILL";
+        case FillMuted: return "FILLMUTE";
+        case CvUpdateMode:  return "CV UPD";
+        case SlideTime: return "SLIDE TM";
+        case Octave:    return "OCTAVE";
+        case Transpose: return "TRANSP";
+        case Rotate:    return "ROTATE";
+        case GateProbabilityBias: return "GATE BIA";
+        case RetriggerProbabilityBias: return "RTRG BIA";
+        case LengthBias: return "LEN BIAS";
+        case NoteProbabilityBias: return "NOTE BIA";
         case Last:      break;
         }
         return nullptr;

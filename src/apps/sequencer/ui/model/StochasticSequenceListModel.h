@@ -114,11 +114,11 @@ public:
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case RunMode:           return "Run Mode";
-        case Divisor:           return "Divisor";
-        case ResetMeasure:      return "Reset Measure";
-        case SequenceFirstStep: return "First Step";
-        case SequenceLastStep:  return "Last Step";
+        case RunMode:           return "RUN MODE";
+        case Divisor:           return "DIVISOR";
+        case ResetMeasure:      return "RESET";
+        case SequenceFirstStep: return "FIRST";
+        case SequenceLastStep:  return "LAST";
         case Last:              break;
         }
         return nullptr;

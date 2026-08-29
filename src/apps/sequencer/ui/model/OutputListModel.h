@@ -65,22 +65,22 @@ public:
 private:
     const char *itemName(Item item) const {
         switch (item) {
-        case Target:        return "Target";
-        case Event:         return "Event";
+        case Target:        return "TARGET";
+        case Event:         return "EVENT";
         case Last:          break;
         }
 
         if (_output.isNoteEvent()) {
             switch (NoteItem(item)) {
-            case GateSource:    return "Gate Source";
-            case NoteSource:    return "Note Source";
-            case VelocitySource:return "Vel. Source";
+            case GateSource:    return "GATE SRC";
+            case NoteSource:    return "NOTE SRC";
+            case VelocitySource:return "VEL SRC";
             case LastNoteItem:  break;
             }
         } else if (_output.isControlChangeEvent()) {
             switch (ControlChangeItem(item)) {
-            case ControlNumber: return "Control Number";
-            case ControlSource: return "Control Source";
+            case ControlNumber: return "CTRL NUM";
+            case ControlSource: return "CTRL SRC";
             case LastControlChangeItem: break;
             }
         }

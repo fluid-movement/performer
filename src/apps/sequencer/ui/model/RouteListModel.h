@@ -67,18 +67,18 @@ public:
 private:
     const char *itemName(Item item) const {
         switch (item) {
-        case Target:        return "Target";
-        case Min:           return "Min";
-        case Max:           return "Max";
-        case Tracks:        return "Tracks";
-        case Source:        return "Source";
+        case Target:        return "TARGET";
+        case Min:           return "MIN";
+        case Max:           return "MAX";
+        case Tracks:        return "TRACKS";
+        case Source:        return "SOURCE";
         // case CvRange:
         case MidiSource:    return Routing::isCvSource(_route.source()) ? "Range" : "MIDI Source";
-        case MidiEvent:     return "MIDI Event";
+        case MidiEvent:     return "EVENT";
         // case MidiControlNumber:
         case MidiNote:
                             return _route.midiSource().isControlEvent() ? "CC Number" : "Note";
-        case MidiNoteRange: return "Note Range";
+        case MidiNoteRange: return "RANGE";
         case Last:          break;
         }
         return nullptr;

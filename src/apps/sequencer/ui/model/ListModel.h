@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/utils/StringBuilder.h"
+#include "core/gfx/Canvas.h"
 
 class ListModel {
 public:
@@ -26,6 +27,12 @@ public:
     virtual int sections() const { return 0; }
     virtual void sectionName(int section, StringBuilder &str) const {}
     virtual int rowSection(int row) const { return 0; }
+
+    // Optional drawing of what a parameter *does* -- a slide ramp, a pulse
+    // train, a swung beat grid -- shown in the config page's right pane. Rows
+    // without one fall back to the value drawn large.
+    virtual bool hasPreview(int row) const { return false; }
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const {}
 
     virtual void setSelectedScale(int defaultScale, bool force = false) {}
 };

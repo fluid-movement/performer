@@ -121,12 +121,12 @@ public:
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case Name:          return "Name";
-        case FirstStep:     return "First Step";
-        case LastStep:      return "Last Step";
-        case RunMode:       return "Run Mode";
-        case Divisor:       return "Divisor";
-        case ResetMeasure:  return "Reset Measure";
+        case Name:          return "NAME";
+        case FirstStep:     return "FIRST";
+        case LastStep:      return "LAST";
+        case RunMode:       return "RUN MODE";
+        case Divisor:       return "DIVISOR";
+        case ResetMeasure:  return "RESET";
         case Last:          break;
         }
         return nullptr;

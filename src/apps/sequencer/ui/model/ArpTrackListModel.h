@@ -4,6 +4,8 @@
 
 #include "RoutableListModel.h"
 
+#include "ui/painters/PreviewPainter.h"
+
 #include "model/ArpTrack.h"
 
 class ArpTrackListModel : public RoutableListModel {
@@ -97,6 +99,31 @@ public:
         }
     }
 
+    virtual bool hasPreview(int row) const override {
+        switch (Item(row)) {
+        case SlideTime: case Octave: case Transpose:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const override {
+        switch (Item(row)) {
+        case SlideTime:
+            PreviewPainter::drawSlideRamp(canvas, x, y, w, h, Types::SlideType::Linear, _track->slideTime() * 5);
+            break;
+        case Octave:
+            PreviewPainter::drawBipolarBar(canvas, x, y, w, h, float(_track->octave()), 10.f);
+            break;
+        case Transpose:
+            PreviewPainter::drawKeyboard(canvas, x, y, w, h, 0, _track->transpose(), -1);
+            break;
+        default:
+            break;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -135,23 +162,23 @@ public:
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case TrackName: return "Name";
-        case FillMode:  return "Fill Mode";
-        case FillMuted: return "Fill Muted";
-        case CvUpdateMode:  return "CV Update Mode";
-        case SlideTime: return "Slide Time";
-        case Octave:    return "Octave";
-        case Transpose: return "Transpose";
-        case GateProbabilityBias: return "Gate P. Bias";
-        case RetriggerProbabilityBias: return "Retrig P. Bias";
-        case LengthBias: return "Length Bias";
-        case NoteProbabilityBias: return "Note P. Bias";
-        case PatternFollow: return "Pattern Follow";
-        case ArpeggiatorMode:       return "Mode";
-        case ArpeggiatorHold:       return "Hold";
-        case ArpeggiatorOctaves:    return "Octaves";
-        case ArpeggiatorDivisor:    return "Rate";
-        case ArpeggiatorGateLength: return "Gate Length";
+        case TrackName: return "NAME";
+        case FillMode:  return "FILL";
+        case FillMuted: return "FILLMUTE";
+        case CvUpdateMode:  return "CV UPD";
+        case SlideTime: return "SLIDE TM";
+        case Octave:    return "OCTAVE";
+        case Transpose: return "TRANSP";
+        case GateProbabilityBias: return "GATE BIA";
+        case RetriggerProbabilityBias: return "RTRG BIA";
+        case LengthBias: return "LEN BIAS";
+        case NoteProbabilityBias: return "NOTE BIA";
+        case PatternFollow: return "PAT FOLL";
+        case ArpeggiatorMode:       return "MODE";
+        case ArpeggiatorHold:       return "HOLD";
+        case ArpeggiatorOctaves:    return "OCTAVES";
+        case ArpeggiatorDivisor:    return "RATE";
+        case ArpeggiatorGateLength: return "GATE LEN";
         case Last:      break;
         }
         return nullptr;

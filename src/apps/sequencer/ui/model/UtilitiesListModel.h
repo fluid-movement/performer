@@ -31,7 +31,7 @@ private:
 
     static const char *itemName(Item item) {
         switch (item) {
-        case FormatSdCard:      return "Format SD card";
+        case FormatSdCard:      return "FORMATSD";
         case Last:              break;
         }
         return nullptr;

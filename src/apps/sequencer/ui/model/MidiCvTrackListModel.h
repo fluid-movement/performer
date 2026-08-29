@@ -4,6 +4,8 @@
 
 #include "RoutableListModel.h"
 
+#include "ui/painters/PreviewPainter.h"
+
 #include "model/MidiCvTrack.h"
 
 class MidiCvTrackListModel : public RoutableListModel {
@@ -72,6 +74,32 @@ public:
         }
     }
 
+    virtual bool hasPreview(int row) const override {
+        switch (Item(row)) {
+        case LowNote: case HighNote: case SlideTime: case Transpose:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const override {
+        switch (Item(row)) {
+        case LowNote:
+        case HighNote:
+            PreviewPainter::drawNoteRange(canvas, x, y, w, h, _track->lowNote(), _track->highNote());
+            break;
+        case SlideTime:
+            PreviewPainter::drawSlideRamp(canvas, x, y, w, h, Types::SlideType::Linear, _track->slideTime() * 5);
+            break;
+        case Transpose:
+            PreviewPainter::drawKeyboard(canvas, x, y, w, h, 0, _track->transpose(), -1);
+            break;
+        default:
+            break;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -122,24 +150,24 @@ private:
 
     static const char *itemName(Item item) {
         switch (item) {
-        case TrackName:             return "Name";
-        case Source:                return "Source";
-        case Voices:                return "Voices";
-        case VoiceConfig:           return "Voice Config";
-        case NotePriority:          return "Note Priority";
-        case LowNote:               return "Low Note";
-        case HighNote:              return "High Note";
-        case PitchBendRange:        return "Pitch Bend";
-        case ModulationRange:       return "Mod Range";
-        case Retrigger:             return "Retrigger";
-        case SlideTime:             return "Slide Time";
-        case Transpose:             return "Transpose";
-        case ArpeggiatorEnabled:    return "Arpeggiator";
-        case ArpeggiatorHold:       return "Hold";
-        case ArpeggiatorMode:       return "Mode";
-        case ArpeggiatorDivisor:    return "Divisor";
-        case ArpeggiatorGateLength: return "Gate Length";
-        case ArpeggiatorOctaves:    return "Octaves";
+        case TrackName:             return "NAME";
+        case Source:                return "SOURCE";
+        case Voices:                return "VOICES";
+        case VoiceConfig:           return "VOICECFG";
+        case NotePriority:          return "PRIORITY";
+        case LowNote:               return "LOW NOTE";
+        case HighNote:              return "HI NOTE";
+        case PitchBendRange:        return "P. BEND";
+        case ModulationRange:       return "MOD RNG";
+        case Retrigger:             return "RETRIG";
+        case SlideTime:             return "SLIDE TM";
+        case Transpose:             return "TRANSP";
+        case ArpeggiatorEnabled:    return "ARP";
+        case ArpeggiatorHold:       return "HOLD";
+        case ArpeggiatorMode:       return "MODE";
+        case ArpeggiatorDivisor:    return "DIVISOR";
+        case ArpeggiatorGateLength: return "GATE LEN";
+        case ArpeggiatorOctaves:    return "OCTAVES";
         case Last:                  break;
         }
         return nullptr;

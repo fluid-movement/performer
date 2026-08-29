@@ -6,6 +6,8 @@
 #include "core/math/Math.h"
 #include "core/utils/StringBuilder.h"
 
+#include <cstring>
+
 ListPage::ListPage(PageManager &manager, PageContext &context, ListModel &listModel) :
     BasePage(manager, context)
 {
@@ -77,7 +79,10 @@ void ListPage::draw(Canvas &canvas) {
         displayIndex = std::max(0, count - LineCount);
     }
 
+    // Single-column models are pickers: the row is the value, so there is
+    // nothing to blow up in a side pane and the list takes the full width.
     bool singleColumn = _listModel->columns() < 2;
+    int listWidth = singleColumn ? Width : ListWidth;
 
     for (int i = 0; i < LineCount; ++i) {
         int index = displayIndex + i;
@@ -92,18 +97,90 @@ void ListPage::draw(Canvas &canvas) {
         if (row == _selectedRow) {
             canvas.setBlendMode(BlendMode::Set);
             canvas.setColor(Color::Bright);
-            canvas.fillRect(0, y, Width, LineHeight);
+            canvas.fillRect(0, y, listWidth - 8, LineHeight);
         }
 
         if (singleColumn) {
-            drawCell(canvas, row, 0, 8, y, Width - 16, LineHeight);
+            drawCell(canvas, row, 0, LabelX, y, listWidth - 16, LineHeight);
         } else {
-            drawCell(canvas, row, 0, 8, y, 84, LineHeight);
-            drawCell(canvas, row, 1, 96, y, Width - 104, LineHeight);
+            drawCell(canvas, row, 0, LabelX, y, ValueX - LabelX, LineHeight);
+            drawCell(canvas, row, 1, ValueX, y, listWidth - 8 - ValueX, LineHeight);
         }
     }
 
-    WindowPainter::drawScrollbar(canvas, Width - 6, ContentTop, 4, LineCount * LineHeight, count, LineCount, displayIndex);
+    WindowPainter::drawScrollbar(canvas, listWidth - 6, ContentTop, 4, ContentHeight, count, LineCount, displayIndex);
+
+    if (!singleColumn) {
+        canvas.setBlendMode(BlendMode::Set);
+        canvas.setColor(Color::MediumLow);
+        canvas.vline(DividerX, ContentTop, ContentHeight);
+        drawDetailPanel(canvas);
+    }
+}
+
+void ListPage::drawDetailPanel(Canvas &canvas) {
+    if (rowsInSection() == 0) {
+        return;
+    }
+
+    canvas.setBlendMode(BlendMode::Set);
+
+    FixedStringBuilder<32> label;
+    _listModel->cell(_selectedRow, 0, label);
+    canvas.setFont(Font::Tiny);
+    canvas.setColor(Color::MediumLow);
+    canvas.drawText(PanelX, ContentTop + 6, label);
+
+    int bodyY = ContentTop + 10;
+    int bodyH = ContentHeight - 10;
+
+    if (_listModel->hasPreview(_selectedRow)) {
+        _listModel->drawPreview(canvas, _selectedRow, PanelX, bodyY, PanelWidth, bodyH);
+        return;
+    }
+
+    // No drawing for this parameter, so the pane earns its pixels by showing the
+    // value at a size the 7px list row cannot -- which also rescues the long
+    // enum names that the value column has to clip.
+    FixedStringBuilder<32> value;
+    _listModel->cell(_selectedRow, 1, value);
+    const char *str = value;
+    int len = int(strlen(str));
+
+    canvas.setColor(Color::Bright);
+    if (len <= PanelWidth / 8) {
+        canvas.setFont(Font::Small);   // 8px/char
+        canvas.drawTextCentered(PanelX, bodyY, PanelWidth, bodyH, str);
+        return;
+    }
+
+    canvas.setFont(Font::Tiny);
+    int perLine = PanelWidth / 6;
+    if (len <= perLine) {
+        canvas.drawTextCentered(PanelX, bodyY, PanelWidth, bodyH, str);
+        return;
+    }
+
+    // Wrap onto two lines, breaking at the last space that fits.
+    int split = -1;
+    for (int i = 0; i < len && i <= perLine; ++i) {
+        if (str[i] == ' ') {
+            split = i;
+        }
+    }
+    if (split < 0) {
+        split = perLine;
+    }
+    FixedStringBuilder<32> line0;
+    for (int i = 0; i < split; ++i) {
+        line0("%c", str[i]);
+    }
+    FixedStringBuilder<32> line1;
+    for (int i = (str[split] == ' ' ? split + 1 : split); i < len; ++i) {
+        line1("%c", str[i]);
+    }
+    canvas.drawTextCentered(PanelX, bodyY, PanelWidth, bodyH / 2, line0);
+    canvas.drawTextCentered(PanelX, bodyY + bodyH / 2, PanelWidth, bodyH / 2, line1);
 }
 
 void ListPage::drawSectionFooter(Canvas &canvas) {

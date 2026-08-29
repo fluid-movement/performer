@@ -4,6 +4,8 @@
 
 #include "RoutableListModel.h"
 
+#include "ui/painters/PreviewPainter.h"
+
 #include "model/CurveTrack.h"
 
 class CurveTrackListModel : public RoutableListModel {
@@ -54,6 +56,38 @@ public:
         }
     }
 
+    virtual bool hasPreview(int row) const override {
+        switch (Item(row)) {
+        case ShapeCurve: case Range: case Offset: case SlideTime:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const override {
+        switch (Item(row)) {
+        case ShapeCurve:
+            // shape 0 is where expCurve actually bites (see evalSegment), and a
+            // fast attack makes it read as the percussive AD envelope this
+            // setting exists to shape.
+            PreviewPainter::drawCurveShape(canvas, x, y, w, h, 0.f, 0.2f, _track->shapeCurveExponent());
+            break;
+        case Range:
+            PreviewPainter::drawVoltageBar(canvas, x, y, w, h,
+                float(int(_track->range()) - int(Types::VoltageRange::Unipolar1V) + 1), 5.f);
+            break;
+        case Offset:
+            PreviewPainter::drawBipolarBar(canvas, x, y, w, h, float(_track->offset()), 100.f);
+            break;
+        case SlideTime:
+            PreviewPainter::drawSlideRamp(canvas, x, y, w, h, Types::SlideType::Linear, _track->slideTime() * 5);
+            break;
+        default:
+            break;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -97,15 +131,15 @@ private:
 
     static const char *itemName(Item item) {
         switch (item) {
-        case TrackName:             return "Name";
-        case MuteMode:              return "Mute Mode";
-        case ShapeCurve:            return "Shape Curve";
-        case Range:                 return "Range";
-        case SlideTime:             return "Slide Time";
-        case Offset:                return "Offset";
-        case Rotate:                return "Rotate";
-        case PatternFollow:         return "Pattern Follow";
-        case CurveCvInput:          return "Curve CV Input";
+        case TrackName:             return "NAME";
+        case MuteMode:              return "MUTE";
+        case ShapeCurve:            return "SHAPE";
+        case Range:                 return "RANGE";
+        case SlideTime:             return "SLIDE TM";
+        case Offset:                return "OFFSET";
+        case Rotate:                return "ROTATE";
+        case PatternFollow:         return "PAT FOLL";
+        case CurveCvInput:          return "CURVE CV";
         case Last:                  break;
         }
         return nullptr;

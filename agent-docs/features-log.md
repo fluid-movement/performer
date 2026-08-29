@@ -10,6 +10,43 @@ For a full map of all pages, button combos, and held-button overlays, see [`agen
 
 ---
 
+## 2026-08-29 — Config pages: parameter previews
+
+The config pages now show **what a parameter does**, not just its value. The right 76px of the
+content area is a detail pane for the selected row: a drawing when the parameter has one, otherwise
+its value at a size the 7px list row cannot afford.
+
+Drawings live in `ui/painters/PreviewPainter` and are shared across models:
+
+| Drawing | Used by |
+|---|---|
+| Slide ramp (via the engine's own `Slide::shape`, so it cannot drift from what you hear) | Note slide type/time, Curve/Arp/Stochastic/MidiCv slide time |
+| Pulse train | Clock input + output divisor |
+| Pulse width | Clock output pulse |
+| Swing grid — off-beats visibly pushed late | Project swing |
+| Curve segment (via the engine's own `evalSegment`) | Curve shape curve |
+| Voltage bar / bipolar bar | Curve range, Curve offset, octave |
+| Keyboard, with a scale's degrees lit | Project scale + root note, transpose |
+| Note range | MidiCv low/high note |
+
+Two supporting changes made it fit:
+
+- **All 88 row labels shortened to ≤8 characters** and uppercased, satisfying the design language's
+  label rule (which every model had been ignoring) and freeing the horizontal room. Labels now start
+  at x=8 and values at x=60, so the list occupies the left 164px.
+- The detail pane's fallback — the value drawn large — also **rescues long enum names**, wrapping
+  onto two lines rather than clipping.
+
+The drawings deliberately reuse the engine's own `Slide::shape` and `CurveSequence::evalSegment`
+rather than reimplementing them, so a change to the sound changes the picture.
+
+Note `Font::Tiny` is 6px per character and `Font::Small` is 8px (`Canvas.cpp`), which is what sets
+the column budget; the design language's "Font.Normal" is `Font::Small`.
+
+Tests: `src/apps/sequencer/tests/ui/config_nav_test.py`.
+
+---
+
 ## 2026-08-29 — Modeless config pages
 
 Every config page (Track, Project, Clock, Routing, MIDI Out, User Scale, Layout, System, the 5

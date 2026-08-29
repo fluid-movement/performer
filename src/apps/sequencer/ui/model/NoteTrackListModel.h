@@ -4,6 +4,8 @@
 
 #include "RoutableListModel.h"
 
+#include "ui/painters/PreviewPainter.h"
+
 #include "model/NoteTrack.h"
 
 class NoteTrackListModel : public RoutableListModel {
@@ -59,6 +61,32 @@ public:
         }
     }
 
+    virtual bool hasPreview(int row) const override {
+        switch (Item(row)) {
+        case SlideType: case SlideTime: case Octave: case Transpose:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const override {
+        switch (Item(row)) {
+        case SlideType:
+        case SlideTime:
+            PreviewPainter::drawSlideRamp(canvas, x, y, w, h, _track->slideType(), _track->slideTimeMs());
+            break;
+        case Octave:
+            PreviewPainter::drawBipolarBar(canvas, x, y, w, h, float(_track->octave()), 10.f);
+            break;
+        case Transpose:
+            PreviewPainter::drawKeyboard(canvas, x, y, w, h, 0, _track->transpose(), -1);
+            break;
+        default:
+            break;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -105,16 +133,16 @@ private:
 
     static const char *itemName(Item item) {
         switch (item) {
-        case TrackName: return "Name";
-        case FillMode:  return "Fill Mode";
-        case FillMuted: return "Fill Muted";
-        case GateMode:  return "Gate Mode";
-        case SlideType: return "Slide Type";
-        case SlideTime: return "Slide Time";
-        case Octave:    return "Octave";
-        case Transpose: return "Transpose";
-        case Rotate:    return "Rotate";
-        case PatternFollow: return "Pattern Follow";
+        case TrackName: return "NAME";
+        case FillMode:  return "FILL";
+        case FillMuted: return "FILLMUTE";
+        case GateMode:  return "GATE";
+        case SlideType: return "SLIDE";
+        case SlideTime: return "SLIDE TM";
+        case Octave:    return "OCTAVE";
+        case Transpose: return "TRANSP";
+        case Rotate:    return "ROTATE";
+        case PatternFollow: return "PAT FOLL";
         case Last:      break;
         }
         return nullptr;

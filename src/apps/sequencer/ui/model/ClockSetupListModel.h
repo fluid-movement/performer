@@ -2,6 +2,8 @@
 
 #include "ListModel.h"
 
+#include "ui/painters/PreviewPainter.h"
+
 #include "model/ClockSetup.h"
 
 class ClockSetupListModel : public ListModel {
@@ -60,6 +62,36 @@ public:
         }
     }
 
+    virtual bool hasPreview(int row) const override {
+        switch (Item(row)) {
+        case ClockInputDivisor: case ClockOutputDivisor: case ClockOutputPulse:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const override {
+        switch (Item(row)) {
+        case ClockInputDivisor:
+            PreviewPainter::drawPulseTrain(canvas, x, y, w, h, pulsesPerBar(_clockSetup.clockInputDivisor()));
+            break;
+        case ClockOutputDivisor:
+            PreviewPainter::drawPulseTrain(canvas, x, y, w, h, pulsesPerBar(_clockSetup.clockOutputDivisor()));
+            break;
+        case ClockOutputPulse:
+            // Pulse width against a nominal 100 ms window.
+            PreviewPainter::drawPulseWidth(canvas, x, y, w, h, _clockSetup.clockOutputPulse() / 100.f);
+            break;
+        default:
+            break;
+        }
+    }
+
+    static int pulsesPerBar(int divisor) {
+        return divisor > 0 ? clamp((CONFIG_PPQN * 4) / divisor, 1, 16) : 1;
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -95,19 +127,19 @@ private:
 
     static const char *itemName(Item item) {
         switch (item) {
-        case Mode:              return "Mode";
-        case ShiftMode:         return "Shift Mode";
-        case ClockInputDivisor: return "Input Divisor";
-        case ClockInputMode:    return "Input Mode";
-        case ClockOutputDivisor:return "Output Divisor";
-        case ClockOutputSwing:  return "Output Swing";
-        case ClockOutputPulse:  return "Output Pulse";
-        case ClockOutputMode:   return "Output Mode";
+        case Mode:              return "MODE";
+        case ShiftMode:         return "SHIFT";
+        case ClockInputDivisor: return "IN DIV";
+        case ClockInputMode:    return "IN MODE";
+        case ClockOutputDivisor:return "OUT DIV";
+        case ClockOutputSwing:  return "OUT SWNG";
+        case ClockOutputPulse:  return "OUT PLSE";
+        case ClockOutputMode:   return "OUT MODE";
         case MidiRx:            return "MIDI RX";
         case MidiTx:            return "MIDI TX";
         case UsbRx:             return "USB RX";
         case UsbTx:             return "USB TX";
-        case FilterNote:        return "Filter Note";
+        case FilterNote:        return "FILT NOT";
         case Last:              break;
         }
         return nullptr;

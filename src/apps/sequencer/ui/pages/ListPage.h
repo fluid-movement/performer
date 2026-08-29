@@ -43,9 +43,23 @@ protected:
     // declares no sections, leaving the footer free for the page's own keys.
     void drawSectionFooter(Canvas &canvas);
 
+    // Right pane: the selected row blown up, with a preview when available.
+    void drawDetailPanel(Canvas &canvas);
+
     static constexpr int LineHeight = 7;
     static constexpr int LineCount = 6;
     static constexpr int ContentTop = 10;
+    static constexpr int ContentHeight = LineCount * LineHeight;   // 42
+
+    // Two-pane split. The list keeps the left 164px; the right pane shows the
+    // selected parameter -- a drawing of what it does when the model provides
+    // one, otherwise its value at a size the list row cannot afford.
+    static constexpr int ListWidth = 164;
+    static constexpr int DividerX = 170;
+    static constexpr int PanelX = 176;
+    static constexpr int PanelWidth = 76;
+    static constexpr int LabelX = 8;
+    static constexpr int ValueX = 60;
 
 private:
     // Rows are filtered by the active section. Models without sections report

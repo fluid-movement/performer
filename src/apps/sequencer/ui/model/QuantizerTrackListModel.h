@@ -4,6 +4,8 @@
 
 #include "RoutableListModel.h"
 
+#include "ui/painters/PreviewPainter.h"
+
 #include "model/QuantizerTrack.h"
 
 class QuantizerTrackListModel : public RoutableListModel {
@@ -58,6 +60,28 @@ public:
         }
     }
 
+    virtual bool hasPreview(int row) const override {
+        switch (Item(row)) {
+        case Octave: case Transpose:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    virtual void drawPreview(Canvas &canvas, int row, int x, int y, int w, int h) const override {
+        switch (Item(row)) {
+        case Octave:
+            PreviewPainter::drawBipolarBar(canvas, x, y, w, h, float(_track->octave()), 10.f);
+            break;
+        case Transpose:
+            PreviewPainter::drawKeyboard(canvas, x, y, w, h, 0, _track->transpose(), -1);
+            break;
+        default:
+            break;
+        }
+    }
+
     virtual void cell(int row, int column, StringBuilder &str) const override {
         if (column == 0) {
             formatName(Item(row), str);
@@ -86,12 +110,12 @@ public:
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case TrackName:     return "Name";
-        case InputSource:   return "Input Source";
-        case TriggerSource: return "Trigger Source";
-        case Octave:        return "Octave";
-        case Transpose:     return "Transpose";
-        case PatternFollow: return "Pattern Follow";
+        case TrackName:     return "NAME";
+        case InputSource:   return "SOURCE";
+        case TriggerSource: return "TRIGGER";
+        case Octave:        return "OCTAVE";
+        case Transpose:     return "TRANSP";
+        case PatternFollow: return "PAT FOLL";
         case Last:          break;
         }
         return nullptr;

@@ -63,9 +63,9 @@ private:
 
     const char *itemName(Item item) const {
         switch (item) {
-        case Name:  return "Name";
-        case Mode:  return "Mode";
-        case Size:  return "Size";
+        case Name:  return "NAME";
+        case Mode:  return "MODE";
+        case Size:  return "SIZE";
         case Last:  break;
         }
         return nullptr;

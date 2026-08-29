@@ -8,7 +8,9 @@
 the selected row and never navigates. F1-F5 jump between sections on Track/Project/Clock, and
 **pressing the active tab again walks the cursor down that section and wraps** — the finger is
 already there. Left/Right still move the cursor. `Font::Tiny` at 7px gives 6 visible rows instead
-of 4. UI only, no version bump.
+of 4. The right 76px is a detail pane showing a **drawing of what the selected parameter does**
+(slide ramp, pulse train, swung grid, keyboard) or its value large. All 88 row labels shortened to
+≤8 chars. UI only, no version bump.
 
 Next: **UI redesign** — MidiCv track, then live parameter previews on config pages. Stochastic
 hardware bar ghosting (SSD1322 column coupling) remains an open visual issue.
@@ -23,11 +25,8 @@ hardware bar ghosting (SSD1322 column coupling) remains an open visual issue.
 - [ ] G7 — Continue UI redesign: MidiCv (Note, Curve, Stochastic, Arp, Quantizer done)
 - [ ] Note — `MidiCvTrackEngine` still uses the old unbounded `Slide::applySlide` for its legato-detected portamento; consider moving it to `Slide::Ramp` too
 - [ ] Note — Arp/Stochastic `slideTime` remains dead (both engines hard-code `slide = false` on every CV push); either wire the flag or remove the setting
-- [ ] Config pages — **live parameter previews** (deliberate second pass): draw what a parameter
-      *does* in the space right of the values — slide ramp, divisor pulse train, swung beat grid,
-      scale on a keyboard. `evalSegment` and the probability-bar painters already exist to draw with.
-- [ ] Config pages — row labels still exceed the 6-char rule (`ARPEGGIATOR`, `GATE LENGTH`). They
-      come from each model's `itemName()`; renaming was out of scope for the interaction pass.
+- [ ] Config pages — extend previews beyond the first dozen (fill mode, rotate, probability
+      biases, pitch bend range) if they prove to earn their pixels on hardware.
 - [ ] Config pages — no long-press primitive exists, so Metropolix-style long-press-to-reset-default
       is not yet possible. Only `SystemPage` hand-rolls one by polling ticks in `draw()`.
 - [ ] Iterate — Run tastemaker iterations with consolidate cadence against each trunk
@@ -180,3 +179,4 @@ hardware bar ghosting (SSD1322 column coupling) remains an open visual issue.
 | **Modeless config list page** | `src/apps/sequencer/ui/pages/ListPage.cpp` |
 | Config section definitions | `src/apps/sequencer/ui/model/*ListModel.h` (`sections`/`rowSection`) |
 | Config nav tests | `src/apps/sequencer/tests/ui/config_nav_test.py` |
+| Config parameter previews | `src/apps/sequencer/ui/painters/PreviewPainter.cpp` |

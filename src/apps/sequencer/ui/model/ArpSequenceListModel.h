@@ -94,12 +94,12 @@ public:
 private:
     static const char *itemName(Item item) {
         switch (item) {
-        case Name:         return "Name";
-        case Divisor:      return "Divisor";
-        case ResetMeasure: return "Reset Measure";
-        case ArpOrder:     return "Arp Order";
-        case ArpOctaves:   return "Arp Octaves";
-        case ArpLength:    return "Arp Length";
+        case Name:         return "NAME";
+        case Divisor:      return "DIVISOR";
+        case ResetMeasure: return "RESET";
+        case ArpOrder:     return "ORDER";
+        case ArpOctaves:   return "OCTAVES";
+        case ArpLength:    return "LENGTH";
         case Last:         break;
         }
         return nullptr;
