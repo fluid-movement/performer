@@ -1,0 +1,3 @@
+- [ ] A backticked extension-less path whose stem exists with a source extension (e.g. ui/painters/PreviewPainter) passes docs-check
+- [ ] A backticked extension-less path that resolves to nothing still fails docs-check
+- [ ] just docs-check passes on the committed agent-docs
