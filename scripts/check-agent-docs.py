@@ -37,8 +37,16 @@ def expand(token):
     return [token]
 
 
+STEM_EXTS = (".h", ".cpp", ".py", ".ts", ".svelte")
+
+
 def exists(path):
-    return any(os.path.exists(os.path.join(ROOT, base, path)) for base in BASES)
+    if any(os.path.exists(os.path.join(ROOT, base, path)) for base in BASES):
+        return True
+    # A class named by its stem (`ui/painters/LogoPainter`) resolves to a source file with that stem.
+    if os.path.splitext(path)[1] == "":
+        return any(exists(path + ext) for ext in STEM_EXTS)
+    return False
 
 
 def looks_like_path(tok):

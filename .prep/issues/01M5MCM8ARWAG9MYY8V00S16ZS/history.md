@@ -1,0 +1,1 @@
+- 2026-10-23T12:44:52Z claude-code/haiku: Implemented, ready for check: docs-check now accepts an extension-less backticked path when its stem exists as .h/.cpp/.py/.ts/.svelte (scripts/check-agent-docs.py exists()); verified committed docs pass, a real stem passes and a fake stem fails, throwaway line removed.
