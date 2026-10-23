@@ -11,6 +11,8 @@ Work-in-progress notes for the next release. Moves into `CHANGELOG.md` on releas
 
 ## Changes
 
+- New boot splash: PER|FORMER SEQUENCER with a chrome FLUID MOVEMENT EDITION wordmark
+
 ## Bug Fixes
 
 - Scale change no longer remaps step degrees

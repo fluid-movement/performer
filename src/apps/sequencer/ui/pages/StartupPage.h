@@ -21,7 +21,12 @@ private:
     float time() const;
     float relTime() const { return time() / LoadTime; }
 
+    // Phase of the specular highlight, wrapped to [0,1). Independent of relTime() so
+    // the logo keeps moving when a slow card holds the splash open past LoadTime.
+    float sweep() const;
+
     static constexpr int LoadTime = 2;
+    static constexpr float SweepPeriod = 2.f;
 
     uint32_t _startTicks;
     State _state = State::Initial;

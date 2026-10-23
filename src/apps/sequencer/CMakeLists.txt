@@ -114,6 +114,7 @@ set(sources
     ui/pages/TrackPage.cpp
     ui/pages/UserScalePage.cpp
     # ui/painters
+    ui/painters/LogoPainter.cpp
     ui/painters/PreviewPainter.cpp
     ui/painters/SequencePainter.cpp
     ui/painters/SongPainter.cpp

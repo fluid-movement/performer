@@ -18,6 +18,8 @@ The rules every page and variation must follow. Evaluate any new draw function a
 
 Exception: inverted cells (Bright fill + off content) technically use 0 as a foreground value — that is allowed and is not a fourth brightness level.
 
+Exception: **brand screens**. The boot splash (`StartupPage` + `ui/painters/LogoPainter`) uses the full 16-level ramp — the chrome shading of the FLUID MOVEMENT wordmark *is* the design. It shows no operational state, is never read under time pressure, and is on screen for two seconds a session. Every page the user actually works on stays on the three levels.
+
 ---
 
 ## Typography

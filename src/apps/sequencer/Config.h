@@ -9,6 +9,10 @@
 #define CONFIG_VERSION_MINOR            3
 #define CONFIG_VERSION_REVISION         2
 
+// Fork identity. CONFIG_VERSION_NAME stays as it is -- it is baked into the VersionTag
+// the bootloader and the update path match against. This is display only.
+#define CONFIG_EDITION_NAME             "FLUID MOVEMENT"
+
 // Task priorities
 #define CONFIG_DRIVER_TASK_PRIORITY     5
 #define CONFIG_ENGINE_TASK_PRIORITY     4
