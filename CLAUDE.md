@@ -1,7 +1,9 @@
 # Instructions
 - Work is tracked with prep (`.prep/`): `prep next` for what to do, `prep list` for all open issues.
-- Before changing code, run `prep knowledge find <area>` (e.g. `curve`, `slide`, `ui`, `serialization`):
-  the design language, track-type decisions and known pitfalls live there, scoped to code paths.
+- Read `agent-docs/` before searching code (start at `agent-docs/index.md`); feature docs say where
+  code lives and how it works. `agent-docs/features-log.md` lists shipped features.
+- Before changing code, run `prep knowledge find <area>` (e.g. `curve`, `slide`, `ui`, `serialization`)
+  for the decisions and findings that apply to it.
 - The UI design sandbox is `tools/ui-sandbox/` (Svelte; the user runs the dev server). Its
   iteration process lives in `tools/ui-sandbox/iteration/` and is started with `/iteration`.
 - Everyday commands are in the `justfile` (`just` lists them): `just test [name]`, `just sim`,
