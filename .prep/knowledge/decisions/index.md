@@ -2,7 +2,6 @@
 
 ## Entries
 
-* [x](/decisions/01M5M0TEZ5M7TKJQ72A1AJHSAG.md) - y
 * [UI brightness: three levels only (Bright 15, Low/MediumLow 5, off)](/decisions/01M5M0Y6H9BXX9ZED6RVJ7KC4K.md) - Every operational page uses only Color::Bright (focused/active), Color::MediumLow (context, labels, structure) and Color::None (absent). Color::Low (3), Medium (7) and MediumBright (10) are not in the palette; no gradients, no dim fills for inactive things. Inverted cells (Bright fill, None content) are not a fourth level. Why: three-level discipline keeps the 256x64 OLED calm and every mark unambiguous (Norns-derived). To change a rule, supersede this record first rather than silently breaking it.
 * [Brand screens are exempt from the three-brightness rule](/decisions/01M5M0Y6KMHPBRQKVG4HWNV532.md) - The boot splash (StartupPage + ui/painters/LogoPainter) may use the full 16-level ramp: the chrome shading of the FLUID MOVEMENT wordmark is the design. It shows no operational state, is never read under time pressure and is on screen about two seconds per session. Every page the user works on stays on three levels. Decided 2026-08-29.
 * [Inverted fill is the one selection convention, everywhere](/decisions/01M5M0Y6P1GGSEERQA8W3NA28Z.md) - Selection/cursor = fillRect(Bright) with content drawn knocked out. Draw the knocked-out text with setBlendMode(BlendMode::Sub) after the bright fill; drawing with Color::None paints solid black rectangles instead of glyph cutouts. Must look identical on every page so the user learns 'bright fill = my cursor' once.
