@@ -1,182 +1,122 @@
 # Curve Track
 
-## Purpose
-A CV automation track. Instead of note+gate steps it outputs smoothly interpolated CV values. No gate output — purely a CV modulation source useful for LFO-like curves, envelopes, or any continuously varying CV.
+A CV shape generator. Steps are **segments** of variable length that chain and loop; each segment
+draws one bump from an offset up to offset + level and back, shaped by `shape` and `skew`. Output
+is **unipolar 0 V to the track's Range**, plus a short gate at each segment start. Current model:
+**Version53**.
 
-## Key Source Files
+Decisions behind this design (`prep knowledge find curve`): curve track is a segment assembler;
+parameters edit in a 0-100 percent domain; SHPE has an exponential fall at the low end and a flat
+hold at the top; output is unipolar with Range 1-5 V; segments play mirrored when travelling
+backwards; no play mode, fill mode, min/max or probability biases; the CV hardware ceiling is
+5 V; `evalSegment` is duplicated in the UI sandbox.
+
+## Key source files
 
 | Role | Path |
 |---|---|
-| Data model (track settings) | `src/apps/sequencer/model/CurveTrack.h/cpp` |
-| Data model (sequence + steps) | `src/apps/sequencer/model/CurveSequence.h/cpp` |
-| Real-time engine | `src/apps/sequencer/engine/CurveTrackEngine.h/cpp` |
-| Curve recorder | `src/apps/sequencer/engine/CurveRecorder.h/cpp` |
-| Sequence display page | `src/apps/sequencer/ui/pages/CurveSequencePage.h/cpp` |
-| Sequence edit page | `src/apps/sequencer/ui/pages/CurveSequenceEditPage.h/cpp` |
-| UI list model | `src/apps/sequencer/ui/model/CurveTrackListModel.h` |
+| Track settings | `model/CurveTrack.{h,cpp}` |
+| Sequence, segments, `evalSegment` | `model/CurveSequence.{h,cpp}` |
+| Engine | `engine/CurveTrackEngine.{h,cpp}` |
+| Recorder (declared, not wired in V1) | `engine/CurveRecorder.h` |
+| Overview page | `ui/pages/CurveSequencePage.{h,cpp}` |
+| Edit page | `ui/pages/CurveSequenceEditPage.{h,cpp}` |
+| Same encoder logic, duplicated | `ui/pages/OverviewPage.cpp` |
+| Config list rows | `ui/model/CurveTrackListModel.h`, `ui/model/CurveSequenceListModel.h` |
+| Sandbox copy of the curve math | `tools/ui-sandbox/src/routes/+page.svelte` |
+| Tests | `tests/ui/curve_encoder_skew_test.py` |
 
-## Data Model
+## Data model
 
-### `CurveTrack` (track-level settings)
-- `_muteMode` — what CV value to output when muted: LastValue | Zero (0V) | Min | Max
-- `_shapeCurve` — steepness of the exponential at the low end of SHPE: Gentle | Medium | Snappy (Version51, default Medium)
-- `_range` — output voltage range, **unipolar 0V..max** in 1V steps, 1V–5V (Version52, default 5V). Stored as `Types::VoltageRange` but clamped to the `Unipolar1V…Unipolar5V` entries; a bipolar value maps to the unipolar entry of the same voltage. `editRange` clamps as an `int` before converting — `VoltageRange` is `uint8_t` backed, so a negative would otherwise wrap to 255 and land on 5V.
-- `_slideTime` — CV slew (routable)
-- `_offset` — CV offset (routable via `Routing::Target::Offset`)
-- `_rotate` — step rotation (routable)
-- `_sequences` — array of 17 `CurveSequence` (16 patterns + 1 snapshot)
+### `CurveTrack`
 
-**Removed in Version52:** `_curveMin` / `_curveMax` and `_shapeProbabilityBias` /
-`_gateProbabilityBias`, along with the `CurveMin` (39), `CurveMax` (40) and
-`ShapeProbabilityBias` (22) routing targets. Nothing in the V1 engine ever read
-them — they were leftovers from the pre-V1 per-step min/max model.
-`GateProbabilityBias` (9) remains: Note, Arp and Stochastic tracks each own one.
-Routes serialize targets by stable id, and `readEnum` falls back to
-`Target::None` for an id it no longer recognizes, so old routes degrade
-gracefully with no migration.
+- `muteMode`: what the CV does while muted: LastValue, Zero, Min, Max
+- `shapeCurve`: steepness of the exponential at SHPE 0: Gentle 4, Medium 6 (default), Snappy 8 (Version51)
+- `range`: output range, unipolar 0 V..max in 1 V steps, 1-5 V, default 5 V (Version52). Stored as
+  `Types::VoltageRange`; bipolar values map to the unipolar entry of the same voltage; `editRange`
+  clamps as `int` first because the enum is `uint8_t` backed
+- `slideTime` (CV slew, routable), `offset` (volts, routable via `Routing::Target::Offset`), `rotate`
+- `curveCvInput` (Off, Cv1-4): stored and editable, but nothing in the engine reads it
+- `sequences`: 17 `CurveSequence`; pattern follow and name from the base classes
 
-### `CurveSequence` (per-pattern data)
-- `_scale` — output scale (maps step values to voltage range)
-- `_divisor` — clock divisor
-- `_resetMeasure` — measure-length reset period
-- `_runMode` — `Types::RunMode`
-- `_firstStep`, `_lastStep` — active range (0–63)
-- `_range` — CV output range (e.g. ±1V, ±2V, ±5V, 0–10V)
-- `_steps` — array of 64 `Step`
+### `CurveSequence`
 
-- `_segmentCount` — number of active segments (Version42)
+`divisor` (routable), `resetMeasure`, `runMode` (routable), `firstStep`, `lastStep` (routable),
+64 `Step`s of which the first `segmentCount` (Version42) are
+active, and the displayed `section`. `segmentCount` is 1-16 (default 8). The loop covers segments `0..segmentCount-1`; `firstStep`
+rotates which segment starts.
 
-### `CurveSequence::Step` layers — V1 segment assembler
-
-A step is a **segment**, not a fixed-width step. Segments chain and loop; the loop
-length is the sum of their lengths. Step buttons select segments.
+### `CurveSequence::Step` layers
 
 | Layer | Tab | Stored in | Raw range | Meaning |
 |---|---|---|---|---|
-| Shape | SHPE | `_data0.shape` (7 bits) | 0–127 | exponential fall (0) → half sine (50) → flat hold (100) |
-| Skew | SKEW | `_data0.shapeVariation` (7 bits) | 0–127 | position of the peak within the segment |
-| Length | LEN | `_data1.gate` (4 bits) | 1–16 | segment length in pulses |
-| Level | LVL | `_data0.max` (8 bits) | 0–255 | peak height above the offset |
-| Offset | OFST | `_data0.min` (8 bits) | 0–255 | value the segment starts and ends at |
+| Shape | SHPE | `_data0.shape` (7 bits) | 0-127 | exponential fall (0), half sine (50), flat hold (100) |
+| Skew | SKEW | `_data0.shapeVariation` (7 bits) | 0-127 | where the peak sits within the segment |
+| Length | LEN | `_data1.gate` (4 bits) | 1-16 | segment length in divisor pulses |
+| Level | LVL | `_data0.max` (8 bits) | 0-255 | peak height above the offset |
+| Offset | OFST | `_data0.min` (8 bits) | 0-255 | value the segment starts and ends at |
 
-The legacy `Min` / `Max` / `ShapeVariation` names survive as bitfield names only —
-the V1 model reinterprets them as offset / level / skew.
+The names `min` / `max` / `shapeVariation` survive as bit-field names only. The UI edits and shows
+the five values as integers 0-100 (`shapePercent()`, `skewPercent()`, `levelPercent()`,
+`offsetPercent()`); one detent is 1, Shift is 10. `shapeNorm()` and friends are the 0.0-1.0 domain
+the engine uses.
 
-**Editing domain (Version50).** The UI edits and displays these as integers 0–100
-via `shapePercent()` / `skewPercent()` / `levelPercent()` / `offsetPercent()`.
-One encoder detent moves the value by exactly 1, SHIFT by 10. The percent
-round trip is exact in both directions (integer math, raw spacing > 1), which is
-what makes stepping symmetric — turning back lands on the original value.
-`shapeNorm()` etc. remain the 0.0–1.0 domain used by the engine and the curve math.
+### Curve math: `CurveSequence::evalSegment(phase, shape, skew, expCurve)`
 
-Shape and skew were 6-bit before Version50; the migration in `Step::read()`
-rescales old values (`raw * 127 / 63`) and moves skew from bit 6 to bit 7.
+Skew warps `phase` so the peak lands at `phase == skew`; `u` is the normalized distance from the
+peak (0 at the peak, 1 at the edges).
 
-### Curve math — `CurveSequence::evalSegment(phase, shape, skew, expCurve)`
+- **shape 0-50**: `m*sine + (1-m)*fall` with `m = shape*2`, `k = (1-m)*expCurve` and
+  `fall = (exp(-k*u) - e^-k) / (1 - e^-k)`, a cusp at the peak (percussive envelopes).
+- **shape 50-100**: `sine^p`, `p = (1 - (shape-0.5)*2)^2`; `p <= 0` returns 1.0 (flat hold).
+- Skew 0 is an instant attack, skew 100 an instant release; endpoints are exact, not clamped.
 
-Skew warps `phase` so the peak lands at `phase == skew`. The contour is then built
-around that peak using `u`, the normalized distance from it (0 at the peak, 1 at
-the segment edges); `cos(u·π/2)` is identical to `sin(t·π)`.
+Any change here must be mirrored in the sandbox copy (`tools/ui-sandbox/src/routes/+page.svelte`).
 
-- **shape 0–50** — blends an exponential fall into the half sine:
-  `m·sine + (1-m)·(exp(-k·u) - e^-k)/(1 - e^-k)` with `m = shape·2` and
-  `k = (1-m)·expCurve`. The normalization puts the fall at exactly 1.0 at the peak
-  and 0.0 at the edges. Unlike any power of a sine — all of which have zero slope
-  at the peak, and so can only make a rounded top — the exponential has a **cusp**
-  there. That is what makes a sharp percussive envelope possible.
-- **shape 50–100** — unchanged: `sine^p` with `p = (1 - (shape-0.5)·2)²`, widening
-  the bump until the `p <= 0` guard returns a constant 1.0 (flat hold).
+## Engine (`CurveTrackEngine`)
 
-`expCurve` is the exponential steepness at shape 0, supplied by the track's
-**Shape Curve** setting (`CurveTrack::shapeCurveExponent()`): Gentle 4, Medium 6,
-Snappy 8. It has no effect at shape 50 and above.
+1. `tick()`: `computeClockParams`, then on every divisor boundary `advancePulse()` moves within the
+   current segment or, at its end, `SequenceState::advanceFree` picks the next one and queues the
+   gate (length `divisor / 8` ticks, swung). `relativeTick == 0` resets.
+2. `updateOutput()` each tick: `fraction = (pulse + intra) / length`, clamped to 0..1;
+   `phase = direction() < 0 ? 1 - fraction : fraction`;
+   `value = clamp(offsetNorm + levelNorm * evalSegment(phase, ...), 0, 1)`, denormalized into the
+   range. Muted tracks write the mute-mode value instead.
+3. `update(dt)`: applies `slideTime` with `Slide::applySlide` (a slew limiter) and adds the track
+   `offset` (0 when muted). Output is sent to MIDI output as well.
 
-The skew endpoints are handled exactly rather than clamped to an epsilon:
-- **skew 0** — the segment starts at full amplitude and decays: a completely
-  sharp attack, with SHPE choosing the decay contour.
-- **skew 100** — the segment rises across its whole length and is cut off at the
-  end: a sharp release.
-- **skew 50 with a low SHPE** — a symmetric cusped spike, since SHPE shapes the
-  rise and the fall equally.
+**Mirrored playback**: running backwards plays each segment mirrored. Backward mirrors everything
+including the wrap; Pendulum and PingPong mirror the descending leg; RandomWalk mirrors when it
+steps back; Random never mirrors. The play scanline uses the mirrored phase; the drawn curve never
+does; the gate still fires at the segment start. This relies on `SequenceState::direction()` being
+set by every run mode (`prep knowledge find direction`).
 
-`evalSegment` is duplicated in the design sandbox
-(`agent-docs/ui-redesign/sandbox/src/routes/+page.svelte`) and the two must stay
-identical.
+**Range**: the hardware ceiling is +-5 V (`Calibration::CvOutput`), so Range offers 1-5 V. Bipolar
+output comes from the track `Offset` (Range 5 V with Offset -2.50 V gives -2.5..+2.5 V).
 
-## Engine Logic (`CurveTrackEngine`)
+## UI
 
-1. On each clock tick: determine the current segment via `SequenceState`.
-2. Compute `fraction = (currentPulse + intra) / length`, clamped to 0..1 — phase 0
-   is genuinely hit at the segment boundary, so a skew-0 edge reaches the DAC.
-3. `amp = evalSegment(fraction, shapeNorm(), skewNorm(), _curveTrack.shapeCurveExponent())`.
-4. `value = clamp(offsetNorm() + levelNorm() * amp, 0, 1)`, denormalized into the
-   track's voltage `range` — **unipolar 0V…max**, so a segment idles at 0V.
-5. Apply `slideTime` slew if non-zero, then the track `offset`.
-6. Write the final CV value to `CvOutput` for this track's channel.
-7. A short gate fires at each **segment boundary** — note this is unaffected by
-   mirroring, so a mirrored sharp-attack segment has its transient at the end of
-   the segment while the gate still marks the start.
+`CurveSequenceEditPage`: segment numbers row, proportional-width curve, per-tab indicator strip,
+play scanline. Footer tabs **SHPE / SKEW / LEN / LVL / OFST**.
 
-### Mirrored playback
-
-Travelling backwards plays each segment **mirrored**. The curve is a pure function
-of phase, so the time reverse is just `1 - phase` — every curve has a mirrored twin
-for free, with nothing extra stored:
-
-```cpp
-float phase = _sequenceState.direction() < 0 ? 1.f - fraction : fraction;
-```
-
-| Run mode | Behaviour |
+| Input | Effect |
 |---|---|
-| Forward | never mirrored |
-| Backward | always mirrored, including the wrap from first back round to last |
-| Pendulum | mirrored on the descending leg; the repeated endpoint plays forward once, then mirrored once |
-| PingPong | mirrored on the descending leg |
-| RandomWalk | mirrored whenever the walk steps back one |
-| Random | never mirrored — it jumps arbitrary distances, so there is no direction of travel |
+| Step buttons | select segments (a selection of only active segments, or only inactive ones, switches the footer to actions) |
+| Encoder (with selection) | edit the active tab's value on all selected segments; Shift x10; nothing happens with no selection |
+| F1-F5 | switch tab |
+| footer actions on active segments | DEL, DUPL, RSET (F1-F3) |
+| footer action on inactive segments | ADD (F1) |
+| Page + Step 8-11 | quick edit FirstStep, SegmentCount, RunMode, Divisor |
+| Page + Step 15 | toggle pattern follow display |
 
-This relies on `SequenceState::direction()`, which until Version53 had **no callers
-at all** and was only half maintained: PingPong, Pendulum and RandomWalk tracked it,
-while Forward, Backward and Random never touched it, so Backward reported `+1` and a
-stale `-1` could survive a run-mode change. Both free and aligned advance now set it
-in every mode.
+## Change guide
 
-`_segmentFraction` is assigned the *mirrored* phase, so the play scanline on the
-STEPS and Overview pages sweeps right-to-left when running backwards and sits on the
-point of the drawn curve actually reaching the jack. The drawn curve itself is never
-mirrored — it is the segment's definition, not a picture of the current traversal.
-
-**Output range.** The hardware ceiling is ±5V, not 10V: `Calibration::CvOutput`
-spans `MinVoltage = -5` to `MaxVoltage = 5` and `voltsToValue()` hard-clamps
-there (the ideal DAC/opamp stage gives 5.17V / −5.25V). So `Range` offers 1V–5V.
-Bipolar output is still reachable through the track `Offset` (±5.00V): Range
-0..5V with Offset −2.50V gives −2.5V…+2.5V.
-
-## UI Pages
-
-| Page | Path | Purpose |
-|---|---|---|
-| `CurveSequencePage` | `ui/pages/CurveSequencePage.h/cpp` | Overview display of curve steps |
-| `CurveSequenceEditPage` | `ui/pages/CurveSequenceEditPage.h/cpp` | Segment editing: SHPE / SKEW / LEN / LVL / OFST tabs, proportional-width curve display, per-tab indicator strip |
-
-## Change Guide
-
-| Task | Where to look |
+| Task | Where |
 |---|---|
-| Change the curve math | `CurveSequence::evalSegment` in `model/CurveSequence.h` — and mirror it in the sandbox `+page.svelte` |
-| Change encoder granularity | `CurveSequenceEditPage::encoder` and the duplicate in `OverviewPage.cpp`; the percent accessors live in `CurveSequence.h` |
-| Widen a step field | `Step::_data0` bitfield layout + `Shape`/`Min`/`Max` typedefs, `layerRange()`/`layerDefaultValue()`, and a migration in `Step::read()` |
-| Change mute behavior | `CurveTrack.h` `MuteMode` enum + `CurveTrackEngine.cpp` mute handling |
-| Add a new fill mode | `CurveTrack.h` `FillMode` enum + `CurveTrackEngine.cpp` |
-| Fix CV range/scaling | `CurveTrackEngine.cpp` output scaling + `CurveSequence.h` `_range` field |
-| Fix curve recording | `src/apps/sequencer/engine/CurveRecorder.h/cpp` |
+| Change the curve math | `CurveSequence::evalSegment`, and the sandbox copy |
+| Change encoder granularity | `CurveSequenceEditPage::encoder` and the duplicate in `ui/pages/OverviewPage.cpp`; percent accessors in `model/CurveSequence.h` |
+| Widen a step field | `Step::_data0` layout and typedefs, `layerRange`/`layerDefaultValue`, a migration in `Step::read()`, a `ProjectVersion` bump ([serialization](serialization.md)) |
+| Change mute behaviour | `CurveTrack::MuteMode` and `CurveTrackEngine::updateOutput` |
+| Change range or scaling | `CurveTrack::range`, `Types::voltageRangeInfo` in `model/Types.h`, `CurveTrackEngine::updateOutput` |
 
-## Tests
-
-`src/apps/sequencer/tests/ui/curve_encoder_skew_test.py` — mirrored playback per run
-mode, percent round trip,
-1-unit-per-detent encoder behaviour, SHIFT coarse steps, multi-segment editing,
-skew endpoints, the exponential low end of SHPE (cusp, convexity, continuity
-across the midpoint), the Shape Curve setting on the DAC, and the
-Version49 → Version50 → Version51 migrations.
+Tests: `tests/ui/curve_encoder_skew_test.py` (see [testing.md](../testing.md)).

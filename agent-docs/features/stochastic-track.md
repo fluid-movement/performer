@@ -1,78 +1,110 @@
 # Stochastic Track
 
-## Purpose
-A probability-driven sequencer track where note/gate decisions are made at runtime using random processes. Each step defines a set of possible notes and probabilities rather than a fixed note. Supports reseeding for reproducible randomness.
+A generative track modelled on the SIG (Stochastic Inspiration Generator) module. There are no
+per-step values: each sequence holds three global **probability distributions** (scale degree,
+octave, duration) that are sampled on every step, plus a Turing Machine style **loop** that replays
+and mutates what was drawn. Current model: **Version45** (the old per-step model was removed in
+Version44 with no migration; old data is skipped on load).
 
-## Key Source Files
+Decisions behind this design (`prep knowledge find stochastic`): SIG-inspired distributions;
+Turing-machine loop with its own mutation RNG; hardware bar ghosting (a finding about the
+SSD1322 display, relevant to anyone drawing wide adjacent bars).
+
+## Key source files
 
 | Role | Path |
 |---|---|
-| Data model (track settings) | `src/apps/sequencer/model/StochasticTrack.h/cpp` |
-| Data model (sequence + steps) | `src/apps/sequencer/model/StochasticSequence.h/cpp` |
-| Real-time engine | `src/apps/sequencer/engine/StochasticEngine.h/cpp` |
-| Sequence display page | `src/apps/sequencer/ui/pages/StochasticSequencePage.h/cpp` |
-| Sequence edit page | `src/apps/sequencer/ui/pages/StochasticSequenceEditPage.h/cpp` |
-| UI list model | `src/apps/sequencer/ui/model/StochasticTrackListModel.h` |
+| Track settings | `model/StochasticTrack.{h,cpp}` |
+| Sequence: distributions, loop | `model/StochasticSequence.{h,cpp}` |
+| Engine | `engine/StochasticEngine.{h,cpp}` |
+| Overview page (config-style list) | `ui/pages/StochasticSequencePage.{h,cpp}` |
+| Edit page (bars, tabs) | `ui/pages/StochasticSequenceEditPage.{h,cpp}` |
+| Config list rows | `ui/model/StochasticTrackListModel.h`, `ui/model/StochasticSequenceListModel.h` |
+| Tests | `tests/ui/stochastic_v2_test.py` |
 
-## Data Model
+## Data model
 
-### `StochasticTrack` (track-level settings)
-- `_playMode` — `Types::PlayMode`
-- `_fillMode` — `FillMode` enum: None | Gates | NextPattern | Condition
-- `_cvUpdateMode` — `CvUpdateMode`: Gate | Always
-- `_slideTime` — portamento time (routable)
-- `_octave` — octave offset (routable)
-- `_transpose` — transpose (routable)
-- `_rotate` — step rotation (routable)
-- `_gateProbabilityBias` — global gate probability offset (routable)
-- `_retriggerProbabilityBias` — global retrigger probability offset (routable)
-- `_lengthBias` — global length offset (routable)
-- `_noteProbabilityBias` — global note variation bias (routable)
-- `_sequences` — array of 17 `StochasticSequence`
+### `StochasticSequence` (per pattern)
 
-### `StochasticSequence` (per-pattern data)
-- `_seed` — RNG seed for reproducible sequences; `Reseed` routing target triggers re-randomization
-- `_restProbability` — probability of rest (step skipped entirely)
-- `_scale`, `_rootNote`, `_divisor`, `_runMode`, `_firstStep`, `_lastStep` — same semantics as NoteSequence
-
-### `StochasticSequence::Step` layers
-Similar to NoteSequence but weighted toward probabilistic choices:
-| Layer | Description |
+| Field | Meaning |
 |---|---|
-| Gate | Whether this step can trigger |
-| GateProbability | Per-step gate probability |
-| Retrigger / RetriggerProbability | Same as NoteTrack |
-| Length / LengthVariationRange / LengthVariationProbability | Same as NoteTrack |
-| Note | Base note (scale degree) |
-| NoteVariationRange / NoteVariationProbability | Random note variation |
-| Condition | Conditional trigger |
-| RestProbability2 / RestProbability4 | Additional rest probability tiers |
+| `degreeProb[7]` | selection weight of each scale degree, 0-15 each |
+| `octaveProb[5]` | weight of octave offset -2..+2, 0-15 each |
+| `durationProb[6]` | weight of step duration 1/16, 1/8, 1/4, 1/2, 1, 2, 0-15 each |
+| `sequenceFirstStep` / `sequenceLastStep` | the buffer window; `bufferLoopLength = last - first + 1` (default 0..15 = 16) |
+| `loopLength` | steps replayed per loop cycle (1-64, default 64), stored since Version45 |
+| `loopChance` | 0 = locked loop, 15 = every replayed slot re-drawn (default 15) |
+| `useLoop` | loop on/off (default on); `clearLoop` is a one-shot request |
+| `reseed` | routable (`Routing::Target::Reseed`); re-seeds the RNG when not looping |
+| `divisor` (routable), `resetMeasure`, `runMode` | as other tracks |
 
-## Engine Logic (`StochasticEngine`)
+Defaults: degree 1 weight 8 (others 0), octave 0 weight 15, duration 1/4 weight 15 and 1/2 weight 8.
 
-1. At startup and on `Reseed` trigger: initialize `Random` RNG with `_seed`.
-2. On each clock tick: evaluate the current step.
-3. Apply `restProbability` — if rest fires, skip the step entirely.
-4. Apply `gateProbabilityBias` + step gate probability.
-5. Pick note using `noteVariationRange`/`noteVariationProbability`.
-6. Handle retrigger, length variation same as NoteTrackEngine.
-7. Advance step via `SequenceState`.
-8. Output CV + gate.
+### `StochasticTrack`
 
-The key differentiator from NoteTrack: randomness is seeded and reproducible per sequence, and rest probability adds an additional layer of silence before individual gate probabilities.
+`playMode` (only `Aligned` does anything; `Free` and `Last` are unimplemented), `fillMode` (None,
+Gates, NextPattern, Condition), `fillMuted`, `cvUpdateMode` (Gate / Always), `slideTime`, `octave`,
+`transpose`, `rotate` (stored; the engine does not read it), and four probability biases that still
+appear on the config page but are not stored and not read. Slide time is passed to the CV drain,
+but the engine never sets the slide flag, so it has no audible effect (a known gap).
 
-## UI Pages
+## Engine (`StochasticEngine`)
 
-| Page | Path | Purpose |
+On each divisor boundary `triggerStep` runs one of two phases.
+
+**Phase 1: free-running / filling the buffer** (loop off, or buffer not yet full)
+1. Density: with `n` non-zero degree weights summing to `sum`, the step fires when
+   `rand(n*15) < sum`. One bar at 15 is always 100%; adding or raising bars changes density. If all
+   degree weights are 0 the track is silent (covered by `test_all_degrees_zero_no_gate`).
+2. Draw a degree, an octave and a duration (if all octave or duration weights are 0, the centre
+   octave and quarter-note duration are used). Duration ticks = `(divisor/4) * {1,2,4,8,16,32}[idx]`.
+3. Note = `scale.noteToVolts(degree + (trackOctave + octaveOffset) * notesPerOctave + transpose)`,
+   plus the root note for chromatic scales. Gate on at the swung step tick, off after the duration.
+4. While looping, each drawn step is appended to `_lockedSteps` until `bufferLoopLength` is reached.
+
+**Phase 2: loop replay** (loop on and buffer full)
+1. `_index = (absoluteStep - _loopPhaseOffset) % loopLength`; the slot is
+   `(sequenceFirstStep + _index) % buffer size`, so `firstStep` shifts the loop's phase without
+   changing its length. Changing `loopLength` re-anchors the phase.
+2. With probability `loopChance/15` (separate `mutationRng`) the slot is re-drawn from the current
+   distributions and written back to the buffer.
+3. Fill: `Gates` forces gates, `NextPattern` evaluates the distributions of pattern + 1.
+
+`Clear loop` empties the buffer on the next index 0 and turns the loop off. The RNG is re-seeded
+from the clock on `reset()` and `restart()`.
+
+## UI
+
+`StochasticSequenceEditPage`, footer tabs **NOTE / OCT / LEN / LOOP**.
+
+| Tab | Display | Edit |
 |---|---|---|
-| `StochasticSequencePage` | `ui/pages/StochasticSequencePage.h/cpp` | Step overview |
-| `StochasticSequenceEditPage` | `ui/pages/StochasticSequenceEditPage.h/cpp` | Per-step editing |
+| NOTE | 7 vertical bars, degree labels 1-7, cursor = inverted column, playing degree outlined | hold Step 0-6 and turn the encoder; Shift = x4 |
+| OCT | 5 bars, labels -2..+2 | same, Step 0-4 |
+| LEN | 6 bars, labels 1/16..2 | same, Step 0-5 |
+| LOOP | loop length, chance (`CHC`, shown as percent) | Step n sets the loop length to n+1; encoder sets loop chance |
 
-## Change Guide
+Bars are 18 px wide centred in 36 px column slots and the full slot is cleared every frame, to
+limit display column coupling (see the ghosting finding).
 
-| Task | Where to look |
+| Input | Effect |
 |---|---|
-| Change reseed behavior | `StochasticEngine.cpp` reseed handler + `Routing.h` `Target::Reseed` |
-| Add new rest probability tiers | `StochasticSequence.h` + `StochasticEngine.cpp` |
-| Fix random number generation | `src/core/utils/Random.h` + `StochasticEngine.cpp` seed usage |
-| Change per-step probability logic | `StochasticEngine.cpp` step evaluation section |
+| Page + Step 6 | loop on/off (toast "Loop on/off") |
+| Page + Step 5 | clear loop (toast "Loop cleared") |
+| Page + Step 8-12 | quick edit FirstStep, LastStep, RunMode, Divisor, ResetMeasure |
+| Context menu | INIT, COPY, PASTE (edit page); INIT, COPY, PASTE, DUPL, ROUTE (overview page) |
+
+There is no MIDI step recording on this track.
+
+## Change guide
+
+| Task | Where |
+|---|---|
+| Change how a step is drawn | `StochasticEngine.cpp`: `drawDegree`, `drawOctave`, `drawDuration`, `triggerStep` |
+| Change loop or mutation | `StochasticEngine::triggerStep` phase 2 and `StochasticSequence` loop fields |
+| Add a distribution | arrays in `StochasticSequence.h`, `write`/`read` (new `ProjectVersion`), a tab in `StochasticSequenceEditPage.cpp`, python binding in `python/project.cpp` |
+| Implement play mode `Free` | the empty `case Types::PlayMode::Free` in `StochasticEngine::tick` |
+| Wire slide or the biases | engine currently ignores them; `drainCvQueue` already takes `slideTime` |
+| Reseed behaviour | `StochasticEngine::triggerStep` reseed block and `Routing::Target::Reseed` |
+
+Tests: `tests/ui/stochastic_v2_test.py` (see [testing.md](../testing.md)).

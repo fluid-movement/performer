@@ -9,3 +9,4 @@ name: performer
 ## Definition of Done
 
 - prep check passes
+- If the change alters behaviour, file locations or a stored format, the matching doc in agent-docs/ is updated and `just docs-check` passes.

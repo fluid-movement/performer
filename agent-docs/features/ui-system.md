@@ -1,112 +1,68 @@
 # UI System
 
-## Purpose
-A page-based user interface running on a 256×64 OLED display. Pages stack and transition via `PageManager`. Each page handles rendering, encoder/button input, and LED state. The system also supports external controllers (Launchpad) through a unified `Controller` interface.
+A page-based UI on a 256x64 OLED with 32 bi-colour LEDs (8 track, 16 step, 8 global buttons), 5
+function keys (no LEDs) and one encoder. `Ui` owns a `PageManager` (a stack of pages), a
+`ControllerManager` (Launchpad) and a `MessageManager` (toasts). The UI task polls every
+millisecond and redraws at the active page stack's fps (`CONFIG_DEFAULT_UI_FPS` = 50).
 
-## Key Source Files
+Design rules (brightness, type, footer, LEDs) are in
+[ui-redesign/01-design-language.md](../ui-redesign/01-design-language.md) and the matching prep
+decisions (`prep knowledge find ui`). The map of pages and key combos is [ui-state.md](../ui-state.md).
+
+## Key source files
 
 | Role | Path |
 |---|---|
-| UI manager (top-level) | `src/apps/sequencer/ui/Ui.h/cpp` |
-| Page manager | `src/apps/sequencer/ui/PageManager.h/cpp` |
-| Base page class | `src/apps/sequencer/ui/Page.h/cpp` |
-| Top page (root) | `src/apps/sequencer/ui/pages/TopPage.h/cpp` |
-| Controller interface | `src/apps/sequencer/ui/Controller.h/cpp` |
-| Controller manager | `src/apps/sequencer/ui/ControllerManager.h/cpp` |
-| LED painter | `src/apps/sequencer/ui/LedPainter.h/cpp` |
-| Message manager | `src/apps/sequencer/ui/MessageManager.h/cpp` |
-| Screensaver | `src/apps/sequencer/ui/Screensaver.h/cpp` |
-| Key map | `src/apps/sequencer/ui/PageKeyMap.h` |
-| Window painter | `src/apps/sequencer/ui/painters/WindowPainter.h/cpp` |
-| Sequence painter | `src/apps/sequencer/ui/painters/SequencePainter.h/cpp` |
-| Canvas (graphics) | `src/core/gfx/Canvas.h/cpp` |
-| LCD driver (STM32) | `src/platform/stm32/drivers/Lcd.h` |
+| UI loop | `src/apps/sequencer/ui/Ui.{h,cpp}` |
+| Page stack | `src/apps/sequencer/ui/PageManager.{h,cpp}` |
+| Page base | `src/apps/sequencer/ui/Page.{h,cpp}`, `ui/pages/BasePage.{h,cpp}` |
+| Page registry (`struct Pages`) | `src/apps/sequencer/ui/pages/Pages.h` |
+| Root page, page-select keys | `ui/pages/TopPage.{h,cpp}`, `ui/PageKeyMap.h` |
+| Events, keys, matrix | `ui/Event.h`, `ui/Key.h`, `ui/MatrixMap.h`, `ui/KeyPressEventTracker.h` |
+| Step selection (hold / persist) | `ui/StepSelection.h` |
+| Shared Steps-page behaviour | `ui/pages/SequenceEditPageBase.{h,cpp}` |
+| Painters | `ui/painters/WindowPainter.h`, `SequencePainter.h`, `SongPainter.h`, `PreviewPainter.h` (each with a `.cpp`) |
+| LEDs | `ui/LedPainter.{h,cpp}`, `ui/Leds.h` |
+| Toasts, screensaver | `ui/MessageManager.{h,cpp}`, `ui/Screensaver.{h,cpp}` |
+| Graphics | `src/core/gfx/Canvas.{h,cpp}` |
 
-## Architecture
+## Mechanics
 
-### Rendering Loop (50fps, `CONFIG_DEFAULT_UI_FPS = 50`)
-1. `Ui::update()` called by UI task (priority 2, every 20ms).
-2. `PageManager` calls `activePage()->draw(canvas)` — page renders to `Canvas`.
-3. `Ui` flushes `Canvas` framebuffer to `Lcd` driver.
-4. `LedPainter` updates all button LEDs based on current page's LED state.
+- **Events**: the driver task queues button and encoder events. `Ui` turns raw state into
+  `KeyEvent` (down/up), `KeyPressEvent` (a press with a count, so double-taps are visible),
+  `EncoderEvent` and `MidiEvent`, and `PageManager::dispatchEvent` offers each to the top page, then
+  down the stack until one calls `event.consume()`. `TopPage` is the root and handles global keys.
+- **Page**: override `enter`/`exit`, `draw(Canvas&)`, `updateLeds(Leds&)`, `keyDown`/`keyUp`/
+  `keyPress`, `encoder`, `midi`; `isModal()`; `show()`/`close()` push and pop. Pages are
+  constructed once in `struct Pages`.
+- **Key names**: the code numbers step buttons `Step0..Step15` (hardware label = N+1) and function
+  keys `F0..F4` (labelled F1-F5). Docs here use the code's step numbers and the labelled F1-F5.
+  `Key` predicates: `isStep`, `isTrackSelect`, `isQuickEdit` (Page + Step 8-15), `isPageSelect`,
+  `isContextMenu` (Shift + Page).
+- **Page selection**: Page + a key maps through `PageKeyMap` to `TopPage::Mode` (`setMode`).
+- **Common Steps-page logic**: `SequenceEditPageBase::handleCommonKeyPress` handles the context menu
+  (Shift + Page, or double-tap Page) and global shortcuts; subclasses provide `contextItems()`,
+  `contextAction()`. `BasePage::functionShortcuts` and `showMessage` are shared helpers.
+- **Drawing**: pages draw into a `Canvas`; `WindowPainter` provides the header, active-function
+  label and the 9 px footer of 5 tab cells. Selection is a Bright fill with the text knocked out using
+  `BlendMode::Sub` (never `Color::None`).
+- **LEDs**: pages set green/red per LED in `updateLeds`; `LedPainter` has shared patterns (track
+  gates, selected page, sections, patterns, mutes, fills, quick-edit values). The function keys have
+  no LEDs: show their state on screen. Holding Page switches the LEDs to a page-select grid.
+- **Config pages** share one `ListPage`: [config-pages.md](config-pages.md).
+- **Controllers**: `ControllerManager` forwards MIDI to a connected Launchpad first
+  ([launchpad](launchpad.md)).
+- **Boot splash**: `ui/pages/StartupPage.cpp`; the splash is exempt from the three-brightness rule
+  (`prep knowledge find splash`, `prep knowledge find brand`).
 
-### `PageManager`
-- Maintains a stack of pages.
-- `push(page)` — navigate to a new page (old page stays on stack).
-- `pop()` — return to previous page.
-- `replace(page)` — swap current page.
-- Pages communicate back via callbacks or direct model access.
+## Change guide
 
-### `Page` (base class)
-Every page implements:
-- `enter()` — called when page becomes active
-- `exit()` — called when page is deactivated
-- `draw(Canvas &canvas)` — render to display
-- `keyDown(KeyEvent)` / `keyUp(KeyEvent)` — button events
-- `encoder(EncoderEvent)` — rotary encoder events
-- `midi(MidiEvent)` — MIDI events forwarded to active page
-- `updateLeds(Leds &)` — update LED state
-
-### Input Events
-Hardware input events are generated by the driver task and queued. The UI task dequeues them:
-- `KeyEvent` — button press/release with key ID from `PageKeyMap.h`
-- `EncoderEvent` — encoder step + direction
-- `MidiEvent` — MIDI message received
-
-### `LedPainter`
-Manages 32 bi-color LEDs in the `ButtonLedMatrix`. Pages call `leds.set(index, color)` in `updateLeds()`. `LedPainter` provides helper methods for common patterns (track selection, step active/inactive, etc.).
-
-### `MessageManager`
-Shows temporary on-screen messages (toast notifications). Called via `ui.showMessage("text", durationMs)`.
-
-### Page List (39 pages total)
-Key pages and their locations in `src/apps/sequencer/ui/pages/`:
-
-| Page | File | Role |
-|---|---|---|
-| `TopPage` | `TopPage.h/cpp` | Root page, function key routing |
-| `ProjectPage` | `ProjectPage.h/cpp` | Project name, save/load |
-| `PatternPage` | `PatternPage.h/cpp` | Pattern selection |
-| `TrackPage` | `TrackPage.h/cpp` | Track type + settings |
-| `OverviewPage` | `OverviewPage.h/cpp` | All-tracks overview |
-| `TempoPage` | `TempoPage.h/cpp` | BPM + tap tempo |
-| `SongPage` | `SongPage.h/cpp` | Song arrangement |
-| `NoteSequencePage` | `NoteSequencePage.h/cpp` | Note track step display |
-| `NoteSequenceEditPage` | `NoteSequenceEditPage.h/cpp` | Note step layer editing |
-| `CurveSequencePage` | `CurveSequencePage.h/cpp` | Curve track display |
-| `CurveSequenceEditPage` | `CurveSequenceEditPage.h/cpp` | Curve step editing |
-| `StochasticSequencePage` | `StochasticSequencePage.h/cpp` | Stochastic display |
-| `StochasticSequenceEditPage` | `StochasticSequenceEditPage.h/cpp` | Stochastic step editing |
-| `LogicSequencePage` | `LogicSequencePage.h/cpp` | Logic track display |
-| `LogicSequenceEditPage` | `LogicSequenceEditPage.h/cpp` | Logic step editing |
-| `ArpSequencePage` | `ArpSequencePage.h/cpp` | Arp track display |
-| `ArpSequenceEditPage` | `ArpSequenceEditPage.h/cpp` | Arp step editing |
-| `RoutingPage` | `RoutingPage.h/cpp` | Modulation routing |
-| `MidiOutputPage` | `MidiOutputPage.h/cpp` | MIDI output slots |
-| `ClockSetupPage` | `ClockSetupPage.h/cpp` | Clock configuration |
-| `SystemPage` | `SystemPage.h/cpp` | System settings |
-| `UserScalePage` | `UserScalePage.h/cpp` | Custom scales |
-| `LayoutPage` | `LayoutPage.h/cpp` | UI layout settings |
-| `FileSelectPage` | `FileSelectPage.h/cpp` | Load/save projects |
-| `TextInputPage` | `TextInputPage.h/cpp` | Text entry dialog |
-| `GeneratorPage` | `GeneratorPage.h/cpp` | Sequence generator |
-| `GeneratorSelectPage` | `GeneratorSelectPage.h/cpp` | Generator type chooser |
-| `MonitorPage` | `MonitorPage.h/cpp` | MIDI monitor |
-| `ContextMenuPage` | `ContextMenuPage.h/cpp` | Context action menu |
-| `ConfirmationPage` | `ConfirmationPage.h/cpp` | Yes/no confirmation |
-| `PerformerPage` | `PerformerPage.h/cpp` | Performance mode |
-| `QuickEditPage` | `QuickEditPage.h/cpp` | Quick parameter edit |
-| `ListPage` | `ListPage.h/cpp` | Generic list display |
-| `AsteroidsPage` | `AsteroidsPage.h/cpp` | Easter egg game |
-
-## Change Guide
-
-| Task | Where to look |
+| Task | Where |
 |---|---|
-| Add a new page | Create `XxxPage.h/cpp` extending `Page`, register in `PageManager` or parent page navigation |
-| Change display resolution | `src/SystemConfig.h` `CONFIG_LCD_WIDTH`/`CONFIG_LCD_HEIGHT` + `Canvas` buffer size |
-| Add a new button function | `PageKeyMap.h` key ID + `TopPage.cpp` function key routing |
-| Fix LED state bugs | `LedPainter.h/cpp` + the specific page's `updateLeds()` |
-| Change screensaver timeout | `Screensaver.h` + `Ui.cpp` timeout check |
-| Add a toast message | Call `ui.showMessage()` or `messageManager.show()` from any page |
-| Fix encoder input lag | `Ui.cpp` encoder event queue + `ButtonLedMatrix` driver debouncing |
+| Add a page | `XxxPage.{h,cpp}` deriving `Page`/`BasePage`, a member in `struct Pages` (`Pages.h`), construct it, reach it from `TopPage` or a parent page; for a page key, `PageKeyMap.h` and `TopPage::setMode` |
+| Add a track type's Steps page | derive from `SequenceEditPageBase`; model it on the nearest existing one ([note-track](note-track.md), [quantizer-track](quantizer-track.md)) |
+| LED bug | `LedPainter.{h,cpp}`, the page's `updateLeds` |
+| Change header or footer | `ui/painters/WindowPainter.cpp` |
+| Screensaver | `ui/Screensaver.cpp`, `Ui.cpp` |
+| Show a toast | `showMessage(...)` on any page |
+| Display resolution | `CONFIG_LCD_*` in `src/SystemConfig.h` and the `Canvas` buffer |

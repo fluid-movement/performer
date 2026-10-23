@@ -1,200 +1,146 @@
 # Architecture
 
-PER|FORMER is a C++ embedded firmware for a eurorack hardware sequencer (STM32F405, 168MHz, 1MB flash, 192KB RAM). The codebase is structured in 5 horizontal layers that communicate in strictly controlled ways.
+PER|FORMER is C++ firmware for a eurorack sequencer (STM32F405, 168 MHz, 1 MB flash, 192 KB RAM).
+The code is five layers; the same app code builds for hardware and for a desktop simulator by
+swapping the platform layer.
 
 ---
 
-## Layer Diagram
+## Layers
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  UI Layer                                               │
-│  src/apps/sequencer/ui/                                 │
-│  Page-based display, button/encoder input, LED state    │
-├─────────────────────────────────────────────────────────┤
-│  Engine Layer                                           │
-│  src/apps/sequencer/engine/                             │
-│  Real-time clock, track engines, routing, MIDI output   │
-├─────────────────────────────────────────────────────────┤
-│  Model Layer                                            │
-│  src/apps/sequencer/model/                              │
-│  All persisted data: Project, Track, Sequence, Settings │
-├─────────────────────────────────────────────────────────┤
-│  Platform / Drivers                                     │
-│  src/platform/stm32/  (hardware) or src/platform/sim/   │
-│  ADC, DAC, LCD, MIDI, USB, SD card, button matrix, LEDs │
-├─────────────────────────────────────────────────────────┤
-│  Core Libraries                                         │
-│  src/core/                                              │
-│  FS, graphics canvas, math, MIDI protocol, utilities    │
-└─────────────────────────────────────────────────────────┘
+UI        src/apps/sequencer/ui/       pages, painters, LEDs, controllers (Launchpad)
+Engine    src/apps/sequencer/engine/   clock, track engines, routing, MIDI out, CV/gate out
+Model     src/apps/sequencer/model/    Project, tracks, sequences, settings, (de)serialization
+Platform  src/platform/stm32|sim/      ADC, DAC, LCD, MIDI, USB, SD, buttons/LEDs, OS wrappers
+Core      src/core/                    fs, gfx Canvas, math, MIDI parser, io, utils (Container)
 ```
 
----
+`src/apps/` and `src/core/` are platform-agnostic. Other apps: `src/apps/bootloader/`,
+`src/apps/tester/`. Unit tests are in `src/tests/unit/`.
 
-## Layer Communication
-
-| From → To | Mechanism |
+| From to | Mechanism |
 |---|---|
-| UI → Model | Direct read/write of `Project` properties via `model.project()` |
-| UI → Engine | Method calls on `Engine` (lock/suspend, playback control) |
-| Engine → Model | Direct read of `Project`; write via `writeRouted()` for routing targets |
-| Engine → Drivers | Direct calls to `CvOutput`, `GateOutput`, `Midi`, `UsbMidi`, `Dio` |
-| Drivers → Engine | Interrupt callbacks (clock ticks, MIDI bytes received) |
-| Engine → UI | `MessageHandler` callback for toast notifications |
-| UI ↔ Engine | `Engine::lock()` / `Engine::suspend()` guard critical sections |
+| UI to Model | direct reads and writes through `Project` (`model.project()`) |
+| UI to Engine | method calls on `Engine`; `Engine::lock()` / `suspend()` guard critical sections |
+| Engine to Model | reads `Project`; writes routed values through `writeRouted()` |
+| Engine to hardware | `CvOutput`, `GateOutput`, `Midi`, `UsbMidi`, `Dio` |
+| Engine to UI | `MessageHandler` callback for toasts; the UI polls engine state |
 
-There is **no event bus** — communication is direct and synchronous except for FreeRTOS queues used to pass input events from the driver task to the UI task.
+There is no event bus. Communication is direct and synchronous.
 
 ---
 
-## FreeRTOS Task Architecture
+## Tasks (FreeRTOS on hardware)
 
-| Task | Priority | Stack | Period | Role |
-|---|---|---|---|---|
-| Driver task | 5 (highest) | 1 KB | 1ms | Reads ADC, scans button matrix, drives LEDs, feeds clock |
-| Engine task | 4 | 4 KB | Clock-driven | Processes clock ticks, runs all track engines, writes DAC/gates |
-| USB host task | 3 | 2 KB | Event-driven | Handles USB MIDI connect/disconnect, message receive |
-| UI task | 2 | 4 KB | 20ms (50fps) | Renders display, processes input events, updates LEDs |
-| File I/O task | 1 | 4 KB | On-demand | SD card read/write (FatFs operations) |
-| Profiler task | 0 (lowest) | 2 KB | Idle | CPU utilization tracking |
+Defined in `src/apps/sequencer/Sequencer.cpp`; priorities and stacks in `src/apps/sequencer/Config.h`.
 
-Critical section: UI reads model → must `Engine::lock()` briefly to avoid data races. File operations: `Engine::suspend()` + `Engine::resume()` around long SD operations.
+| Task | Priority | Period | Does |
+|---|---|---|---|
+| driver | 5 | 1 ms | shift register, button/LED matrix, encoder scan |
+| engine | 4 | 1 ms | `Engine::update()`: drains clock ticks, ticks track engines, writes outputs |
+| usbh | 3 | 1 ms | USB host / USB-MIDI |
+| ui | 2 | 1 ms poll | `Ui::update()`: input events, draws at the page's fps (50 by default), LEDs |
+| file | 1 | 10 ms | `FileManager::processTask()`: SD card work |
+| profiler | 0 | 5 s | task CPU dump |
 
----
-
-## Polymorphic Track System
-
-A `Track` object is a tagged union (`Container<NoteTrack, CurveTrack, MidiCvTrack, StochasticTrack, LogicTrack, ArpTrack>` — see `src/core/utils/Container.h`). The `TrackMode` enum selects the active type. Switching mode resets all track data.
-
-Each track type has a corresponding engine class:
-
-| Track Type | Model | Engine |
-|---|---|---|
-| Note | `model/NoteTrack.h` | `engine/NoteTrackEngine.h` |
-| Curve | `model/CurveTrack.h` | `engine/CurveTrackEngine.h` |
-| MIDI/CV | `model/MidiCvTrack.h` | `engine/MidiCvTrackEngine.h` |
-| Stochastic | `model/StochasticTrack.h` | `engine/StochasticEngine.h` |
-| Logic | `model/LogicTrack.h` | `engine/LogicTrackEngine.h` |
-| Arp | `model/ArpTrack.h` | `engine/ArpTrackEngine.h` |
-
-`Engine` holds an `std::array<TrackEngineContainer, 8>` where each element is a `Container<>` over all engine types. The active engine type is kept in sync with the track's `TrackMode`.
+**Locking.** The UI task must `Engine::lock()` briefly when it reads or writes model data the
+engine is reading, and `Engine::suspend()` / `resume()` around long operations (file load/save).
+On the simulator both functions pump `Engine::update()` themselves, because there is no second
+task.
 
 ---
 
-## Data Flow: Clock Tick → CV Output
+## The tick: clock to CV/gate
+
+The hardware clock timer (or an external clock) produces ticks at `CONFIG_PPQN` (192 per quarter
+note); `Clock` queues them. The engine task consumes them:
 
 ```
-ClockTimer IRQ (168MHz timer)
-  → Clock::onClockTick()
-    → Engine::onClockOutput()  [Clock::Listener]
-      → For each of 8 tracks:
-          TrackEngine::tick(ticks, ppqn)
-            SequenceState::advance()     ← determines current step
-            [evaluate step data from NoteSequence/CurveSequence/...]
-            CvOutput::setVoltage(ch, v)  ← 16-bit DAC
-            GateOutput::set(ch, gate)    ← 74HC595 shift register
-      → RoutingEngine::update()          ← apply CV/MIDI modulation
-      → MidiOutputEngine::update()       ← send MIDI notes out
+Engine::update()                      every 1 ms
+  clock events (start/stop/continue/reset)
+  tempo, clock setup, track setups, play state, CV inputs
+  receiveMidi()                       routing, MIDI learn, MIDI/CV tracks, monitoring/recording
+  routingEngine.update()
+  while (clock.checkTick(&tick)):
+      updatePlayState(true)           pattern changes, song advance, fills
+      for each of the 8 tracks:       trackEngine->tick(tick)
+          SequenceState advances the step; the engine queues gate and CV events
+          if the CV changed: update(0), updateTrackOutputs(), routingEngine.update()
+      midiOutputEngine.update() on tick 0
+  trackEngine->update(dt) for each    slide ramps and other time-based smoothing
+  midiOutputEngine.update()
+  updateTrackOutputs()                maps track engines to physical CV/gate jacks (Project mapping)
+  cvOutput.update(); gateOutput.update()   write DAC and shift registers
 ```
 
----
-
-## Routable Properties
-
-Many model properties (tempo, octave, transpose, etc.) are wrapped in `Routable<T>` (defined in `model/Routing.h`). This type stores two values: `base` (user-set) and `routed` (set by `RoutingEngine`). The getter `get(bool isRouted)` returns the routed value when a route is active, otherwise the base value. When writing from the UI, `routed=false`; when writing from `RoutingEngine`, `routed=true`.
+Sequence resolution is `CONFIG_SEQUENCE_PPQN` = 48; a step's length is its `divisor` in ticks of
+the 192 PPQN clock. The Clock class itself is described in [features/clock-sync.md](features/clock-sync.md).
 
 ---
 
-## Key Config Constants
+## Polymorphic tracks
 
-All constants in `src/apps/sequencer/Config.h` and `src/SystemConfig.h`:
+`Track` (`model/Track.h`) holds a `Container<NoteTrack, CurveTrack, MidiCvTrack, StochasticTrack,
+ArpTrack, QuantizerTrack>` (see `src/core/utils/Container.h`); `TrackMode` selects the active type
+and switching mode resets the track's data. `Engine` holds one `TrackEngineContainer` per track, a
+`Container` over the matching engines, kept in sync with `TrackMode`.
 
-```cpp
-// Firmware version
-CONFIG_VERSION_MAJOR       0
-CONFIG_VERSION_MINOR       3
-CONFIG_VERSION_REVISION    2
+| Type | Model | Engine | Doc |
+|---|---|---|---|
+| Note | `model/NoteTrack.h` | `engine/NoteTrackEngine.h` | [note-track](features/note-track.md) |
+| Curve | `model/CurveTrack.h` | `engine/CurveTrackEngine.h` | [curve-track](features/curve-track.md) |
+| MidiCv | `model/MidiCvTrack.h` | `engine/MidiCvTrackEngine.h` | [midicv-track](features/midicv-track.md) |
+| Stochastic | `model/StochasticTrack.h` | `engine/StochasticEngine.h` | [stochastic-track](features/stochastic-track.md) |
+| Arp | `model/ArpTrack.h` | `engine/ArpTrackEngine.h` | [arp-track](features/arp-track.md) |
+| Quantizer | `model/QuantizerTrack.h` | `engine/QuantizerTrackEngine.h` | [quantizer-track](features/quantizer-track.md) |
 
-// CPU + system
-CONFIG_CPU_FREQUENCY       168000000   // Hz
-CONFIG_TICK_FREQUENCY      1000        // ms-based system tick
+The serialized `TrackMode` ids are stable; the removed Logic track (id 4) loads as Note (see
+`prep knowledge find logic`). Mode ids and the (de)serialization are in
+[features/serialization.md](features/serialization.md).
 
-// Clock resolution
-CONFIG_PPQN                192         // master ticks per quarter note
-CONFIG_SEQUENCE_PPQN       48          // sequence step resolution (4:1 ratio)
-
-// Sequencer capacity
-CONFIG_TRACK_COUNT         8
-CONFIG_PATTERN_COUNT       16
-CONFIG_STEP_COUNT          64
-CONFIG_SONG_SLOT_COUNT     64
-CONFIG_CHANNEL_COUNT       8           // CV+gate output pairs
-CONFIG_CV_INPUT_CHANNELS   4
-CONFIG_CV_OUTPUT_CHANNELS  8
-
-// Modulation
-CONFIG_ROUTE_COUNT         16          // max simultaneous routing slots
-CONFIG_MIDI_OUTPUT_COUNT   16          // max MIDI output mappings
-
-// Scales
-CONFIG_USER_SCALE_COUNT    4
-CONFIG_USER_SCALE_SIZE     32
-
-// Display
-CONFIG_LCD_WIDTH           256
-CONFIG_LCD_HEIGHT          64
-CONFIG_DEFAULT_UI_FPS      50
-
-// Storage
-CONFIG_SETTINGS_FLASH_SECTOR  3
-CONFIG_SETTINGS_FLASH_ADDR    0x0800C000
-```
+Shared engine pieces: `engine/SequenceState.h` (step position, run modes), `engine/SequenceUtils.h`
+and `engine/TrackEngineHelpers.h` (clock params, gate/CV queue draining), `engine/SortedQueue.h`
+(event queues; usable capacity is one less than declared), `engine/Groove.h` (swing),
+`engine/Slide.h` (slide ramps), `engine/generators/` (see [features/sequence-generators.md](features/sequence-generators.md)).
 
 ---
 
-## Entry Points
+## Routable properties
 
-| Target | File | Description |
-|---|---|---|
-| Hardware firmware | `src/apps/sequencer/Sequencer.cpp` | `main()` — initializes all drivers, creates Model/Engine/Ui, starts FreeRTOS |
-| Simulator | `src/apps/sequencer/SequencerSim.cpp` | Same core, simulated drivers, NanoVG frontend |
-| Bootloader | `src/apps/bootloader/` | Minimal app that loads `UPDATE.DAT` from SD and flashes firmware |
-| Hardware tester | `src/apps/tester/` | Tests individual hardware peripherals |
+Many model properties are `Routable<T>` (`model/Routing.h`): a `base` value set from the UI and a
+`routed` value written by `RoutingEngine`. Getters call `get(isRouted(Target))`; UI edits write the
+base value and are refused while the parameter is routed. Details in [features/routing.md](features/routing.md).
 
 ---
 
-## How Features Connect
+## How the model hangs together
 
 ```
-Project (model)
-├── ClockSetup → Clock (engine) → ClockTimer (driver)
-├── Track[0..7]
-│     ├── NoteTrack → NoteTrackEngine → CvOutput + GateOutput
-│     ├── CurveTrack → CurveTrackEngine → CvOutput
-│     ├── MidiCvTrack → MidiCvTrackEngine ← Midi/UsbMidi (driver)
-│     ├── StochasticTrack → StochasticEngine → CvOutput + GateOutput
-│     ├── LogicTrack → LogicTrackEngine → GateOutput (reads other engines)
-│     └── ArpTrack → ArpTrackEngine → CvOutput + GateOutput
-├── Song → PlayState → Engine (slot advance logic)
-├── Routing → RoutingEngine ← CvInput (ADC) + Midi/UsbMidi
-├── MidiOutput[0..15] → MidiOutputEngine → Midi/UsbMidi
-└── UserScale[0..3] → Scale lookup in TrackEngines
+Project
+  ClockSetup, tempo, swing, time signature, scale, root note, MIDI/CV-gate input settings
+  Track[8]  ->  one of the six track types, each with 16 patterns + 1 snapshot sequence
+  cvOutputTracks[8], gateOutputTracks[8]   which track feeds which jack
+  Song (64 slots), PlayState (patterns, mutes, fills, song position)
+  Routing (16 routes), MidiOutput (16 outputs)
+UserScale[4]   static, shared across the project (UserScale::userScales)
+Settings       calibration + user settings, stored outside the project
 ```
+
+Constants (`src/apps/sequencer/Config.h`): 8 tracks, 16 patterns, 64 steps, 64 song slots, 16
+routes, 16 MIDI outputs, 4 user scales of 32 notes. Hardware channel counts are in
+`src/SystemConfig.h`.
 
 ---
 
-## Simulator vs Hardware
-
-The codebase compiles for two targets by selecting the `src/platform/` layer:
+## Simulator and hardware
 
 | | STM32 | Simulator |
 |---|---|---|
-| RTOS | FreeRTOS | Threads (pthreads) |
-| Display | SPI OLED (256×64) | NanoVG window |
-| ADC/DAC | Hardware peripherals | Simulated sliders/knobs |
-| MIDI | UART + libopencm3 | RtMidi |
-| Audio | — | SoLoud (for gate click preview) |
-| Build | `cmake -DPLATFORM=stm32` | `cmake -DPLATFORM=sim` |
+| RTOS | FreeRTOS | host threads |
+| Display | SPI OLED | NanoVG window |
+| ADC/DAC | peripherals | simulated |
+| MIDI | UART + USB host | RtMidi |
+| Build | `just firmware` | `just sim` |
 
-All `src/apps/` and `src/core/` code is platform-agnostic.
+`testsim` is the same app built as a Python module for headless runs; see [testing.md](testing.md).

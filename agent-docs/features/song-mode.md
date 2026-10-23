@@ -1,71 +1,66 @@
 # Song Mode
 
-## Purpose
-An arrangement/song sequencer layered on top of pattern playback. A Song is a list of up to 64 slots, where each slot specifies which pattern each of the 8 tracks should play, per-track mutes, and a repeat count. Song mode plays these slots sequentially, enabling full song arrangement without manual pattern switching.
+An arrangement layer on top of patterns. A `Song` is a list of up to 64 slots; each slot gives a
+pattern for each of the 8 tracks, per-track mute flags and a repeat count. Playing the song steps
+through the slots, switching all tracks' patterns at measure boundaries.
 
-## Key Source Files
+The song page design is deferred in the UI redesign (`prep knowledge find song`); it keeps its
+current structure.
+
+## Key source files
 
 | Role | Path |
 |---|---|
-| Data model | `src/apps/sequencer/model/Song.h/cpp` |
-| PlayState (song/pattern state) | `src/apps/sequencer/model/PlayState.h/cpp` |
-| Engine state | `src/apps/sequencer/engine/EngineState.h` |
-| Song page | `src/apps/sequencer/ui/pages/SongPage.h/cpp` |
-| Song painter | `src/apps/sequencer/ui/painters/SongPainter.h/cpp` |
+| Song and slots | `model/Song.{h,cpp}` |
+| Song position, play/stop requests | `model/PlayState.{h,cpp}` (`SongState`) |
+| Advance logic | `engine/Engine.cpp` (`updatePlayState`, `startSong`, `stopSong`) |
+| Page and painter | `ui/pages/SongPage.{h,cpp}`, `ui/painters/SongPainter.{h,cpp}` |
 
-## Data Model
+## Data model
 
-### `Song`
-- `_slots` — `std::array<Slot, CONFIG_SONG_SLOT_COUNT>` (64 slots)
-- `chain()` — the active chain (ordered list of slot indices for playback)
+`Song`: `std::array<Slot, CONFIG_SONG_SLOT_COUNT>` (64) and `slotCount`. Operations: `chainPattern`,
+`insertSlot`, `removeSlot`, `duplicateSlot`, `swapSlot`, `setPattern` (all tracks, or one),
+`editPattern`, `setMute` / `toggleMute`, `setRepeats` / `editRepeats`, `trackHasMutes`.
 
-### `Song::Slot`
-- `_patterns` — packed uint32: 4 bits per track × 8 tracks = pattern index 0–15 per track
-- `_mutes` — uint8: one bit per track (mute mask)
-- `_repeats` — uint8: how many times this slot loops before advancing (1–128)
+`Song::Slot`: `patterns` (4 bits per track, 0-15), `mutes` (bit per track) and `repeats` (1-128).
 
-Key slot accessors:
-- `pattern(int trackIndex)` — returns pattern index for a track (0–15)
-- `mute(int trackIndex)` — returns mute state
-- `repeats()` — returns repeat count
+`PlayState::SongState` (persisted with the project): `playing`, `currentSlot`, `currentRepeat`,
+`requestedSlot`, and immediate / synced / latched play and stop requests.
 
-### `PlayState`
-Tracks the runtime playback position:
-- Current pattern per track
-- Current song slot index
-- Mute state per track
-- Fill state per track
-- Pattern change requests (queued vs. immediate)
+## Engine
 
-`PlayState` is modified by both the UI (user requests) and the engine (advancing slots).
+`Engine::updatePlayState`:
 
-## Engine Integration
+- A play request (`PlayState::playSong(slot, executeType)`) loads the slot (`activateSongSlot`: sets
+  each track's pattern, and sets mutes only for tracks that have any song mutes), sets the current
+  slot and repeat 0, starts the clock if it is stopped.
+- On each measure boundary (`tick % measureDivisor() == 0`) while playing: when
+  `currentRepeat + 1 >= repeats` the song moves to the next slot (wrapping to slot 0), activates it
+  and restarts all track engines; otherwise it increments the repeat. A program change for the next
+  slot is sent when MIDI program changes are enabled and all tracks share one pattern.
+- The song stops when the slot index becomes invalid, or when the user changes patterns by hand.
+- `startSong` / `stopSong` tie the song to the transport when the user setting `SyncSong` is on.
 
-`EngineState` (header-only) holds flags for song mode active/inactive and current slot position. On each measure boundary (when a pattern completes its `repeats`):
-1. Engine advances `PlayState` to the next song slot.
-2. New per-track pattern indices are loaded from `Song::Slot`.
-3. Mute states from the slot are applied.
-4. Track engines pick up the new patterns on the next pattern boundary.
+## UI (`SongPage`, Page + Step 3)
 
-```cpp
-CONFIG_SONG_SLOT_COUNT  64   // max song slots
-CONFIG_PATTERN_COUNT    16   // patterns per track (slot pattern index range)
-```
+Footer **CHAIN / ADD (INSERT with Shift) / REMOVE / DUPL / PLAY (STOP)**. Context menu: INIT.
 
-## UI Page (`SongPage`)
-
-- Displays the song slot list.
-- Each slot row shows 8 pattern indices + mute indicators + repeat count.
-- User navigates slots with the encoder, edits per-track patterns/mutes inline.
-- Play/stop controls activate song mode.
-- `SongPainter` handles the graphical rendering.
-
-## Change Guide
-
-| Task | Where to look |
+| Input | Effect |
 |---|---|
-| Change max song length | `Config.h` `CONFIG_SONG_SLOT_COUNT` + `Song.h` array size |
-| Change slot repeat behavior | `Song.h` `Slot::setRepeats()` + `Engine.cpp` slot advance logic |
-| Fix pattern advance timing | `Engine.cpp` measure boundary detection + `PlayState.cpp` |
-| Add per-slot tempo | `Song::Slot` would need new field + serialization + engine tempo change |
-| Fix mute state in song mode | `Song::Slot._mutes` + `PlayState.cpp` mute application |
+| Left / Right, encoder | move the selected slot; with Shift on Left/Right swap with the neighbour |
+| Shift + encoder | edit the slot's repeats |
+| Step N | set the pattern for all tracks in the slot (N = pattern 0-15) |
+| hold Track T + Step N | set track T's pattern in the slot; hold Track T + encoder edits it |
+| hold Track T + encoder press | toggle track T's mute in the slot |
+| Shift + Step N | set repeats to N + 1 |
+| F1 held + Step N (CHAIN) | append a slot for pattern N and start playing |
+| PLAY / encoder press | play from the selected slot (Shift: synced to the next boundary when the clock runs) |
+
+## Change guide
+
+| Task | Where |
+|---|---|
+| Song length | `CONFIG_SONG_SLOT_COUNT` in `Config.h` and the `Song` slot array |
+| Repeat behaviour | `Song::Slot::setRepeats`, the advance block in `Engine::updatePlayState` |
+| Pattern advance timing | `Engine::updatePlayState` (`handleSongAdvance`), `PlayState` |
+| Per-slot tempo | a new `Slot` field, serialization ([serialization](serialization.md)) and an engine tempo change |

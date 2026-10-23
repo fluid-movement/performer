@@ -1,70 +1,79 @@
 # Routing
 
-## Purpose
-A modulation routing system that maps CV inputs, MIDI CC, or other sources to project/track/sequence parameters. Up to 16 routes can be active simultaneously. Enables real-time external control of nearly any parameter without MIDI learn.
+Maps a source (a CV input, a CV output, or a MIDI message) to a parameter. Up to 16 routes
+(`CONFIG_ROUTE_COUNT`) can be active at once. Routing a parameter takes it over: the UI shows it as
+routed and refuses edits.
 
-## Key Source Files
+## Key source files
 
 | Role | Path |
 |---|---|
-| Data model | `src/apps/sequencer/model/Routing.h/cpp` |
-| Runtime routing engine | `src/apps/sequencer/engine/RoutingEngine.h/cpp` |
-| Routing page | `src/apps/sequencer/ui/pages/RoutingPage.h/cpp` |
-| UI list model | `src/apps/sequencer/ui/model/RoutingListModel.h` |
+| Routes, targets, sources, `Routable<T>` | `model/Routing.{h,cpp}` |
+| Runtime engine | `engine/RoutingEngine.{h,cpp}` |
+| MIDI source matching | `engine/MidiUtils.h` |
+| Routing page | `ui/pages/RoutingPage.{h,cpp}` |
+| Route list rows | `ui/model/RouteListModel.h` |
+| Open a parameter's route from its page | `ui/pages/TopPage.cpp` (`TopPage::editRoute`) |
 
-## Data Model (`Routing`)
+## Data model
 
 ### `Routing::Route`
-Each route has:
-- `_target` — what parameter to control (`Routing::Target` enum, see below)
-- `_tracks` — bitmask of which tracks this route applies to (8-bit, one bit per track)
-- `_min`, `_max` — output range scaling (normalize source value into this range)
-- `_source` — `Routing::Source` variant (CvInput, MidiCC, MidiPitchBend, MidiChannelPressure, MidiNoteMomentary, MidiNoteToggle, MidiNoteVelocity)
 
-Stored as array of 16 `Route` objects in `Project` via `Routing`.
-
-### `Routing::Target` enum (key targets)
-```
-Engine targets:    Play, PlayToggle, Record, RecordToggle, TapTempo
-Project targets:   Tempo, Swing
-PlayState targets: Mute, Fill, FillAmount, Pattern
-Track targets:     SlideTime, Octave, Transpose, Offset, Rotate,
-                   GateProbabilityBias, RetriggerProbabilityBias, LengthBias,
-                   NoteProbabilityBias, ShapeProbabilityBias, CurveMin, CurveMax
-Sequence targets:  FirstStep, LastStep, RunMode, Divisor, Scale, RootNote,
-                   CurrentRecordStep, Reseed, RestProbability2, RestProbability4, ...
-```
-
-### `Routing::Source` types
-- `CvInput` — one of 4 analog CV inputs (`CONFIG_CV_INPUT_CHANNELS = 4`)
-- `MidiCC` — MIDI control change on a port+channel+CC number
-- `MidiPitchBend` — pitch bend value
-- `MidiChannelPressure` — aftertouch
-- `MidiNoteMomentary` / `MidiNoteToggle` / `MidiNoteVelocity` — MIDI note events as control source
-
-### `Routable<T>` template
-Many model properties are wrapped in `Routable<T>` (defined in `Routing.h`). This stores both a base value and a routed value, and `get(bool isRouted)` returns the routed value when the routing engine is active, or the base value otherwise. This is why the `isRouted()` check appears throughout model property getters.
-
-## Engine Logic (`RoutingEngine`)
-
-On every engine update tick:
-1. Read current source values: CV input voltages from `CvInput`, MIDI CC values from MIDI message buffer.
-2. For each active `Route`:
-   a. Read the source value.
-   b. Scale/clamp to the route's `_min`/`_max` range.
-   c. Write the result to the target parameter using `Routing::writeRouted(target, trackMask, value)`.
-3. `writeRouted()` calls the appropriate model setter (e.g. `project.setTempo()`, `track.setOctave()`) with the `routed=true` flag.
-
-## UI Page (`RoutingPage`)
-
-Displays a list of all 16 routes. Each entry shows: source → target, track mask, min/max range. The user can add/remove/configure routes here.
-
-## Change Guide
-
-| Task | Where to look |
+| Field | Meaning |
 |---|---|
-| Add a new routable target | `Routing.h` `Target` enum + `RoutingEngine.cpp` `writeRouted()` switch + model setter |
-| Add a new source type | `Routing.h` `Source` variant + `RoutingEngine.cpp` source read section |
-| Change how CV inputs are read | `src/apps/sequencer/engine/CvInput.h/cpp` + `RoutingEngine.cpp` |
-| Fix route value scaling | `RoutingEngine.cpp` min/max normalization section |
-| Make a model property routable | Wrap the field in `Routable<T>`, add `isRouted()` check in getter, add `Target` enum entry, update `RoutingEngine::writeRouted()` |
+| `target` | what to control (`Routing::Target`); `None` = inactive route |
+| `min`, `max` | normalized 0-1 range the source is scaled into, edited as target units |
+| `tracks` | 8-bit track mask; only used by per-track targets |
+| `source` | `None`, `CvIn1-4`, `CvOut1-8`, `Midi` |
+| `cvSource` | voltage range used to normalize a CV source |
+| `midiSource` | port/channel (`MidiSourceConfig`), event (CC Absolute, CC Relative, Pitch Bend, Note Momentary, Note Toggle, Note Velocity, Note Range), control number or note, note range |
+
+### `Routing::Target` groups
+
+| Group | Targets |
+|---|---|
+| Engine | Play, PlayToggle, Record, RecordToggle, TapTempo |
+| Project | Tempo, Swing |
+| PlayState | Mute, Fill, FillAmount, Pattern |
+| Track | SlideTime, Octave, Transpose, Offset, Rotate, GateProbabilityBias, RetriggerProbabilityBias, LengthBias, NoteProbabilityBias |
+| Sequence | FirstStep, LastStep, RunMode, Divisor, Scale, RootNote, CurrentRecordStep, Reseed, RestProbability2/4/8, SequenceFirstStep, SequenceLastStep, LowOctaveRange, HighOctaveRange, LengthModifier |
+
+Targets serialize by a stable id (`targetSerialize`) and an unknown id reads back as `Target::None`,
+so removing a target needs no migration (see `prep knowledge find routing`). Which track types honour
+a target is decided by each track's `writeRouted`.
+
+### `Routable<T>`
+
+A property holds `base` (set by the UI) and `routed` (set by the engine). Getters call
+`get(isRouted(target))`; setters take a `routed` flag. `Routing::isRouted(target, trackIndex)` is
+true while an active route covers that target and track.
+
+## Engine (`RoutingEngine::update`, every engine update)
+
+1. `updateSources()`: CV sources are `range.normalize(cvInput.channel(i))` (or `cvOutput` for CvOut
+   sources). MIDI sources are updated in `receiveMidi()`, called from `Engine::receiveMidi` before
+   the track engines see a message; a matching message is consumed.
+2. `updateSinks()`: for each active route, `value = min + source * (max - min)`. Engine targets go
+   to `writeEngineTarget` (Play/Record toggle on edges, TapTempo on a rising edge); everything else
+   goes to `Routing::writeTarget(target, tracks, value)`, which denormalizes the value and calls the
+   owner's `writeRouted(target, int, float)`: `Project`, `PlayState`, or the selected tracks' track
+   and (for sequence targets) all 16 of their sequences.
+3. When a route's target or tracks change, the old target is un-routed and the new one marked with
+   `Routing::setRouted`.
+
+## UI (`RoutingPage`)
+
+Reached with Page + Track 2 or from a parameter's context menu (ROUTE). It edits a scratch copy of
+one route; footer **PREV / NEXT / INIT / LEARN / COMMIT**. COMMIT copies the edit into the route
+unless `checkRouteConflict` finds another route on the same target and tracks. LEARN starts MIDI
+learn ([midi-io](midi-io.md)) and fills the MIDI source from the next message. Shift + encoder
+switches route. On the Tracks row the track buttons toggle membership directly.
+
+## Change guide
+
+| Task | Where |
+|---|---|
+| Add a routable target | `Routing::Target` and its name/serialize/range helpers in `model/Routing.{h,cpp}`; a `writeRouted` case in the owner (track, sequence, project or play state); group predicates if it is a new group |
+| Make a property routable | wrap it in `Routable<T>`, use `get(isRouted(target))` in the getter, refuse edits when routed, add a `writeRouted` case |
+| New source type | `Routing::Source`, `RoutingEngine::updateSources`, the route editor rows in `RouteListModel.h` |
+| Route value scaling | `Routing::normalizedDefaultRange`, `denormalizeTargetValue`, `targetValueStep` |

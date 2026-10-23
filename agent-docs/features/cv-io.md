@@ -1,68 +1,69 @@
-# CV I/O
+# CV and Gate I/O
 
-## Purpose
-Manages analog control voltage inputs (4 channels, 12-bit ADC) and outputs (8 channels, 16-bit DAC). CV inputs feed the routing system for real-time modulation. CV outputs carry the sequenced pitch and modulation values to analog synthesizer modules. Also includes gate outputs (8 channels, digital).
+4 CV inputs (ADC), 8 CV outputs (DAC), 8 gate outputs (shift register). CV inputs feed routing,
+Quantizer tracks, the CV/gate-to-MIDI converter and the monitor page. CV outputs carry each track's
+pitch or modulation, and each output has its own calibration table.
 
-## Key Source Files
+## Key source files
 
 | Role | Path |
 |---|---|
-| CV input engine | `src/apps/sequencer/engine/CvInput.h/cpp` |
-| CV output engine | `src/apps/sequencer/engine/CvOutput.h/cpp` |
-| Calibration data model | `src/apps/sequencer/model/Calibration.h/cpp` |
-| System page (calibration UI) | `src/apps/sequencer/ui/pages/SystemPage.h/cpp` |
-| ADC driver (STM32) | `src/platform/stm32/drivers/Adc.h` |
-| DAC driver (STM32) | `src/platform/stm32/drivers/Dac.h` |
-| Gate output driver (STM32) | `src/platform/stm32/drivers/GateOutput.h` |
-| Digital I/O driver (STM32) | `src/platform/stm32/drivers/Dio.h` |
+| CV input | `engine/CvInput.{h,cpp}` |
+| CV output | `engine/CvOutput.{h,cpp}` |
+| Calibration (per output) | `model/Calibration.{h,cpp}`, stored in `model/Settings.h` |
+| Track to jack mapping and test overrides | `engine/Engine.cpp` (`updateTrackOutputs`, `updateOverrides`), `model/Project.h` (`cvOutputTracks`, `gateOutputTracks`) |
+| Calibration and utilities UI | `ui/pages/SystemPage.{h,cpp}`, mapping UI `ui/pages/LayoutPage.{h,cpp}` |
+| Live values | `ui/pages/MonitorPage.{h,cpp}` |
+| ADC / DAC / gate drivers (STM32) | `src/platform/stm32/drivers/Adc.h`, `Dac.h`, `GateOutput.h`, `ShiftRegister.h` |
+| CV/gate to MIDI | `engine/CvGateToMidiConverter.h` ([midi-io](midi-io.md)) |
 
-## Hardware Specs
-- **ADC:** 12-bit, 4 channels (`CONFIG_ADC_CHANNELS = 4`, `CONFIG_CV_INPUT_CHANNELS = 4`)
-- **DAC:** 16-bit, 8 channels (`CONFIG_DAC_CHANNELS = 8`, `CONFIG_CV_OUTPUT_CHANNELS = 8`) — TI DAC8568 via SPI
-- **Gate outputs:** 8 digital outputs (`CONFIG_CHANNEL_COUNT = 8`) via 74HC595 shift registers
+Channel counts: `CONFIG_CV_INPUT_CHANNELS` 4 and `CONFIG_CV_OUTPUT_CHANNELS` / `CONFIG_CHANNEL_COUNT`
+8 in `src/apps/sequencer/Config.h`; `CONFIG_ADC_CHANNELS` 4 and `CONFIG_DAC_CHANNELS` 8 in
+`src/SystemConfig.h`. The DAC is a DAC8568 (`Dac::Type`); outputs are 16-bit.
 
 ## `CvInput`
-Reads the 4 ADC channels on every driver task tick (1ms):
-- Applies a moving average filter to reduce noise
-- Converts raw ADC counts to voltage (calibrated via `Calibration`)
-- Exposes `voltage(int channel)` used by `RoutingEngine` to read CV source values
+
+`update()` runs once per engine update and converts raw ADC counts to volts with
+`5 - counts / 6553.5` (inverted input stage, about +5 V to -5 V). There is no input calibration or
+filtering in this class; consumers that need stability filter themselves (the Quantizer does).
+`channel(i)` returns volts.
 
 ## `CvOutput`
-Writes 8 DAC channels:
-- `setVoltage(int channel, float volts)` — convert volts to 16-bit DAC counts using `Calibration`
-- Applies 1V/octave scaling for pitch outputs
-- Called by each `TrackEngine` at step output time
 
-## Calibration (`Calibration`)
-Per-channel calibration data corrects DAC/ADC non-linearity:
-- `_cvInputCalibration[4]` — per-channel input calibration (offset + scale)
-- `_cvOutputCalibration[8]` — per-channel output calibration (two-point: 0V and octave reference)
+Tracks write volts with `setChannel(i, volts)` (1 V per octave, 0 V = C4); `update()` converts each
+channel with `Calibration::CvOutput::voltsToValue` and writes the DAC. `channel(i)` reads the
+last value back (used by routing and Quantizer sources).
 
-Calibration is run from `SystemPage` which drives known voltages through the DAC and reads them back via the ADC. Stored in `Settings` (flash, not project file).
+## Calibration
 
-## Gate Outputs
-Gates are driven by `GateOutput` driver via `ShiftRegister` chain (74HC595):
-- `GateOutput::set(int channel, bool active)` — set gate high/low
-- Called by `TrackEngine` instances at step boundaries
-- Gate pulse width is determined by note length + `CONFIG_PPQN` tick counting
+`Calibration` holds one `CvOutput` table per output: `ItemCount` entries, one per volt from
+`MinVoltage` (-5) to `MaxVoltage` (+5), each a 15-bit DAC value plus a user-defined flag. Values
+between entries interpolate linearly; volts outside +-5 are clamped, which is why **no range above
+5 V should be offered**. Entries not marked user-defined follow the ideal DAC/op-amp line
+(0 -> +5.17 V, 32768 -> -5.25 V). Calibration lives in `Settings` (flash / SD backup), not in the
+project. The SYSTEM page (Page + Track 7, behind a confirmation) edits it: F1 CAL, with AUTO resetting
+an entry to the ideal value.
 
-## CV-to-Gate-to-MIDI
-`CvGateToMidiConverter` (`engine/CvGateToMidiConverter.h`) monitors CV and gate inputs and converts them to MIDI note events — used when a hardware module output should be re-emitted as MIDI.
+## Track to jack mapping
 
-## Constants
-```cpp
-CONFIG_CV_INPUT_CHANNELS   4    // ADC input channels
-CONFIG_CV_OUTPUT_CHANNELS  8    // DAC output channels
-CONFIG_CHANNEL_COUNT       8    // tracks (and gate outputs)
-```
+`Project::cvOutputTracks` and `gateOutputTracks` say which track feeds each of the 8 jacks (default:
+track N to jack N; edited on the Layout page). `Engine::updateTrackOutputs()` walks the jacks and
+asks the assigned track engine for `cvOutput(k)` / `gateOutput(k)`, with `k` counting how many jacks
+that track already supplies. Most tracks supply one CV and one gate; a MIDI/CV track supplies one per
+voice and signal ([midicv-track](midicv-track.md)). `SystemPage` overrides all outputs while it is open
+(`Engine::setCvOutputOverride`), for calibration and tests.
 
-## Change Guide
+## Gate outputs
 
-| Task | Where to look |
+`GateOutput::setGate(i, value)` drives the 74HC595 shift-register chain; gate timing is decided by
+the track engines (queued gate on/off events in ticks), not by the driver.
+
+## Change guide
+
+| Task | Where |
 |---|---|
-| Change voltage-to-DAC mapping | `CvOutput.cpp` voltage scaling + `Calibration.h` calibration data |
-| Fix CV input noise | `CvInput.cpp` moving average filter window size |
-| Add a new CV input channel | `Config.h` `CONFIG_CV_INPUT_CHANNELS` + `Adc.h` driver + `CvInput.cpp` |
-| Change calibration procedure | `SystemPage.cpp` calibration UI + `Calibration.h/cpp` |
-| Fix gate pulse width | `TrackEngine` implementations + `Config.h` `CONFIG_PPQN` |
-| Fix DAC channel mapping | `CvOutput.cpp` channel routing + `Project.h` `_cvOutputTrack` array |
+| Voltage to DAC mapping | `Calibration::CvOutput::voltsToValue`, `defaultItemValue`, `CvOutput::update` |
+| CV input scaling or noise | `CvInput::update` (add filtering here, or in the consumer) |
+| Add an input channel | `Config.h`, `SystemConfig.h`, `Adc.h` driver, `CvInput` |
+| Calibration procedure | `SystemPage.cpp` (calibration mode), `model/Calibration.{h,cpp}` |
+| Jack assignment | `Project::cvOutputTracks`, `Engine::updateTrackOutputs`, `ui/pages/LayoutPage.cpp` |

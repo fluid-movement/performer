@@ -1,84 +1,77 @@
-# Clock & Sync
+# Clock and Sync
 
-## Purpose
-The master clock drives all sequence playback. It supports internal (master) mode, three external slave modes (analog, MIDI, USB-MIDI), and auto-detection. Tap tempo and tempo nudge allow live BPM adjustment. The clock outputs signals to analog clock output and MIDI clock.
+The master clock drives all playback. It runs internally (master), or follows one of three external
+sources (analog clock input, MIDI clock, USB-MIDI clock), with auto-detection. It also produces the
+analog clock/reset outputs and MIDI clock out. Tempo, tap tempo and tempo nudge feed it.
 
-## Key Source Files
+## Key source files
 
 | Role | Path |
 |---|---|
-| Clock engine | `src/apps/sequencer/engine/Clock.h/cpp` |
-| Clock setup data model | `src/apps/sequencer/model/ClockSetup.h/cpp` |
-| Tap tempo | `src/apps/sequencer/engine/TapTempo.h` |
-| Tempo nudge | `src/apps/sequencer/engine/NudgeTempo.h` |
-| Low-level timer driver | `src/platform/stm32/drivers/ClockTimer.h` |
-| Tempo page | `src/apps/sequencer/ui/pages/TempoPage.h/cpp` |
-| Clock setup page | `src/apps/sequencer/ui/pages/ClockSetupPage.h/cpp` |
-| UI list model | `src/apps/sequencer/ui/model/ClockSetupListModel.h` |
+| Clock (master/slave, tick queue, outputs) | `engine/Clock.{h,cpp}` |
+| Clock settings (persisted) | `model/ClockSetup.{h,cpp}` |
+| Tempo, swing, time signature | `model/Project.h`, `model/TimeSignature.h` |
+| Glue: setup, I/O handlers, tap, nudge, tick loop | `engine/Engine.{h,cpp}` |
+| Tap tempo, tempo nudge | `engine/TapTempo.h`, `engine/NudgeTempo.h` |
+| Swing math | `engine/Groove.h` |
+| Hardware timer | `src/platform/stm32/drivers/ClockTimer.h` (simulator: `src/platform/sim/drivers/ClockTimer.h`) |
+| Tempo page (modal) | `ui/pages/TempoPage.{h,cpp}` |
+| Clock setup page | `ui/pages/ClockSetupPage.{h,cpp}`, `ui/model/ClockSetupListModel.h` |
 
-## Data Model (`ClockSetup`)
+## Data model
 
-- `_mode` — `ClockSetup::Mode`: Auto | Master | Slave
-- `_slaveDivisor` — divisor when in analog slave mode (e.g. 1 = 1PPQN input)
-- `_masterBpm` — master BPM (1–1000 float)
-- `_clockInputMode` — which input acts as slave: Analog | MIDI | USB-MIDI
-- `_clockOutputMode` — clock output: Disabled | Analog | MIDI | USB-MIDI
-- `_clockOutputDivisor` — output clock divisor
-- `_clockOutputPulse` — output clock pulse width (in ticks)
-- `_clockOutputSwing` — swing applied to clock output
+`ClockSetup` (a `ListPage` model; `dirty` makes the engine reconfigure):
 
-## `Clock` Class
-
-```
-Mode: Auto | Master | Slave
-State: Idle | MasterRunning | SlaveRunning
-```
-
-Key methods:
-- `masterStart()` / `masterStop()` / `masterContinue()` / `masterReset()` — playback control
-- `setMasterBpm(float)` — change BPM
-- `slaveConfigure(int slave, int divisor, bool enabled)` — configure external clock input
-- `slaveTick(int slave)` — receive external clock pulse
-- `slaveHandleMidi(int slave, uint8_t msg)` — receive MIDI clock byte
-- `outputConfigure(int divisor, int pulse)` — configure clock output
-- `outputConfigureSwing(int swing)` — set swing on output
-
-Clock implements `ClockTimer::Listener` — `ClockTimer` fires interrupts at `CONFIG_PPQN` × BPM rate and calls back into `Clock`.
-
-## Constants
-```cpp
-CONFIG_PPQN          192   // Master clock resolution (ticks per quarter note)
-CONFIG_SEQUENCE_PPQN  48   // Sequence step resolution (ticks per quarter note)
-CONFIG_TICK_FREQUENCY 1000 // System tick (1ms)
-```
-
-Sequence divisors relate steps to clock ticks. A divisor of `CONFIG_PPQN / CONFIG_SEQUENCE_PPQN = 4` means 4 master ticks per sequence tick.
-
-## Engine Integration
-
-`Engine` owns the `Clock` object and implements `Clock::Listener`:
-- `onClockOutput(OutputState)` — sends analog clock pulses to `Dio`/`GateOutput`
-- `onClockMidi(uint8_t)` — sends MIDI clock bytes to `Midi`/`UsbMidi`
-
-On each `slaveTick`, `Clock` computes the incoming BPM using a `MovingAverage` filter and adjusts timing.
-
-`TapTempo` accumulates button-press timestamps and calls `Clock::setMasterBpm()`.
-`NudgeTempo` applies a temporary BPM offset for live swing/rush during performance.
-
-## UI Pages
-
-| Page | Path | Purpose |
-|---|---|---|
-| `TempoPage` | `ui/pages/TempoPage.h/cpp` | Display/edit BPM, tap tempo, nudge |
-| `ClockSetupPage` | `ui/pages/ClockSetupPage.h/cpp` | Configure mode, divisors, output |
-
-## Change Guide
-
-| Task | Where to look |
+| Field | Values |
 |---|---|
-| Change BPM range | `Project.h` `setTempo()` clamp (1–1000) + `ClockSetup.h` |
-| Add a new clock source type | `Clock.h` `Mode` + `ClockSetup.h` `Mode` + `Engine.cpp` slave setup |
-| Fix analog clock input jitter | `Clock.cpp` `MovingAverage` filter on slave BPM + `slaveTick()` |
-| Change clock output pulse width | `Clock.cpp` `outputConfigure()` + `ClockTimer` driver |
-| Fix tap tempo behavior | `src/apps/sequencer/engine/TapTempo.h` |
-| Fix MIDI clock sync | `Clock.cpp` `slaveHandleMidi()` + `Engine.cpp` MIDI receive handler |
+| `mode` | Auto, Master, Slave |
+| `shiftMode` | Restart, Pause (what Shift + Play does) |
+| `clockInputDivisor`, `clockInputMode` | analog input divisor; Reset, Run, StartStop (what the reset input means) |
+| `clockOutputDivisor`, `clockOutputSwing`, `clockOutputPulse`, `clockOutputMode` | output divisor; swing on/off; pulse width; Reset or Run on the reset output |
+| `midiRx`, `midiTx`, `usbRx`, `usbTx` | MIDI clock in/out per port |
+| `filterNote` | ignore MIDI note input when editing notes on the Note edit page |
+
+Tempo (`Project::tempo`, 1-1000, routable) and swing (`Project::swing`, routable) are project
+properties, not part of `ClockSetup`.
+
+## `Clock`
+
+`Mode` Auto/Master/Slave; `State` Idle, MasterRunning, SlaveRunning. Key calls:
+`masterStart/Stop/Continue/Reset`, `setMasterBpm`, `slaveConfigure(slave, divisor, enabled)`,
+`slaveTick/Start/Stop/Continue/Reset`, `slaveHandleMidi`, `outputConfigure(divisor, pulse)`,
+`outputConfigureSwing`, `checkTick(&tick)`, `checkEvent()`. `Clock` listens to the `ClockTimer`
+interrupt, queues ticks at `CONFIG_PPQN` (192 per quarter), and the engine task drains them, see
+[architecture.md](../architecture.md). Slave BPM is derived from tick spacing and low-pass filtered.
+
+## Engine glue (`Engine`)
+
+- `initClock()` registers the digital I/O handlers: a rising clock input calls
+  `slaveTick(ClockSourceExternal)` (and starts the clock on the first pulse in Reset mode); the reset
+  input is interpreted per `clockInputMode`.
+- `updateClockSetup()` (every update; full reconfigure when dirty) sets the mode, configures the
+  three slaves (external: `clockInputDivisor * (CONFIG_PPQN / CONFIG_SEQUENCE_PPQN)`; MIDI and USB:
+  `CONFIG_PPQN / 24`, enabled by `midiRx` / `usbRx`) and the outputs.
+- `onClockOutput()` drives the clock and reset/run jacks; `onClockMidi()` sends MIDI clock bytes to
+  the ports enabled by `midiTx` / `usbTx`.
+- `update()` sets `masterBpm = tempo * (1 + nudge * 0.1)`; tap tempo calls `tapTempoTap()`.
+
+A step is `divisor` ticks of the 192 PPQN clock (`CONFIG_SEQUENCE_PPQN` is 48). `Groove::applySwing`
+shifts off-beat ticks.
+
+## UI
+
+`TempoPage` (Tempo key, modal, closes on release): encoder changes BPM by 1; Shift x10; pressing while
+turning x0.1; Play taps tempo; Left/Right nudge the tempo while held; holding Performer switches the
+encoder to swing. `ClockSetupPage` (Page + Tempo) is a config list with sections
+([config-pages](config-pages.md)).
+
+## Change guide
+
+| Task | Where |
+|---|---|
+| BPM range | `Project::setTempo` clamp |
+| New clock source | `Clock::Mode`, `ClockSetup::Mode`, `Engine::updateClockSetup` and I/O handlers |
+| Analog clock jitter | `Clock.cpp` slave tick handling and BPM filter |
+| Clock output pulse | `Clock::outputConfigure`, `ClockSetup::clockOutputPulse` |
+| Tap tempo | `engine/TapTempo.h` |
+| MIDI clock sync | `Clock::slaveHandleMidi`, `Engine.cpp` MIDI receive and `onClockMidi` |

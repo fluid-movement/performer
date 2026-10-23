@@ -56,3 +56,7 @@ sandbox:
 # Type-check the UI design sandbox
 sandbox-check:
     npm --prefix {{sandbox_dir}} run check
+
+# Check agent-docs/ for dead links and paths, and that index.md links every doc
+docs-check:
+    python3 scripts/check-agent-docs.py

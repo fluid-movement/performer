@@ -1,92 +1,55 @@
 # File Management
 
-## Purpose
-Handles saving and loading projects to/from MicroSD card, storing settings in internal STM32 flash, and managing the SD card file system. Provides the file browser UI.
+Projects, user scales and single sequences are saved to a microSD card in numbered slots; the
+settings (calibration and user settings) live in internal flash with an optional SD backup. The
+formats are described in [serialization.md](serialization.md); this doc covers the storage and the
+tasks around it.
 
-## Key Source Files
+## Key source files
 
 | Role | Path |
 |---|---|
-| File manager | `src/apps/sequencer/model/FileManager.h/cpp` |
-| File definitions (header format) | `src/apps/sequencer/model/FileDefs.h` |
-| Flash storage (settings) | `src/apps/sequencer/model/FlashReader.h`, `FlashWriter.h` |
-| VFS abstraction | `src/core/fs/FileSystem.h/cpp` |
-| File I/O types | `src/core/fs/File.h/cpp`, `FileReader.h`, `FileWriter.h` |
-| Directory ops | `src/core/fs/Directory.h` |
-| Volume abstraction | `src/core/fs/Volume.h/cpp` |
-| Serialization I/O | `src/core/io/VersionedSerializedReader.h`, `VersionedSerializedWriter.h` |
-| File select page | `src/apps/sequencer/ui/pages/FileSelectPage.h/cpp` |
-| Busy page | `src/apps/sequencer/ui/pages/BusyPage.h/cpp` |
+| File manager (slots, read/write, tasks, volume state) | `model/FileManager.{h,cpp}` |
+| File types and header | `model/FileDefs.h` |
+| Settings and flash | `model/Settings.{h,cpp}`, `model/FlashReader.h`, `model/FlashWriter.h` |
+| Filesystem layer | `src/core/fs/` (`FileSystem`, `File`, `FileReader`, `FileWriter`, `Directory`, `Volume`, `Error`) |
+| FatFs library | `src/libs/ff/ff.h` |
+| SD card driver (STM32) | `src/platform/stm32/drivers/SdCard.h` |
+| Slot picker, busy screen, text entry | `ui/pages/FileSelectPage.{h,cpp}`, `ui/pages/BusyPage.{h,cpp}`, `ui/pages/TextInputPage.{h,cpp}` |
+| Callers | `ui/pages/ProjectPage.cpp` (project save/load), `ui/pages/UserScalePage.cpp`, `ui/pages/SystemPage.cpp` (format, settings), `ui/pages/StartupPage.cpp` (auto-load) |
 
-## Architecture
+## Storage
 
-### Storage Layers
+- **SD card (FatFs)**: directories `PROJECTS` (`NNN.PRO`), `SCALES` (`NNN.SCA`) and `SEQS`
+  (`NNN.NSQ`, `NNN.CSQ`, `NNN.ASQ`), 128 slots each (`FileSelectListModel` shows 128 rows). Slot
+  numbering is 1-based on disk (`%03d`) and 0-based in code.
+- **Last project**: `LAST.DAT` stores the slot of the last saved or loaded project;
+  `StartupPage` reloads it at boot (`readLastProject`), which sets `Project::autoLoaded`.
+- **Internal flash**: the settings, sector 3 at `0x0800C000` (`CONFIG_SETTINGS_FLASH_*` in
+  `Config.h`). `Settings::writeToFlash` / `readFromFlash`; the SYSTEM page can also write them to or
+  read them from an SD file.
+- **Slot info**: `FileManager::slotInfo(type, slot, info)` returns `used` and the 8-character name
+  from the file header, cached (`_cachedSlotInfos`) and invalidated on writes and card removal.
 
-**SD Card (FatFs)**
-- FAT32 filesystem via `src/platform/stm32/libs/fatfs/`
-- `Volume` wraps FatFs mount/unmount
-- `FileSystem` provides path-based file operations
-- Projects saved as binary files in a `/PROJECTS/` directory
+## `FileManager`
 
-**Internal Flash (Settings)**
-- STM32 sector 3 at address `0x0800C000` (4KB)
-- `FlashWriter`/`FlashReader` write/read raw binary
-- Stores `Settings` object only (not full projects)
+All static. Read/write pairs per type and slot (`writeProject(project, slot)`, `readProject`,
+`writeUserScale`, `writeNoteSequence`, `writeCurveSequence`, `writeArpSequence` ...) plus path
+overloads, `readLastProject`, `writeSettings` / `readSettings`, `format()`, `volumeAvailable()` /
+`volumeMounted()`.
 
-### `FileManager`
-Orchestrates all file operations:
-- `saveProject(Project&, int slot)` — serialize project to SD card slot file
-- `loadProject(Project&, int slot)` — deserialize project from SD card
-- `saveSettings(Settings&)` — write settings to flash
-- `loadSettings(Settings&)` — read settings from flash
-- `slotInfo(int slot)` — query file name, size, timestamp for a slot
-- `formatDrive()` — format SD card
-- File operations run in the `FILE_TASK` (priority 1) to avoid blocking the engine
+**File task**: long operations are queued with `FileManager::task(execute, result)` and run by
+`FileManager::processTask()` on the file task (10 ms period, priority 1). `processTask` also polls
+the card every second and mounts it. The UI pattern is: `Engine::suspend()`, show `BusyPage`, queue
+the task, and in the result callback show a toast, close the busy page and `Engine::resume()`
+(see `ProjectPage::saveProject`/`loadProject`).
 
-### File Format (`FileDefs.h`)
-Binary files begin with `FileHeader`:
-- Magic number
-- Version (major.minor.revision)
-- Name (project name string, null-terminated)
-- Checksum
+## Change guide
 
-The header is followed by versioned serialized data via `VersionedSerializedWriter/Reader`.
-
-### Serialization Flow
-```
-Project::write(VersionedSerializedWriter&)
-  → ClockSetup::write()
-  → Track::write() × 8
-    → NoteTrack::write() / CurveTrack::write() / ...
-      → NoteSequence::write() × 17
-  → Song::write()
-  → Routing::write()
-  → MidiOutput::write() × 16
-  → UserScale::write() × 4
-```
-
-Each component is responsible for its own `write()`/`read()` methods. Versioned reader skips unknown fields for forward compatibility.
-
-## Constants
-```cpp
-CONFIG_SETTINGS_FLASH_SECTOR  3
-CONFIG_SETTINGS_FLASH_ADDR    0x0800C000
-```
-
-## UI Pages
-
-| Page | Path | Purpose |
-|---|---|---|
-| `FileSelectPage` | `ui/pages/FileSelectPage.h/cpp` | Browse/select project slots, load/save/delete |
-| `BusyPage` | `ui/pages/BusyPage.h/cpp` | Shown during file operations to block UI |
-
-## Change Guide
-
-| Task | Where to look |
+| Task | Where |
 |---|---|
-| Add a new field to project files | Add to model class `write()`/`read()` methods + bump version if breaking |
-| Change file storage location | `FileManager.cpp` path constants |
-| Fix SD card detection | `src/platform/stm32/drivers/SdCard.h` + `Volume.cpp` |
-| Fix file corruption on save | `FileManager.cpp` write + checksum validation in `FileDefs.h` |
-| Add a new settings field | `src/apps/sequencer/model/Settings.h/cpp` `write()`/`read()` |
-| Change flash storage sector | `Config.h` `CONFIG_SETTINGS_FLASH_SECTOR`/`CONFIG_SETTINGS_FLASH_ADDR` |
+| Add a file type | `FileType` in `FileDefs.h`, `fileTypeInfos` (keep index alignment), read/write pair in `FileManager`, a picker call |
+| Change a stored format | [serialization.md](serialization.md) |
+| SD detection or mount problems | `FileManager::processTask`, `src/core/fs/Volume.cpp`, `SdCard.h` |
+| Corrupt file on load | `FileManager::readProject` result, `reader.checkHash()` in the model's `read` |
+| Settings location | `CONFIG_SETTINGS_FLASH_SECTOR` / `ADDR` in `Config.h`, `Settings::writeToFlash` |

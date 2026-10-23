@@ -1,81 +1,73 @@
 # MIDI I/O
 
-## Purpose
-Handles MIDI input and output across hardware UART, USB-MIDI host, and virtual ports. Includes MIDI output mapping (send track events as MIDI notes), MIDI learn for parameter binding, and a MIDI monitor page.
+MIDI arrives from the DIN port, USB-MIDI (host) and a virtual CV/gate port; it feeds routing, MIDI
+learn, MIDI/CV tracks, note monitoring and recording, and program changes. MIDI leaves through 16
+configurable output slots, plus MIDI clock ([clock-sync](clock-sync.md)).
 
-## Key Source Files
+## Key source files
 
 | Role | Path |
 |---|---|
-| MIDI output data model | `src/apps/sequencer/model/MidiOutput.h/cpp` |
-| MIDI output engine | `src/apps/sequencer/engine/MidiOutputEngine.h/cpp` |
-| MIDI learn | `src/apps/sequencer/engine/MidiLearn.h/cpp` |
-| CV-to-MIDI converter | `src/apps/sequencer/engine/CvGateToMidiConverter.h` |
-| MIDI port abstraction | `src/apps/sequencer/engine/MidiPort.h` |
-| MIDI message type | `src/core/midi/MidiMessage.h/cpp` |
-| MIDI parser | `src/core/midi/MidiParser.h/cpp` |
-| MIDI output page | `src/apps/sequencer/ui/pages/MidiOutputPage.h/cpp` |
-| MIDI monitor page | `src/apps/sequencer/ui/pages/MonitorPage.h/cpp` |
-| UART MIDI driver (STM32) | `src/platform/stm32/drivers/Midi.h` |
-| USB MIDI driver (STM32) | `src/platform/stm32/drivers/UsbMidi.h` |
+| Output slots (persisted) | `model/MidiOutput.{h,cpp}`, `model/MidiConfig.h` (port + channel) |
+| Output engine | `engine/MidiOutputEngine.{h,cpp}` |
+| MIDI learn | `engine/MidiLearn.{h,cpp}` |
+| CV/gate input to MIDI notes | `engine/CvGateToMidiConverter.h` |
+| Ports | `engine/MidiPort.h` (`Midi`, `UsbMidi`, `CvGate`), `engine/MidiUtils.h` (`matchSource`) |
+| Message type and parser | `src/core/midi/MidiMessage.{h,cpp}`, `src/core/midi/MidiParser.{h,cpp}` |
+| Receive path and monitoring | `engine/Engine.cpp` (`receiveMidi`, `monitorMidi`) |
+| Output page, monitor page | `ui/pages/MidiOutputPage.{h,cpp}`, `ui/pages/MonitorPage.{h,cpp}` |
+| Drivers | `src/platform/stm32/drivers/Midi.h`, `UsbMidi.h`, `UsbH.h` |
 
-## Data Model (`MidiOutput`)
+## Input path (`Engine::receiveMidi`)
 
-Each of the 16 `MidiOutput` slots defines one MIDI output mapping:
-- `_event` — what event triggers output: `NoteOn`/`NoteOff`, `ControlChange`
-- `_source` — which track and which parameter to read (e.g. Track 1, gate, note)
-- `_port` — which MIDI port to send on (UART, USB-MIDI)
-- `_channel` — MIDI channel (1–16)
-- `_noteOffset` — note transposition for MIDI output
-- `_arpeggiator` — optional arpeggiator applied before output
+1. Drain the DIN and USB-MIDI receive queues; real-time and system messages are dropped (clock is
+   handled by `Clock`). Also derive virtual notes from CV/gate inputs when `Project::cvGateInput`
+   is `Cv1Cv2` or `Cv3Cv4` (port `CvGate`).
+2. The UI controller handler (Launchpad) may consume the message first; only cable 0 continues.
+3. Program changes select that pattern on all tracks when `Project::midiIntegrationMode` is
+   ProgramChanges or Malekko (patterns wrap modulo 16), and are forwarded to the output.
+4. `MidiLearn` sees the message (not from `CvGate`), then `RoutingEngine::receiveMidi`, then every
+   track engine's `receiveMidi` (only MIDI/CV tracks consume).
+5. Unconsumed messages go to **monitoring**: per `Project::midiInputMode` (Off, All, Source) the
+   selected track's engine gets note on/off through `monitorMidi`, which is how notes are
+   auditioned and recorded (`StepRecorder`).
 
-Stored as `std::array<MidiOutput, CONFIG_MIDI_OUTPUT_COUNT>` (16 slots) in `Project`.
+## Output (`MidiOutputEngine`, `MidiOutput`)
 
-## Engine Logic
+Each `MidiOutput::Output` has a `target` (port + channel), an `event` (None, Note, ControlChange)
+and sources:
 
-### `MidiOutputEngine`
-On every step event from any track engine:
-1. Iterate all 16 `MidiOutput` slots.
-2. For each slot whose source matches the current track event: build a `MidiMessage` (note-on/note-off/CC).
-3. Write to the appropriate MIDI port via `Engine::sendMidi()`.
+- **Note**: `gateSource` (a track's gate), `noteSource` (a track's CV, or a fixed note 0-127),
+  `velocitySource` (a track, or fixed 0-127).
+- **ControlChange**: a `controlSource` (a track) and a control number.
 
-### `MidiLearn`
-- Activated by the user pressing the MIDI learn button.
-- Listens for incoming MIDI CC/note messages.
-- Binds the received message to the currently selected routing target.
-- Stored as a `Routing::Route` with `MidiCC`/`MidiNote` source type.
-- Key file: `MidiLearn.h/cpp`.
+Track engines push `sendGate(track, gate)`, `sendCv(track, cv)` and `sendSlide(track, slide)`;
+`update()` turns them into messages. Tied notes (same note on and off in one update) are not
+retriggered. Slide is sent as CC 65. CC output is rate-limited to about 50 events per second per
+output. Program changes can be sent (`sendProgramChange`) and the engine includes Malekko Select
+handshake messages. Changing an output's event or target resets its state.
 
-### `CvGateToMidiConverter`
-Converts CV+gate track output to MIDI note events. Used when a hardware CV output should also appear as MIDI. Tracks the gate state to generate note-on/note-off pairs.
+## MIDI learn
 
-### MIDI Ports
-`MidiPort` enum: `Midi` (UART DIN), `UsbMidi` (USB host), `None`.
+`MidiLearn::start(callback)` calls back with the next message's port, channel, event and control
+number or note; `RoutingPage` uses it to fill a route's MIDI source ([routing](routing.md)).
 
-`Engine` owns both `Midi` and `UsbMidi` drivers. Incoming messages pass through `Engine::onMidiMessage()` which distributes them to:
-- `RoutingEngine` (for routing/MIDI-learn sources)
-- `MidiCvTrackEngine` instances (for MIDI/CV conversion)
-- `Clock` (for MIDI clock sync)
+## UI
 
-## Constants
-```cpp
-CONFIG_MIDI_OUTPUT_COUNT  16   // number of MIDI output mapping slots
-```
+- `MidiOutputPage` (Page + Track 3): config list of the 16 slots, footer PREV / NEXT / INIT /
+  COMMIT, same scratch-copy-and-commit flow as the routing page.
+- `MonitorPage` (Page + Step 7): footer **CV IN / CV OUT / MIDI / STATS**; shows live CV, the last MIDI
+  messages and task statistics.
+- Project-level MIDI settings (input mode and source, integration, program offset) are on
+  `ProjectPage`.
 
-## UI Pages
+## Change guide
 
-| Page | Path | Purpose |
-|---|---|---|
-| `MidiOutputPage` | `ui/pages/MidiOutputPage.h/cpp` | Configure MIDI output slots |
-| `MonitorPage` | `ui/pages/MonitorPage.h/cpp` | Live MIDI message display |
-
-## Change Guide
-
-| Task | Where to look |
+| Task | Where |
 |---|---|
-| Add a new MIDI output event type | `MidiOutput.h` `Event` enum + `MidiOutputEngine.cpp` event handling |
-| Change MIDI channel mapping | `MidiOutput.h` `_channel` field + `MidiOutputPage.cpp` |
-| Fix MIDI note-off timing | `MidiOutputEngine.cpp` note-off scheduling |
-| Add MIDI learn to a new parameter | `MidiLearn.h/cpp` + `Routing.h` target enum + `RoutingEngine.cpp` |
-| Fix USB MIDI connectivity | `src/platform/stm32/drivers/UsbMidi.h` + `Engine.cpp` USB MIDI handlers |
-| Debug incoming MIDI messages | `MonitorPage.cpp` + `Engine.cpp` `onMidiMessage()` |
+| New output event type | `MidiOutput::Output::Event` and its data union, `MidiOutputEngine::update`, the output list model |
+| Note-off timing | `MidiOutputEngine.cpp` note request handling |
+| Add MIDI learn to a parameter | `MidiLearn.{h,cpp}` result, `RoutingPage::assignMidiLearn` |
+| New MIDI route event | `Routing::MidiSource::Event`, `RoutingEngine::receiveMidi` |
+| USB MIDI connectivity | `src/platform/stm32/drivers/UsbMidi.h`, `UsbH.h`, the connect handler in `Engine.cpp` |
+| Monitoring or recording | `Engine::monitorMidi`, the track engines' `monitorMidi`, `engine/StepRecorder.h` |

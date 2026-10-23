@@ -1,62 +1,46 @@
 # Launchpad Integration
 
-## Purpose
-Support for Novation Launchpad MIDI controllers connected via USB host. The Launchpad provides a 8×8 pad grid + buttons as an alternative hardware interface, with color-coded LEDs for visual feedback. Four Launchpad variants are supported.
+Novation Launchpads connected to the USB host port act as an extra surface: an 8x8 pad grid plus
+function and scene buttons, with colour LEDs mirroring sequencer state. The controller has three
+modes (`Sequence`, `Pattern`, `Performer`) that reproduce the step, pattern and mute/fill workflows.
 
-## Key Source Files
+## Key source files
 
 | Role | Path |
 |---|---|
-| Controller manager | `src/apps/sequencer/ui/controllers/launchpad/LaunchpadController.h/cpp` |
-| Base device class | `src/apps/sequencer/ui/controllers/launchpad/LaunchpadDevice.h/cpp` |
-| Launchpad MK2 | `src/apps/sequencer/ui/controllers/launchpad/Mk2Device.h/cpp` |
-| Launchpad MK3 | `src/apps/sequencer/ui/controllers/launchpad/Mk3Device.h/cpp` |
-| Launchpad Pro | `src/apps/sequencer/ui/controllers/launchpad/ProDevice.h/cpp` |
-| Launchpad Pro MK3 | `src/apps/sequencer/ui/controllers/launchpad/ProMk3Device.h/cpp` |
-| Controller interface | `src/apps/sequencer/ui/Controller.h/cpp` |
-| Controller manager (top-level) | `src/apps/sequencer/ui/ControllerManager.h/cpp` |
-| USB MIDI driver | `src/platform/stm32/drivers/UsbMidi.h` |
+| Controller interface | `src/apps/sequencer/ui/Controller.{h,cpp}` (`ControllerInfo`) |
+| Detection and dispatch | `src/apps/sequencer/ui/ControllerManager.{h,cpp}` |
+| Launchpad logic (modes, buttons, drawing) | `src/apps/sequencer/ui/controllers/launchpad/LaunchpadController.{h,cpp}` |
+| Device base class (generic) | `src/apps/sequencer/ui/controllers/launchpad/LaunchpadDevice.{h,cpp}` |
+| Device variants | `LaunchpadMk2Device`, `LaunchpadMk3Device`, `LaunchpadProDevice`, `LaunchpadProMk3Device` (`.h/.cpp` in the same directory) |
+| USB-MIDI | `src/platform/stm32/drivers/UsbMidi.h`, `UsbH.h`; connect handling in `engine/Engine.cpp` (`usbMidiConnect`) |
 
-## Architecture
+## How it works
 
-### Device Detection
-When a USB MIDI device connects, `Engine` fires `UsbMidiConnectHandler` with vendor/product IDs. `ControllerManager` matches IDs against known Launchpad product IDs and instantiates the appropriate `XxxDevice`.
+- **Detection**: when a USB-MIDI device connects, `Engine::usbMidiConnect` calls the connect
+  handler; `ControllerManager::findController(vendorId, productId)` matches a table in
+  `ControllerManager.h` (vendor 0x1235): Launchpad S (0x0020), Mini Mk1 (0x0036), Mini Mk2 (0x0037),
+  Mk2 (0x0069), Pro (0x0051), Mini Mk3 (0x0113), X (0x0103), Pro Mk3 (0x0123). `Engine` also sets a
+  flag so the UI knows a Launchpad is connected (`isLaunchpadConnected`).
+- **Device choice**: `LaunchpadController`'s constructor picks the device class by product id: Mk2
+  (0x0069), Pro (0x0051), Mk3 (Mini Mk3 and X), Pro Mk3; anything else gets the generic
+  `LaunchpadDevice`. Devices differ in how they set LEDs and enter programmer mode (SysEx).
+- **Grid**: `LaunchpadDevice` is 8x8 pads plus a scene column (`SceneRow` 8) and a function row
+  (`FunctionRow` 9). `setLed(row, col, color)` / `syncLeds()` push LED state; incoming pad presses
+  come through `recvMidi` as button events.
+- **Controller**: `update()` redraws for the current mode every UI tick; `recvMidi` translates pads
+  into sequencer actions (toggle gates, select pattern, mute, fill, follow mode, run mode, first and
+  last step). The button map is the `BUTTON(...)` table at the top of `LaunchpadController.cpp`.
+  Controllers get MIDI before the engine (`Engine::receiveMidi` hands it to the receive handler
+  first).
+- `Track::patternFollow`'s display toggle (Page + Step 15) behaves differently when a Launchpad is
+  connected.
 
-Known Launchpad USB IDs are hardcoded in the device files (e.g. `Mk2Device.cpp`).
+## Change guide
 
-### `LaunchpadDevice` (base class)
-Defines the interface for all Launchpad variants:
-- `connect()` / `disconnect()` — called on USB connect/disconnect
-- `update()` — called on every UI tick; reads page state, updates pad LEDs
-- `onMidi(MidiMessage)` — receives MIDI from the Launchpad (pad presses)
-- `setLed(row, col, color)` — set a pad's LED color
-- Translates pad presses into `KeyEvent`/`EncoderEvent` for `Ui`
-
-### `LaunchpadController`
-Instantiates the correct device type and forwards events between it and the `Ui` system.
-
-### Per-Variant Differences
-| Variant | File | Notes |
-|---|---|---|
-| MK2 | `Mk2Device.h/cpp` | SysEx LED color, 8×8 pads |
-| MK3 | `Mk3Device.h/cpp` | SysEx LED color, slightly different layout |
-| Pro | `ProDevice.h/cpp` | Larger grid (10×10 including side buttons), extended SysEx |
-| Pro MK3 | `ProMk3Device.h/cpp` | Latest Pro generation, uses different SysEx format |
-
-Each variant has its own `VendorId`/`ProductId` constants for USB detection.
-
-### LED Feedback
-Pages call `LedPainter` which knows about the Launchpad grid layout. `LedPainter` translates internal LED indices to Launchpad pad coordinates and calls `setLed()` on the device.
-
-### MIDI Communication
-The Launchpad communicates over USB MIDI. Pad LED colors are set via SysEx messages (device-specific format). Pad presses arrive as MIDI note-on/note-off. Mode switching (programmer mode) is set via SysEx on connect.
-
-## Change Guide
-
-| Task | Where to look |
+| Task | Where |
 |---|---|
-| Add support for a new Launchpad model | Create `XxxDevice.h/cpp` extending `LaunchpadDevice`, add USB VID/PID, register in `ControllerManager.cpp` |
-| Fix Launchpad not detected on connect | `ControllerManager.cpp` USB connect handler + VID/PID constants in device files |
-| Fix wrong pad colors | `LedPainter.cpp` Launchpad coordinate mapping + `XxxDevice.cpp` `setLed()` SysEx format |
-| Fix pad input not working | `XxxDevice.cpp` `onMidi()` handler — check note-on/off mapping to KeyEvents |
-| Change what pads do in a page | The page's `updateLeds()` and `keyDown()` methods, plus `LedPainter` helper mappings |
+| Support a new Launchpad model | add the vendor/product ids to `controllerInfos` in `ui/ControllerManager.h`, a device class deriving `LaunchpadDevice`, and a branch in the `LaunchpadController` constructor |
+| Not detected | the id table in `ControllerManager.h`, `Engine::usbMidiConnect` |
+| Wrong pad colours | the device's `setLed`, the colour mapping in `LaunchpadController.cpp` |
+| Change what pads do | the mode's `*Button`/draw functions in `LaunchpadController.cpp` |

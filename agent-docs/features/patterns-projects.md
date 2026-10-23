@@ -1,83 +1,73 @@
-# Patterns & Projects
+# Projects, Tracks and Patterns
 
-## Purpose
-A Project is the top-level data container. It holds 8 tracks, each with 16 patterns + 1 snapshot, global settings, song data, routing, MIDI output config, and user scales. Patterns are independent sequence states per track — switching patterns changes the active sequence without losing others.
+A `Project` is the top-level data container. It holds 8 tracks, each with 16 patterns plus one
+snapshot slot, the project-level settings, the song, routing, MIDI outputs and the play state.
+Switching a track's pattern switches which of its sequences plays; the others are kept.
 
-## Key Source Files
+## Key source files
 
 | Role | Path |
 |---|---|
-| Project (top-level container) | `src/apps/sequencer/model/Project.h/cpp` |
-| Track (polymorphic container) | `src/apps/sequencer/model/Track.h/cpp` |
-| PlayState (runtime state) | `src/apps/sequencer/model/PlayState.h/cpp` |
-| Model (wraps Project + Settings) | `src/apps/sequencer/model/Model.h/cpp` |
-| File definitions | `src/apps/sequencer/model/FileDefs.h` |
-| Project page | `src/apps/sequencer/ui/pages/ProjectPage.h/cpp` |
-| Pattern page | `src/apps/sequencer/ui/pages/PatternPage.h/cpp` |
-| Overview page | `src/apps/sequencer/ui/pages/OverviewPage.h/cpp` |
+| Project | `model/Project.{h,cpp}` |
+| Track (polymorphic) | `model/Track.{h,cpp}`, `model/BaseTrack.h`, `model/BaseTrackPatternFollow.h` |
+| Play state (patterns, mutes, fills, song position) | `model/PlayState.{h,cpp}` |
+| Model (Project + Settings + clipboard) | `model/Model.{h,cpp}`, `model/ClipBoard.{h,cpp}` |
+| Project page (settings list) | `ui/pages/ProjectPage.{h,cpp}`, `ui/model/ProjectListModel.h` |
+| Track page (type, link, per-track settings) | `ui/pages/TrackPage.{h,cpp}`, `ui/model/*TrackListModel.h` |
+| Pattern page, Performer page, Overview page | `ui/pages/PatternPage.{h,cpp}`, `ui/pages/PerformerPage.{h,cpp}`, `ui/pages/OverviewPage.{h,cpp}` |
+| Layout page (jack assignment) | `ui/pages/LayoutPage.{h,cpp}` |
 
-## Data Model
+## `Project`
 
-### `Project`
-Top-level owned object, contains:
-- `_name` — project name string (max `FileHeader::NameLength`)
-- `_slot` — SD card slot number (which file it was loaded from)
-- `_autoLoaded` — whether this project auto-loads on boot
-- `_tempo` — BPM (1–1000 float, `Routable<float>`)
-- `_swing` — swing amount (0–100, `Routable<uint8_t>`)
-- `_timeSignature` — `TimeSignature` (beats per bar)
-- `_clockSetup` — `ClockSetup` (clock mode + divisors)
-- `_tracks` — `std::array<Track, 8>` (polymorphic track containers)
-- `_song` — `Song` (64-slot arrangement)
-- `_playState` — `PlayState` (runtime mute/pattern/fill state)
-- `_cvOutputTrack` — mapping: which track drives each of the 8 CV outputs
-- `_gateOutput` — mapping: which track drives each of the 8 gate outputs
-- `_routing` — `Routing` (16 modulation routes)
-- `_midiOutput` — array of 16 `MidiOutput` slots
-- `_userScales` — array of 4 `UserScale`
-- `_selectedTrackIndex`, `_selectedPatternIndex` — UI focus state
+Persisted: name, tempo and swing (routable), time signature, sync measure, `scale` and `rootNote`
+(global, see [scales](scales.md)), monitor, record and MIDI input modes, MIDI integration mode and
+program offset, `cvGateInput`, `curveCvInput`, `ClockSetup`, the 8 tracks, `cvOutputTracks` and
+`gateOutputTracks` (which track feeds each jack), `Song`, `PlayState`, `Routing`, `MidiOutput`, the
+4 user scales, `selectedTrackIndex`, `selectedPatternIndex`, `resetCvOnStop`, `useMultiCv`.
+Other settings: steps-to-stop, record delay. Runtime only: `slot` (the SD card slot it came from),
+`autoLoaded`.
 
-### `Track` (polymorphic container)
-`Track` is a tagged-union container (`Container<NoteTrack, CurveTrack, MidiCvTrack, StochasticTrack, LogicTrack, ArpTrack>`) managed by `src/core/utils/Container.h`. The active track type is stored as a `TrackMode` enum. Switching mode resets the track data.
+`Project::watch(handler)` observes `ProjectCleared`, `ProjectRead`, `TrackModeChanged`,
+`SelectedTrackIndexChanged`, `SelectedPatternIndexChanged`. Helpers such as `selectedNoteSequence()`
+return the sequence of the selected track and pattern; while a snapshot is active the "selected"
+pattern is the snapshot slot.
 
-Key methods:
-- `trackMode()` — current `TrackMode`
-- `setTrackMode(TrackMode)` — switches type (clears data)
-- `noteTrack()` / `curveTrack()` / etc. — access typed track (unsafe if wrong type)
-- `as<T>()` — safe typed access
+## `Track`
 
-### `PlayState`
-Runtime (not serialized, rebuilt on load):
-- `_trackStates[8]` — per-track: current pattern index, mute, fill, pattern-change request
-- `requestPatternChange(track, pattern, immediate)` — queues/applies a pattern switch
-- `fill(track, active)` — activates fill mode
+A `Container<NoteTrack, CurveTrack, MidiCvTrack, StochasticTrack, ArpTrack, QuantizerTrack>` plus
+the `TrackMode`, a `linkTrack` (a track can follow another's step position; engines read the
+linked engine's `linkData`) and the track index. `setTrackMode` resets the track. Typed access:
+`noteTrack()`, `curveTrack()` and so on (an assertion fires for the wrong mode); engines use
+`TrackEngine::as<T>()`. `TrackMode` ids on
+disk are stable; unknown ids (the removed Logic track) load as Note. See
+[serialization](serialization.md).
 
-### `Model`
-Wraps `Project` + `Settings`. Passed to `Engine` and `Ui`. Provides `model.project()` and `model.settings()` accessors. File load/save goes through `FileManager` not `Model` directly.
+## Patterns and `PlayState`
 
-## Constants
-```cpp
-CONFIG_TRACK_COUNT    8    // tracks per project
-CONFIG_PATTERN_COUNT  16   // patterns per track
-CONFIG_SNAPSHOT_COUNT 1    // snapshot slots per track
-CONFIG_STEP_COUNT     64   // steps per pattern
-```
+Each track type holds `CONFIG_PATTERN_COUNT + CONFIG_SNAPSHOT_COUNT` = 17 sequences. `PlayState`
+(persisted with the project) holds per track a `TrackState`: current and requested pattern, mute,
+fill and fill amount, plus pending requests, and a `SongState` ([song-mode](song-mode.md)).
 
-## UI Pages
+Changes can be requested with an `ExecuteType`: **Immediate**, **Synced** (at the next sync
+boundary, `Engine::syncDivisor`) or **Latched** (queued until committed). API: `muteTrack`,
+`soloTrack`, `fillTrack`, `selectTrackPattern`, `selectPattern`, snapshots (`createSnapshot`,
+`revertSnapshot`, `commitSnapshot`), `cancelMuteRequests` / `cancelPatternRequests`, `playSong`.
+`Engine::updatePlayState` consumes the requests on ticks.
 
-| Page | Path | Purpose |
-|---|---|---|
-| `ProjectPage` | `ui/pages/ProjectPage.h/cpp` | Project name, save/load, auto-load toggle |
-| `PatternPage` | `ui/pages/PatternPage.h/cpp` | Select active pattern per track |
-| `OverviewPage` | `ui/pages/OverviewPage.h/cpp` | Visual overview of all 8 tracks |
-| `TrackPage` | `ui/pages/TrackPage.h/cpp` | Per-track settings (mode, name) |
+## UI
 
-## Change Guide
+- **PatternPage** (Pattern key; Page + Pattern for the non-modal version): per-track pattern grid;
+  footer LATCH / SYNC / SNAP (REVERT) / COMMIT / CANCEL.
+- **PerformerPage** (Performer key): mutes, solo, fills; footer LATCH / SYNC / UNMUTE / FILL / CANCEL.
+- **OverviewPage** (Page + Left): all tracks at a glance.
+- **ProjectPage** (Page + Track 0) and **TrackPage** (Page + Step 2): config lists
+  ([config-pages](config-pages.md)). Details of each page's keys: [ui-state.md](../ui-state.md).
 
-| Task | Where to look |
+## Change guide
+
+| Task | Where |
 |---|---|
-| Add a new project-level field | `Project.h` property section + `Project.cpp` `clear()`/`write()`/`read()` + serialization version bump |
-| Add a new track type | `Track.h` `TrackMode` enum + `Container<>` template args + new `XxxTrack.h/cpp` + new `XxxTrackEngine.h/cpp` + `Engine.h` includes + `Ui` page wiring |
-| Change how pattern switching works | `PlayState.h/cpp` `requestPatternChange()` + `Engine.cpp` pattern change consumption |
-| Change CV/gate output routing | `Project.h` `_cvOutputTrack`/`_gateOutput` arrays + `Engine.cpp` output mapping |
-| Change project name length | `FileDefs.h` `FileHeader::NameLength` |
+| Add a project-level field | `model/Project.h` accessors, `clear()`, `write()`/`read()` in `Project.cpp` with a new `ProjectVersion`, a row in `ProjectListModel.h`, a binding in `python/project.cpp` ([serialization](serialization.md)) |
+| Add a track type | `model/Track.h` (`TrackMode`, container args, serialize id, `write`/`read`), `engine/Engine.h` (engine container), a model, engine and pages, `ui/pages/Pages.h`, `TopPage` page selection, list model, routing `writeRouted` cases |
+| Change pattern switching | `PlayState::selectTrackPattern` and `Engine::updatePlayState` |
+| Change jack mapping | `Project::cvOutputTracks` / `gateOutputTracks`, `Engine::updateTrackOutputs`, `LayoutPage` |

@@ -1,56 +1,65 @@
 # MIDI/CV Track
 
-## Purpose
-Converts incoming MIDI notes to CV+gate outputs in real time. Supports polyphony (up to 8 voices), voice allocation strategies, and can output pitch, velocity, and aftertouch pressure as separate CV values. No step sequencer — purely a MIDI-to-CV converter track.
+Converts incoming MIDI into CV and gate in real time. Up to 8 polyphonic voices, selectable note
+priority, pitch bend, velocity and pressure outputs, an optional arpeggiator and portamento for
+mono. There is no sequence or step data: the track is driven entirely by MIDI input, not by the
+tick.
 
-## Key Source Files
+This is the one track type without a Steps page. A design for it exists but is unbuilt:
+[ui-redesign/midicv-page-brief.md](../ui-redesign/midicv-page-brief.md).
+
+## Key source files
 
 | Role | Path |
 |---|---|
-| Data model | `src/apps/sequencer/model/MidiCvTrack.h/cpp` |
-| Arpeggiator (optional) | `src/apps/sequencer/model/Arpeggiator.h/cpp` |
-| Real-time engine | `src/apps/sequencer/engine/MidiCvTrackEngine.h/cpp` |
-| MIDI port abstraction | `src/apps/sequencer/engine/MidiPort.h` |
-| UI list model | `src/apps/sequencer/ui/model/MidiCvTrackListModel.h` |
+| Track settings | `model/MidiCvTrack.{h,cpp}` |
+| Arpeggiator settings (also used elsewhere in the model) | `model/Arpeggiator.{h,cpp}` |
+| Engine | `engine/MidiCvTrackEngine.{h,cpp}` |
+| Arpeggiator engine | `engine/ArpeggiatorEngine.{h,cpp}` |
+| Source matching (port + channel) | `engine/MidiUtils.h`, `engine/MidiPort.h` |
+| Config list rows | `ui/model/MidiCvTrackListModel.h` |
 
-## Data Model
+## Data model (`MidiCvTrack`)
 
-### `MidiCvTrack` (track-level settings)
-- `_source` — `MidiSourceConfig`: which MIDI port + channel to receive from
-- `_voices` — number of polyphonic voices (1–8)
-- `_voiceConfig` — `VoiceConfig` enum:
-  - `Pitch` — one CV output per voice (pitch only)
-  - `Velocity` — output velocity as CV
-  - `PitchVelocity` — pitch + velocity on separate CV outs
-  - `PitchVelocityPressure` — pitch + velocity + aftertouch
-- `_notePriority` — `NotePriority` enum: LastNote | FirstNote | LowestNote | HighestNote
-- `_lowNote`, `_highNote` — MIDI note range filter
-- `_pitchBend` — pitch bend range in semitones
-- `_modulationRange` — mod wheel CV output range
-- `_retrigger` — retrigger behavior on note overlap
-- `_arpeggiator` — embedded `Arpeggiator` config (optional arpeggio processing)
-- `_transpose` — semitone offset
-
-### `VoiceSignal` enum
-`Pitch`, `Velocity`, `Pressure` — used internally to route signals to the right CV output channels.
-
-## Engine Logic (`MidiCvTrackEngine`)
-
-1. Subscribes to MIDI note-on/note-off/pitchbend/aftertouch messages on the configured port+channel.
-2. Voice allocation: assigns incoming notes to voice slots respecting `voices` and `notePriority`.
-3. For each active voice: compute CV pitch (1V/octave), apply `pitchBend`, `transpose`.
-4. Optionally route velocity and pressure to additional CV outputs based on `voiceConfig`.
-5. If `arpeggiator` is enabled: feed active notes into the `Arpeggiator`, drive CV+gate from arp output.
-6. Write CV values to `CvOutput` and gate states to `GateOutput` for assigned channels.
-
-This track does not use `SequenceState` or patterns — it is entirely event-driven by MIDI input.
-
-## Change Guide
-
-| Task | Where to look |
+| Field | Meaning |
 |---|---|
-| Change voice allocation logic | `MidiCvTrackEngine.cpp` voice allocator section |
-| Add a new voice signal type | `MidiCvTrack.h` `VoiceSignal`/`VoiceConfig` enums + `MidiCvTrackEngine.cpp` routing |
-| Change pitch bend range behavior | `MidiCvTrack.h` `_pitchBend` + `MidiCvTrackEngine.cpp` pitch bend application |
-| Fix MIDI channel filtering | `MidiCvTrackEngine.cpp` MIDI receive handler + `MidiSourceConfig` |
-| Enable/disable arpeggiator on this track | `MidiCvTrack.h` `_arpeggiator` + `MidiCvTrackEngine.cpp` arp integration |
+| `source` | `MidiSourceConfig`: MIDI port and channel to listen to |
+| `voices` | 1-8 |
+| `voiceConfig` | which signals each voice outputs: Pitch, Velocity, Pitch+Vel, Pitch+Vel+Press |
+| `notePriority` | LastNote, FirstNote, LowestNote, HighestNote (decides which notes win voices) |
+| `lowNote` / `highNote` | notes outside the range are ignored |
+| `pitchBendRange` | 0-48 semitones |
+| `modulationRange` | voltage range for velocity and pressure |
+| `retrigger` | drop the gate for `RetriggerDelay` (2 system ticks) on a new note |
+| `slideTime` | portamento, mono only (`voices == 1`) |
+| `transpose` | semitones, routable |
+| `arpeggiator` | enabled, hold, mode (PlayOrder, Up, Down, UpDown, DownUp, UpAndDown, DownAndUp, Converge, Diverge, Random), divisor, gate length, octaves |
+
+## Engine (`MidiCvTrackEngine`)
+
+1. `receiveMidi()` (called by `Engine::receiveMidi` for every track): drops notes outside
+   `lowNote..highNote`, then for matching port and channel handles note on/off, key pressure,
+   channel pressure and pitch bend. With the arpeggiator enabled, notes go to `ArpeggiatorEngine`
+   instead and its events become voices; the arpeggiator also runs when the clock is stopped.
+2. Voices: `addVoice` takes a free voice (or overrides the last), `sortVoices` orders active voices
+   by note priority and allocates physical outputs round-robin, stealing the lowest priority
+   output when all are busy. Mono with an existing active voice activates slide.
+3. Outputs: gate `i` follows voice `i` (`!mute && active`, dropped briefly when retrigger is on).
+   CV output `index` maps to `signal = index / voices`, `voice = index % voices`:
+   - Pitch: `(note + transpose - 60) / 12` V plus pitch bend (`bend * range / (12 * 8192)`); for a
+     single voice, the slid `_pitchCvOutput`
+   - Velocity: `valueToCv(velocity)` in `modulationRange`
+   - Pressure: key pressure plus channel pressure, in `modulationRange`
+4. Slide uses the old one-pole `Slide::applySlide`, not the bounded `Slide::Ramp` the Note track
+   uses; moving it to `Ramp` is an open TODO.
+
+## Change guide
+
+| Task | Where |
+|---|---|
+| Voice allocation or priority | `MidiCvTrackEngine::addVoice`, `sortVoices` |
+| Add a voice signal or config | `MidiCvTrack::VoiceSignal`, `VoiceConfig`, `voiceConfigInfos` in `model/MidiCvTrack.cpp`, `cvOutput()` in the engine |
+| Pitch bend range or scaling | `MidiCvTrack::pitchBendRange`, `MidiCvTrackEngine::pitchBendToCv` |
+| MIDI channel or port filtering | `MidiUtils::matchSource`, `MidiCvTrack::source` |
+| Arpeggiator behaviour | `engine/ArpeggiatorEngine.cpp` and `model/Arpeggiator.h` |
+| Build a Steps-style page | the brief linked above, then [ui-system](ui-system.md) |

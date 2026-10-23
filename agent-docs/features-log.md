@@ -1,12 +1,14 @@
 # Features Log
 
-Append-only log of shipped features. Newest first. Links to detailed agent-docs where available.
+History of shipped features, newest first, kept for context. **Entries describe what shipped on their date and are not
+a source for current behaviour**: read [index.md](index.md) and the feature docs for that, the commit history for
+code changes, and prep knowledge for the reasons. New work does not need an entry here.
 
 ---
 
 ## UI reference
 
-For a full map of all pages, button combos, and held-button overlays, see [`agent-docs/ui-state.md`](../ui-state.md).
+For a full map of all pages, button combos, and held-button overlays, see [`agent-docs/ui-state.md`](ui-state.md).
 
 ---
 
@@ -16,7 +18,7 @@ The config pages now show **what a parameter does**, not just its value. The rig
 content area is a detail pane for the selected row: a drawing when the parameter has one, otherwise
 its value at a size the 7px list row cannot afford.
 
-Drawings live in `ui/painters/PreviewPainter` and are shared across models:
+Drawings live in `PreviewPainter` and are shared across models:
 
 | Drawing | Used by |
 |---|---|
@@ -452,4 +454,4 @@ See: [`agent-docs/features/scales.md`](features/scales.md)
 
 ## 2026-05-10 — Headless Python simulator harness (commit `0710978e`)
 
-Added a Python `Session` wrapper (`src/apps/sequencer/tests/agent.py`) for driving the simulator headlessly. Enables fast, reproducible debugging without the hardware. Build target: `testsim`. See `CLAUDE.md` for full usage.
+Added a Python `Session` wrapper (`src/apps/sequencer/tests/agent.py`) for driving the simulator headlessly. Enables fast, reproducible debugging without the hardware. Build target: `testsim`. See [testing.md](testing.md) for full usage.
