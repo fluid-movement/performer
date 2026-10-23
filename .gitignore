@@ -4,7 +4,8 @@
 build/
 host/
 downloads/
-tools/
+tools/*
+!tools/ui-sandbox/
 .vscode/launch.json
 src/platform/sim/sim/TargetTrace.cpp
 src/platform/sim/sim/frontend/MidiConfig.h

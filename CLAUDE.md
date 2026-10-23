@@ -1,8 +1,11 @@
-@CONTEXT.md
-
 # Instructions
-- always read the agent-docs before searching code, you will find features and code faster that way
-- check `agent-docs/features-log.md` for a list of features built in this project — it links to detailed feature docs in `agent-docs/features/`
+- Work is tracked with prep (`.prep/`): `prep next` for what to do, `prep list` for all open issues.
+- Before changing code, run `prep knowledge find <area>` (e.g. `curve`, `slide`, `ui`, `serialization`):
+  the design language, track-type decisions and known pitfalls live there, scoped to code paths.
+- The UI design sandbox is `tools/ui-sandbox/` (Svelte; the user runs the dev server). Its
+  iteration process lives in `tools/ui-sandbox/iteration/` and is started with `/iteration`.
+- Everyday commands are in the `justfile` (`just` lists them): `just test [name]`, `just sim`,
+  `just firmware`, `just sandbox`.
 
 # Simulator Test Harness
 
@@ -11,7 +14,7 @@ The simulator can be driven headlessly from Python for fast, reproducible debugg
 ## Build
 
 ```bash
-cd build/sim/release && make -j testsim
+just testsim          # or: just test <name> to build and run tests/ui/<name>_test.py
 ```
 
 ## Entry point
