@@ -1,3 +1,3 @@
-- [ ] just lists recipes: sim, sim-build, testsim, test [name], firmware, sandbox, sandbox-check
-- [ ] recipes call the existing Makefile for toolchain and CMake setup
-- [ ] just test splash builds testsim and passes
+- [x] just lists recipes: sim, sim-build, testsim, test [name], firmware, sandbox, sandbox-check
+- [x] recipes call the existing Makefile for toolchain and CMake setup
+- [x] just test splash builds testsim and passes
