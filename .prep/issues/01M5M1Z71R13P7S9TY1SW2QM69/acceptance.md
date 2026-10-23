@@ -1,0 +1,8 @@
+- [ ] A prep finding records the analysis: recommended structure, a verdict for each doc, and the approach to keeping docs current
+- [ ] Every doc left in agent-docs/ matches the current code; the stale items listed in the requirement are fixed or removed, and nothing describes deleted code as present
+- [ ] index.md links every doc, and a link check finds no dead links or paths
+- [ ] Every knowledge record is classified; documentation-style records are superseded and their content is in the docs
+- [ ] Where the UI redesign docs live is recorded with prep decide, and the files are there
+- [ ] A mechanism to keep docs current is in place (for example a Definition of Done item via prep dod --add)
+- [ ] CLAUDE.md's instructions match the new structure
+- [ ] prep check passes
